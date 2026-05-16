@@ -58,3 +58,53 @@
 - [x] 8.6 Add security gates for mainnet-disabled escrow code, simnet verification, arbiter key handling, and admin overrides.
 - [x] 8.7 Scaffold implementation packages only after 8.2-8.6 have concrete success criteria and verification commands.
 - [x] 8.8 Switch the MVP USDC escrow leg to Base-first settlement with Base/Base Sepolia network config.
+
+## 9. OTC MVP Implementation
+
+### 9.1 Base Smart Contract
+
+- [ ] 9.1.1 Add Foundry or Hardhat project setup under `contracts/usdc-escrow`.
+- [ ] 9.1.2 Add tests for create, deposit, release, refund, cancel-expired, pause, and unauthorized callers.
+- [ ] 9.1.3 Add Base Sepolia deployment config using the native USDC address.
+- [ ] 9.1.4 Keep mainnet deployment disabled until review, multisig ownership, and testnet evidence exist.
+
+### 9.2 OTC API And Trade State
+
+- [ ] 9.2.1 Add quote create/accept/get/proof API skeleton under `services/otc-api`.
+- [ ] 9.2.2 Implement one canonical trade state machine using shared `packages/pearl-sdk` types.
+- [ ] 9.2.3 Add idempotency keys for quote acceptance, settlement transitions, callbacks, and admin actions.
+- [ ] 9.2.4 Add mocked persistence tests before introducing production database plumbing.
+
+### 9.3 Pearl Indexer
+
+- [x] 9.3.1 Add single-machine indexer runbook and Docker Compose topology.
+- [x] 9.3.2 Add minimal block polling loop with mocked `pearld` RPC tests.
+- [x] 9.3.3 Add initial Postgres schema for blocks, indexer state, and escrow watches.
+- [ ] 9.3.4 Add restart-safe Postgres sink and `next_height` state.
+- [ ] 9.3.5 Add escrow watch registration API and proof API.
+- [ ] 9.3.6 Add funding output detection for watched P2TR escrow addresses.
+- [ ] 9.3.7 Add spend detection using resolved prevouts, with release/refund/unknown classification.
+- [ ] 9.3.8 Add detach/replay reorg tests.
+- [ ] 9.3.9 Run a testnet2 integration ingest once testnet PRL/access is available.
+
+### 9.4 Frontend Checkout
+
+- [ ] 9.4.1 Add RFQ buy/sell PRL page in `apps/otc-web`.
+- [ ] 9.4.2 Add checkout status page using mocked API responses.
+- [ ] 9.4.3 Add public proof page for Pearl and Base settlement legs.
+- [ ] 9.4.4 Add admin/manual-review shell for stuck trades.
+
+### 9.5 Settlement Worker
+
+- [ ] 9.5.1 Join mocked Pearl proof state with mocked Base escrow events.
+- [ ] 9.5.2 Implement idempotent release/refund decision records.
+- [ ] 9.5.3 Fail closed to manual review on inconsistent, stale, or reorged observations.
+- [ ] 9.5.4 Add tests for duplicate events and inconsistent settlement legs.
+
+### 9.6 Ops And Release Gates
+
+- [ ] 9.6.1 Add testnet2 node deployment checklist.
+- [ ] 9.6.2 Add indexer environment contract and secrets checklist.
+- [ ] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
+- [ ] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
+- [ ] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.

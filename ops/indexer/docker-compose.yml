@@ -1,0 +1,55 @@
+services:
+  pearld:
+    image: pearl-research-labs/pearld:latest
+    container_name: kaspacom-pearld-testnet2
+    restart: unless-stopped
+    volumes:
+      - pearld-testnet2-data:/root/.pearld
+    ports:
+      - "44112:44112"
+      - "127.0.0.1:44111:44111"
+    command:
+      - "--testnet2"
+      - "--rpcuser=${PEARLD_RPC_USER:?set PEARLD_RPC_USER}"
+      - "--rpcpass=${PEARLD_RPC_PASS:?set PEARLD_RPC_PASS}"
+      - "--rpclisten=0.0.0.0:44111"
+      - "--listen=0.0.0.0:44112"
+      - "--miningaddr=${PEARLD_MINING_ADDRESS:?set PEARLD_MINING_ADDRESS}"
+      - "--txindex"
+      - "--debuglevel=info"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: kaspacom-pearl-indexer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pearl_indexer
+      POSTGRES_USER: pearl_indexer
+      POSTGRES_PASSWORD: ${PEARL_INDEXER_POSTGRES_PASSWORD:?set PEARL_INDEXER_POSTGRES_PASSWORD}
+    volumes:
+      - pearl-indexer-postgres-data:/var/lib/postgresql/data
+      - ../../services/pearl-indexer/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  pearl-indexer:
+    build:
+      context: ../..
+      dockerfile: services/pearl-indexer/Dockerfile
+    container_name: kaspacom-pearl-indexer
+    restart: unless-stopped
+    depends_on:
+      - pearld
+      - postgres
+    environment:
+      PEARL_NETWORK: testnet2
+      PEARLD_RPC_URL: http://pearld:44111
+      PEARLD_RPC_USER: ${PEARLD_RPC_USER:?set PEARLD_RPC_USER}
+      PEARLD_RPC_PASS: ${PEARLD_RPC_PASS:?set PEARLD_RPC_PASS}
+      PEARL_INDEXER_DATABASE_URL: postgres://pearl_indexer:${PEARL_INDEXER_POSTGRES_PASSWORD}@postgres:5432/pearl_indexer
+      PEARL_INDEXER_START_HEIGHT: ${PEARL_INDEXER_START_HEIGHT:-0}
+      PEARL_INDEXER_POLL_INTERVAL_MS: ${PEARL_INDEXER_POLL_INTERVAL_MS:-10000}
+
+volumes:
+  pearld-testnet2-data:
+  pearl-indexer-postgres-data:
