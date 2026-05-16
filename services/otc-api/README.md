@@ -17,6 +17,10 @@ Backend API for the Pearl OTC settlement desk.
 - Base log ingestion. Use the USDC escrow client/worker path.
 - Frontend state decisions. Expose canonical state from backend events.
 
-## Status
+## Current Implementation Slice
 
-Scaffold only. First implementation should be a small NestJS service using the shared SDK types.
+- Framework-free TypeScript service core for quote creation, quote acceptance, trade transition, and public proof projection.
+- In-memory repository for API/state-machine tests.
+- Pluggable Pearl escrow allocator so the real Pearl escrow service can replace mocked escrow instructions later.
+
+The next step is adding HTTP routes around this core and replacing in-memory persistence with the shared database layer.
