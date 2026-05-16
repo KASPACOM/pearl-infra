@@ -75,7 +75,7 @@
 - [x] 9.2.2 Implement one canonical trade state machine using shared `packages/pearl-sdk` types.
 - [x] 9.2.3 Add idempotency keys for quote creation, quote acceptance, settlement transitions, callbacks, and admin actions.
 - [x] 9.2.4 Add mocked persistence tests before introducing production database plumbing.
-- [ ] 9.2.5 Add HTTP routes around the API core.
+- [x] 9.2.5 Add HTTP routes around the API core.
 - [ ] 9.2.6 Replace in-memory persistence with the shared database layer.
 
 ### 9.3 Pearl Indexer

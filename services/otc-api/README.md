@@ -20,7 +20,8 @@ Backend API for the Pearl OTC settlement desk.
 ## Current Implementation Slice
 
 - Framework-free TypeScript service core for quote creation, quote acceptance, trade transition, and public proof projection.
+- Node HTTP routes for quote creation, quote acceptance, trade reads, proof reads, and health checks.
 - In-memory repository for API/state-machine tests.
 - Pluggable Pearl escrow allocator so the real Pearl escrow service can replace mocked escrow instructions later.
 
-The next step is adding HTTP routes around this core and replacing in-memory persistence with the shared database layer.
+The next step is replacing in-memory persistence with the shared database layer.
