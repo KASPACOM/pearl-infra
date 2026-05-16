@@ -24,11 +24,48 @@ If your product spec requires arbitrary computation, **the computation lives off
 
 ---
 
-### What languages can I use to build apps on Pearl?
+### If Pearl has no WASM, no EVM, and no published SDK, what language can I build in?
 
-Any language that can speak HTTP/JSON-RPC and gRPC. Pearl itself is written in Go (node, wallet, CLI), Rust (zk-pow), Python (mining bindings, vLLM), and TypeScript (desktop wallet) — but you don't have to use any of those to build *apps*.
+**Untangle the two things first:**
 
-For KaspaCom: **TypeScript (NestJS backend, Angular frontend)** is the right default — matches the rest of our stack, and Pearl exposes everything we need over JSON-RPC.
+- "No WASM/EVM" means there is **no on-chain execution environment** at all. The chain runs Bitcoin-style script (stack VM, bounded). You cannot deploy code to Pearl in *any* language because there is nowhere to deploy to. All our application logic runs **off-chain in our own backend**.
+- "No SDK" means **nobody has published a polished `pearl.js` library yet**. That's a tooling gap, not a protocol limit. (We'll fill it as `packages/pearl-rpc` + `packages/pearl-sdk` in Phase 1.)
+
+**So which language?** Any language that can speak HTTP/JSON-RPC and gRPC, because that's the only interface Pearl gives:
+
+- **`pearld`** exposes JSON-RPC over HTTP + WebSocket — chain reads, tx broadcast.
+- **`oyster`** exposes gRPC — wallet ops (optional; we can sign locally instead).
+- **Blockbook-style endpoints** — address history, fee estimates over REST.
+
+| Language | Fit for KaspaCom | Notes |
+|---|---|---|
+| **TypeScript (NestJS / Angular)** | ★★★★★ — recommended | Matches our stack. `bitcoinjs-lib` v6+ for tap-trees, `@noble/secp256k1` for BIP340 Schnorr, `bitcoinerlab` for MuSig2. Just patch Bech32m HRP to `prl`. |
+| Go | ★★★★ | Pearl itself is Go (forked from `btcd`/`btcwallet`). Direct code lift from `upstream/pearl/node/txscript`. Highest protocol fidelity. |
+| Rust | ★★★★ | `rust-bitcoin` + `rust-miniscript` excellent for tapscript. Cryptography-native. Overkill for typical product code; right for a high-perf signing service. |
+| Python | ★★★ | Fine for scripts/indexers/analytics. Taproot tooling lags. Pearl's miner bindings use Python. |
+| Java / C# / Kotlin | ★★★ | Works — JSON-RPC clients exist for every language. Taproot tooling weaker. Pick only if there's a team reason. |
+
+**Minimal example (TypeScript, no SDK required):**
+
+```ts
+// Read chain — pure HTTP
+const block = await fetch(pearldUrl, {
+  method: 'POST',
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getblock', params: [hash] })
+}).then(r => r.json());
+
+// Construct a Taproot address — bitcoinjs-lib with Pearl HRP
+import { payments, networks } from 'bitcoinjs-lib';
+const pearl = { ...networks.bitcoin, bech32: 'prl' };
+const { address } = payments.p2tr({ pubkey: tweakedPubkey, network: pearl });
+
+// Sign — BIP340 Schnorr
+import { schnorr } from '@noble/secp256k1';
+const sig = schnorr.sign(sighash, privateKey);
+
+// Broadcast — pure HTTP again
+await pearldRpc('sendrawtransaction', [signedTxHex]);
+```
 
 You will need:
 - A typed RPC client for `pearld` (we plan to build this as `packages/pearl-rpc`).
