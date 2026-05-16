@@ -1,0 +1,10 @@
+{
+  "name": "@kaspacom/otc-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "echo \"otc-web scaffold: no app code yet\"",
+    "test": "echo \"otc-web scaffold: no tests yet\""
+  }
+}

@@ -130,6 +130,7 @@ Authenticated/operational endpoints discovered but not for public scraping witho
 Known endpoint pattern:
 
 - `/api/v1/estimatefee/{numBlocks}`
+- Blockbook-style transaction broadcast is usually `POST /api/v2/sendtx/`; verify on Pearl testnet before depending on it.
 
 ## Quick Data Commands
 

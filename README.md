@@ -16,6 +16,18 @@ This repo is the planning and infrastructure base for KaspaCom Pearl apps:
 - AI compute marketplace control-plane interfaces
 - future browser/mobile wallet connector interfaces
 
+## Repository Layout
+
+```text
+apps/       Frontend apps, starting with the OTC checkout/proof UI
+services/   Backend API, Pearl indexer, settlement workers
+contracts/  Base Solidity contracts, starting with USDC escrow
+packages/   Shared TypeScript libraries and typed domain contracts
+ops/        Pearl node/indexer deployment templates and runbooks
+docs/       Product specs, development guides, OpenSpec, research
+```
+
+See [`docs/architecture/repo-layout.md`](docs/architecture/repo-layout.md) for ownership boundaries.
 
 ## Fast Research Links
 
@@ -58,7 +70,7 @@ Start here before any Pearl task:
 
 ## Current Phase
 
-**Planning/bootstrap only.** No production wallet, explorer, payment, or marketplace code should be shipped before the OpenSpec change is reviewed and approved.
+**MVP scaffold.** This repo now contains planning docs plus the first shared package, service, ops, and contract scaffolds for the Pearl OTC settlement desk. No mainnet custody or production marketplace code should ship until simnet/testnet verification and security gates pass.
 
 OpenSpec: `docs/openspec/pearl-infra-ecosystem/`
 
@@ -69,15 +81,14 @@ OpenSpec: `docs/openspec/pearl-infra-ecosystem/`
 - Do not fork/copy the full Pearl monorepo blindly.
 - Do not commit secrets, wallet seeds, private keys, RPC passwords, or mainnet custody material.
 
-## Planned Layout
+## Build Checks
 
-```text
-apps/       Thin prototype UIs, if needed later
-packages/   Reusable SDKs and typed adapters
-services/   Chain data API, payment, market, compute control-plane services
-ops/        Devnet, Docker, deployment, observability, runbooks
-docs/       Specs, research, upstream manifest, architecture notes
+```bash
+npm test
+npm run typecheck
 ```
+
+CI runs the same two checks on pull requests to `dev` and `main`.
 
 ## Goal-Based Execution
 

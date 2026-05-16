@@ -1,0 +1,23 @@
+services:
+  pearld:
+    image: pearl-research-labs/pearld:latest
+    container_name: kaspacom-pearld-testnet2
+    hostname: pearld-testnet2
+    restart: unless-stopped
+    volumes:
+      - pearld-testnet2-data:/root/.pearld
+    ports:
+      - "44112:44112"
+      - "127.0.0.1:44111:44111"
+    command:
+      - "--testnet2"
+      - "--rpcuser=${PEARLD_RPC_USER:?set PEARLD_RPC_USER}"
+      - "--rpcpass=${PEARLD_RPC_PASS:?set PEARLD_RPC_PASS}"
+      - "--rpclisten=0.0.0.0:44111"
+      - "--listen=0.0.0.0:44112"
+      - "--miningaddr=${PEARLD_MINING_ADDRESS:?set PEARLD_MINING_ADDRESS}"
+      - "--txindex"
+      - "--debuglevel=info"
+
+volumes:
+  pearld-testnet2-data:

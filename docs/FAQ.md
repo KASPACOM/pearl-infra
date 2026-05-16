@@ -112,7 +112,7 @@ Toolchain: Go 1.26+, Rust stable, C/C++ compiler, `task` runner. See `docs/devel
 
 For mining: also Python 3.12 + `uv`, vLLM, and a supported NVIDIA GPU (Llama-3.3-70B-Pearl needs ~4×H200; Llama-3.1-8B-Pearl is more accessible).
 
-For **app development**, you don't need to run a node at first — use the public OTC/Blockbook endpoints. Self-host later if reliability or custom indexing becomes a requirement.
+For simple app development, you do not need to run a node at first — use the public OTC/Blockbook endpoints. For the Pearl OTC desk MVP, run a KaspaCom-owned node/indexer from day one because release/refund decisions are money-flow decisions.
 
 ---
 
@@ -151,9 +151,9 @@ Do build:
 
 ---
 
-### Can I bridge PRL to Ethereum / Solana / Arbitrum?
+### Can I bridge PRL to Ethereum / Solana / Base?
 
-**Not natively.** No protocol-level bridge. The OTC market settles trades by escrowing PRL on Pearl and USDC on **Arbitrum** (see `https://api.pearl-otc.com/trades/public`) — that's an off-chain escrow flow, not a trustless bridge.
+**Not natively.** No protocol-level bridge. The community OTC market has settled trades by escrowing PRL on Pearl and USDC on an EVM chain — that's an off-chain escrow flow, not a trustless bridge. KaspaCom's MVP settlement desk targets **Base USDC** for this EVM leg.
 
 If you want bridged PRL on an EVM chain, that's a **product to build**, not a primitive to call. Custodial escrow + signed-attestation bridge would be the fast version; a real trustless bridge requires either light-client verification or a multi-party trusted setup.
 

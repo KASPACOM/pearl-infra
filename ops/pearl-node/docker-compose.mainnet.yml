@@ -1,0 +1,22 @@
+services:
+  pearld:
+    image: pearl-research-labs/pearld:latest
+    container_name: kaspacom-pearld-mainnet
+    hostname: pearld-mainnet
+    restart: unless-stopped
+    volumes:
+      - pearld-mainnet-data:/root/.pearld
+    ports:
+      - "44108:44108"
+      - "127.0.0.1:44107:44107"
+    command:
+      - "--rpcuser=${PEARLD_RPC_USER:?set PEARLD_RPC_USER}"
+      - "--rpcpass=${PEARLD_RPC_PASS:?set PEARLD_RPC_PASS}"
+      - "--rpclisten=0.0.0.0:44107"
+      - "--listen=0.0.0.0:44108"
+      - "--miningaddr=${PEARLD_MINING_ADDRESS:?set PEARLD_MINING_ADDRESS}"
+      - "--txindex"
+      - "--debuglevel=info"
+
+volumes:
+  pearld-mainnet-data:

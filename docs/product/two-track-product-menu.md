@@ -104,7 +104,7 @@ Pearl's thesis is useful-compute. There's no open standard for connecting GPU op
 
 ### B1. Pearl OTC Settlement Desk ⚙️ [already speced]
 
-Already designed in [`pearl-otc-settlement-desk.md`](pearl-otc-settlement-desk.md) and [`pearl-otc-contracts.md`](pearl-otc-contracts.md). Two-sided escrow (Pearl Taproot + Arbitrum USDC) competing with community-built `pearl-otc.com`.
+Already designed in [`pearl-otc-settlement-desk.md`](pearl-otc-settlement-desk.md) and [`pearl-otc-contracts.md`](pearl-otc-contracts.md). Two-sided escrow (Pearl Taproot + Base USDC) competing with community-built `pearl-otc.com`.
 
 - **Revenue:** ~1–2% per settlement. At current `pearl-otc.com` volume ($833k PRL/24h ≈ $700k USDC), 1.5% = ~$10k/day = ~$3M/year **if we captured 100% of that market**. Realistic capture in year 1: 20–40%.
 - **Effort:** 16–20 weeks for MVP (Modes 1–3 phased).
@@ -113,7 +113,7 @@ Already designed in [`pearl-otc-settlement-desk.md`](pearl-otc-settlement-desk.m
 
 ### B2. PRL ↔ USDC custodial bridge (wPRL)
 
-KaspaCom holds PRL in escrow, mints wrapped wPRL on Arbitrum (or Base / Ethereum). Users can move PRL into EVM DeFi.
+KaspaCom holds PRL in escrow, mints wrapped wPRL on Base first, and keeps the EVM contract boundary portable for other chains later. Users can move PRL into EVM DeFi.
 
 - **Revenue:** mint/burn fees (0.1–0.3% each direction) + float yield on locked PRL (~5% APR if invested safely) + listing/integration fees to EVM dapps.
 - **Effort:** 12–16 weeks (Solidity contract + KaspaCom custody infra + Pearl signing + audit).
