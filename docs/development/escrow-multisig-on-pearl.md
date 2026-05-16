@@ -4,6 +4,8 @@ This guide answers "what do we need to write multisig wallets and escrow on Pear
 
 > **Status:** design + research. Nothing in this doc is implemented in this repo yet. All claims tagged "verify upstream" must be re-checked against `upstream/pearl/` before being relied on in product code.
 
+> **Common misconception:** the constructions in this document do **NOT** require Pearl's `OP_CAT` or any other Pearl-specific feature. They are pure standard Taproot (BIP340/341/342) — they would work identically on Bitcoin mainnet. `OP_CAT` is Pearl's bonus for building *covenant-style* constraints (vaults, recovery wallets, amount-capped outputs) — see [`covenants-on-pearl.md`](covenants-on-pearl.md). Multisig and escrow are a Taproot story; covenants are an OP_CAT story.
+
 ## TL;DR
 
 Pearl is a Taproot Bitcoin fork, so multisig and escrow are native primitives — we use **tapscripts** inside a P2TR address. For TypeScript work, we wrap a Taproot library (e.g. `bitcoinjs-lib` v6+) with a Pearl network-config patch, construct tap-trees with **`OP_CHECKSIGADD`** for k-of-n multisig, **CLTV/CSV** for timelocks, and optionally **`OP_CAT`** for covenant-style constructions. Signing uses BIP340 Schnorr. For cooperative-path multisig (best privacy + cost), aggregate keys off-chain via **MuSig2** and spend via key-path so the on-chain footprint looks like a single signature.
