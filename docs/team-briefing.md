@@ -4,11 +4,13 @@ Last verified: **2026-05-16** (re-verify before the meeting: `curl -s https://ap
 
 This is a meeting-ready briefing on Pearl: what it is, how it works, what you can build on it, and what KaspaCom should consider parking as a product bet. Numbered for easy reference in the room.
 
+> **\* About pearl-otc.com:** the `Pearl OTC*` references below are to a **third-party / community-built** marketplace at `pearl-otc.com` — **not** an official Pearl Research Labs product. It happens to expose chain-data proxy endpoints that are convenient as a data source for early work, and its volume is the best public signal of PRL market demand, but treat it as one independent community effort rather than a protocol primitive. For production data we should run `pearld` ourselves or our own indexer.
+
 ---
 
 ## 1. The one-paragraph version
 
-Pearl is a new Bitcoin-style UTXO L1 launched by **Pearl Research Labs** in April 2025. Its differentiator: **Proof-of-Useful-Work**. Instead of burning hashes, miners run **LLM inference matmuls** (INT8 matrix multiplications), prove the work with a **zkSNARK (Plonky2)**, and the same compute that secures the chain serves real AI workloads. The protocol is a hardened fork of `btcd`/`btcwallet` — Taproot-only, post-quantum opcode (XMSS), OP_CAT re-enabled, 194-second blocks, 2.1B PRL max supply, polynomial-decay emission. **Live, mining, ~54k blocks deep, ~$1.7M USDC of OTC volume.** No EVM, no smart contracts, no bridges, no extension wallet — that's the opportunity surface.
+Pearl is a new Bitcoin-style UTXO L1 launched by **Pearl Research Labs** in April 2025. Its differentiator: **Proof-of-Useful-Work**. Instead of burning hashes, miners run **LLM inference matmuls** (INT8 matrix multiplications), prove the work with a **zkSNARK (Plonky2)**, and the same compute that secures the chain serves real AI workloads. The protocol is a hardened fork of `btcd`/`btcwallet` — Taproot-only, post-quantum opcode (XMSS), OP_CAT re-enabled, 194-second blocks, 2.1B PRL max supply, polynomial-decay emission. **Live, mining, ~54k blocks deep, ~$1.7M USDC of OTC* volume.** No EVM, no smart contracts, no bridges, no extension wallet — that's the opportunity surface.
 
 ---
 
@@ -35,13 +37,13 @@ Pearl is a new Bitcoin-style UTXO L1 launched by **Pearl Research Labs** in Apri
 | Emission shape | polynomial decay `R(t) = H/(t+H)` | whitepaper |
 | Connected peers (public node) | 8 | live |
 | Mempool size | 1 tx, 269 bytes | live |
-| OTC users (lifetime) | 1,759 | `/stats` |
-| OTC trades completed | 532 | `/stats` |
-| OTC lifetime volume (USDC) | $1,682,131 | `/stats` |
-| 24h OTC volume | 833,434 PRL / ~128 trades | `/stats` |
-| Avg OTC settlement time | ~40 minutes | `/stats` |
-| OTC active offers | 68 | `/stats` |
-| OTC settlement chain (for USDC leg) | Arbitrum | `/trades/public` |
+| OTC* users (lifetime) | 1,759 | `/stats` |
+| OTC* trades completed | 532 | `/stats` |
+| OTC* lifetime volume (USDC) | $1,682,131 | `/stats` |
+| 24h OTC* volume | 833,434 PRL / ~128 trades | `/stats` |
+| Avg OTC* settlement time | ~40 minutes | `/stats` |
+| OTC* active offers | 68 | `/stats` |
+| OTC* settlement chain (for USDC leg) | Arbitrum | `/trades/public` |
 | Pearl-certified models on HF | 3 (Llama 8B, Llama 70B, Gemma 31B) | `huggingface.co/pearl-ai` |
 | 70B model lifetime downloads | 126,565 | HF API |
 | 8B model lifetime downloads | 87,908 | HF API |
@@ -77,7 +79,7 @@ This is **infrastructure work, not protocol work**. No Solidity audits, no EVM g
 - ✅ Full node, wallet daemon, CLI, SPV light client.
 - ✅ Public mainnet + testnet + testnet2.
 - ✅ Public block explorer (`explorer.pearlresearch.ai`).
-- ✅ OTC marketplace with public API.
+- ✅ OTC* marketplace with public API.
 - ✅ Blockbook-style indexer endpoints.
 - ✅ Desktop wallet (Electron).
 - ✅ Hugging Face certified model org.
@@ -91,7 +93,7 @@ This is **infrastructure work, not protocol work**. No Solidity audits, no EVM g
 - ❌ **No published TypeScript SDK** for app developers.
 - ❌ **No Pearl Pay / merchant payment links / hosted checkout.**
 - ❌ **No KRC-20-style token standard** (UTXO chain, no contracts — would be a new standard).
-- ❌ **No EVM bridge** for moving PRL to Arbitrum/ETH (OTC settles via off-chain escrow on Arbitrum, not a bridge).
+- ❌ **No EVM bridge** for moving PRL to Arbitrum/ETH (OTC* settles via off-chain escrow on Arbitrum, not a bridge).
 - ❌ **No compute marketplace control plane** beyond the raw miner stack.
 - ❌ **No fiat on-ramp.**
 
@@ -111,8 +113,8 @@ The repo's current recommendation is **Pearl Pay + chain-data SDK foundation fir
 5. **Mobile wallet (PWA first, native later)** — same dependency.
 
 ### Tier 3 — DeFi-adjacent on UTXO
-6. **OTC market mirror / aggregator** — tap `api.pearl-otc.com`, normalize, plug into our existing market UIs. Cheap to ship, useful as a market-data widget.
-7. **PRL ↔ USDC custodial bridge** (Arbitrum) — Pearl-OTC already does this trustfully; we could either compete or partner.
+6. **OTC* market mirror / aggregator** — tap `api.pearl-otc.com`, normalize, plug into our existing market UIs. Cheap to ship, useful as a market-data widget.
+7. **PRL ↔ USDC custodial bridge** (Arbitrum) — Pearl-OTC* already does this trustfully; we could either compete or partner.
 8. **Token-issuance standard on Pearl** — propose a "KRP-20" using OP_RETURN + indexer convention (like Kasplex KRC-20 on Kaspa, BRC-20 on BTC). High strategic value, very high indexer cost. Talk to Pearl Research Labs first — they may already be planning one.
 
 ### Tier 4 — Compute marketplace
@@ -141,7 +143,7 @@ Ask the team to commit on these. Default-good answers in parentheses.
 
 1. **Public or private repo?** (Public — it's already public, keep it public, attracts contributors.)
 2. **Build SDK first vs. Pearl Pay first?** (SDK first — Pay needs it.)
-3. **Do we run a public Pearl node?** (Yes eventually, no in Phase 1 — Pearl OTC's API + Blockbook is enough for now.)
+3. **Do we run a public Pearl node?** (Yes eventually, no in Phase 1 — Pearl OTC*'s API + Blockbook is enough for now.)
 4. **Do we engage Pearl Research Labs directly?** (Yes — via Discord `discord.gg/joinpearl`. Coordinate on token-standard, faucet, possible co-marketing.)
 5. **Is there budget for a GPU operator to demo inference?** (TBD — only if Tier-4 compute marketplace is committed.)
 6. **Who owns the project on the KaspaCom side?** (TBD — needs a clear lead.)
@@ -179,7 +181,7 @@ curl -s 'https://huggingface.co/api/models?author=pearl-ai' | python3 -c "import
 - Theoretical paper (PoUW + Plonky2): `https://eprint.iacr.org/2025/685.pdf`
 - GitHub: `https://github.com/pearl-research-labs/pearl`
 - Explorer: `https://explorer.pearlresearch.ai/?network=mainnet`
-- OTC: `https://pearl-otc.com/` — API `https://api.pearl-otc.com`
+- OTC*: `https://pearl-otc.com/` — API `https://api.pearl-otc.com`
 - HF models: `https://huggingface.co/pearl-ai`
 - Compute platform: `https://compute.pearlresearch.ai/`
 - Community: `discord.gg/joinpearl`

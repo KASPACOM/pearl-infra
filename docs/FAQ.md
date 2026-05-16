@@ -4,6 +4,12 @@ Practical "I want to build X — can I?" questions, with concrete answers. Keep 
 
 ---
 
+### How do I build multisig wallets or escrow on Pearl?
+
+Native to the chain — Pearl is a Taproot fork. Concrete answer + 2-of-3 escrow walkthrough + 6–10 week effort estimate: see [`docs/development/escrow-multisig-on-pearl.md`](development/escrow-multisig-on-pearl.md). One-line summary: tapscript with `OP_CHECKSIGADD`, optional MuSig2 key-path for one-signature cooperative spends, CSV timelock as auto-refund fallback. Built in TypeScript by wrapping `bitcoinjs-lib` v6+ with Pearl's HRP (`prl`) and signing with BIP340 Schnorr.
+
+---
+
 ### Can I write smart contracts on Pearl?
 
 **No, not in the EVM/Solidity sense.** Pearl is a Bitcoin-style UTXO chain with a stack-based, non-Turing-complete script VM. There is no contract deployment RPC, no account state, no `eth_call` equivalent, no Solidity/WASM/Move.
@@ -118,7 +124,7 @@ If you want bridged PRL on an EVM chain, that's a **product to build**, not a pr
 
 ### Is PRL listed on a CEX?
 
-Not as of repo's last verification. The OTC app is the only liquid market. Lifetime volume ~$1.68M USDC across ~530 trades — small but real.
+Not as of repo's last verification. The most active liquidity is on **`pearl-otc.com`** — but note that's a **community/third-party project**, not an official Pearl Research Labs venue. Lifetime volume ~$1.68M USDC across ~530 trades — small but real. No major CEX listing is documented.
 
 ---
 

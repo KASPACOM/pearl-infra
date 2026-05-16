@@ -29,6 +29,7 @@ Start here before any Pearl task:
 - Developer local setup: [`docs/development/local-dev-guide.md`](docs/development/local-dev-guide.md)
 - Pearl chain primer: [`docs/development/pearl-chain-primer.md`](docs/development/pearl-chain-primer.md)
 - Pearl app development guide: [`docs/development/pearl-app-development.md`](docs/development/pearl-app-development.md)
+- **Multisig & escrow on Pearl**: [`docs/development/escrow-multisig-on-pearl.md`](docs/development/escrow-multisig-on-pearl.md)
 - Next steps: [`docs/next-steps.md`](docs/next-steps.md)
 - Upstream manifest: [`docs/upstream-manifest.md`](docs/upstream-manifest.md)
 - App thesis: [`docs/research/pearl-app-thesis.md`](docs/research/pearl-app-thesis.md)

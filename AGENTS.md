@@ -57,6 +57,9 @@ Any task that assumes the above is wrong. Verify against `upstream/pearl/` befor
 ## Live chain snapshot (verify with `curl`, do not trust this file)
 
 ```bash
+# These /chain/* endpoints are convenient but proxied by pearl-otc.com,
+# which is a COMMUNITY-built marketplace (not operated by Pearl Research Labs).
+# Use for quick reads only; for production, talk to pearld or our own indexer.
 curl -s https://api.pearl-otc.com/chain/stats | jq .
 curl -s https://api.pearl-otc.com/chain/circulating-supply | jq .
 ```
@@ -65,7 +68,11 @@ As of repo last-verified date (see `docs/team-briefing.md`):
 - Chain is **live and mining**, height ~54k, 8 peers, mempool near-empty.
 - Circulating ~161M PRL of 2.1B (~7.7% emitted).
 - Halving on a polynomial-decay schedule (~1/t²), next halving in ~2,500 blocks.
-- OTC market is real: ~1,750 users, ~530 trades completed, ~$1.68M USDC lifetime volume.
+- Community-run `pearl-otc.com` marketplace has ~1,750 users, ~530 trades, ~$1.68M USDC lifetime — useful market signal, **not** an official Pearl Research Labs product.
+
+## Multisig / escrow / advanced script
+
+See [`docs/development/escrow-multisig-on-pearl.md`](docs/development/escrow-multisig-on-pearl.md). Short version: Pearl is a Taproot fork, so multisig and escrow are native via **tapscripts** (`OP_CHECKSIGADD`, CLTV/CSV, MuSig2 for cooperative-path one-signature spends). `OP_CAT` is re-enabled, enabling covenants. `OP_CHECKXMSSSIG` provides post-quantum signing but is **stateful** — research-grade only.
 
 ## How to build on Pearl (decision tree)
 

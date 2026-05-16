@@ -12,8 +12,8 @@ This file is the quick-start map for Pearl research and KaspaCom app/infrastruct
 | Pearl README | https://github.com/pearl-research-labs/pearl/blob/master/README.md | Top-level architecture, build/run commands, ports |
 | Pearl Compute Platform | https://compute.pearlresearch.ai/ | Hosted compute/user-facing Pearl platform reference |
 | Pearl Explorer | https://explorer.pearlresearch.ai/?network=mainnet | Existing public mainnet explorer UI; use as reference/source before building any explorer-like UI |
-| Pearl OTC app | https://pearl-otc.com/ | Live PRL/USDC marketplace UX and flows |
-| Pearl OTC API base | https://api.pearl-otc.com | Public market/chain endpoints and authenticated OTC actions |
+| Pearl OTC app ⚠️ community | https://pearl-otc.com/ | Live PRL/USDC marketplace — **third-party / community-built, not operated by Pearl Research Labs**. Useful as a data source and UX reference; treat its authenticated/escrow code as one community implementation, not a protocol standard. |
+| Pearl OTC API base ⚠️ community | https://api.pearl-otc.com | Public market/chain endpoints from the same third-party project. Includes `/chain/*` proxy endpoints to Pearl chain data, which are convenient but **community-operated** — for production, run our own indexer or `pearld` instead of depending on this base URL. |
 | Pearl Hugging Face org | https://huggingface.co/pearl-ai | Pearl-certified LLMs for vLLM mining/inference |
 | Pearl Discord | https://discord.gg/joinpearl | Community + Pearl Research Labs contact channel |
 | Pearl support email | support@pearlresearch.ai | Direct contact for Pearl Research Labs |
@@ -84,7 +84,9 @@ This file is the quick-start map for Pearl research and KaspaCom app/infrastruct
 
 ## Public Data/API Endpoints
 
-### Pearl OTC Public API
+### Pearl OTC Public API ⚠️ third-party
+
+> **Important:** `pearl-otc.com` is a **community-built** marketplace, **not** operated by Pearl Research Labs. Its `/chain/*` endpoints are convenient as a quick read-only data source for early dev work, but for production we should not depend on it — either talk to `pearld` directly or run our own indexer. Treat anything under this base URL as one independent project's offering.
 
 Base: `https://api.pearl-otc.com`
 
