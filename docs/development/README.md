@@ -4,9 +4,11 @@ Start here if you are new to Pearl or this repo.
 
 ## Guides
 
+0. **[`quickstart.md`](quickstart.md) — Start here if you are about to write code.** The agent build manual: exact deps, network config, copy-paste hello-world examples (read chain, derive address, build+sign tx, broadcast), anti-patterns, done-criteria.
 1. [`local-dev-guide.md`](local-dev-guide.md) — clone, initialize submodule, install toolchains, build upstream Pearl, run local node/wallet, use public APIs.
 2. [`pearl-chain-primer.md`](pearl-chain-primer.md) — how Pearl works: UTXO ledger, node/wallet split, RPCs, mining, SPV, and current smart-contract limitations.
 3. [`pearl-app-development.md`](pearl-app-development.md) — how KaspaCom should build Pearl apps: chain-data adapters, wallet SDK, Pearl Pay, OTC tools, compute marketplace control plane.
+4. [`escrow-multisig-on-pearl.md`](escrow-multisig-on-pearl.md) — multisig wallets, escrow patterns, tapscript construction, 2-of-3 worked example.
 
 ## Golden Rules
 

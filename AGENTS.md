@@ -122,8 +122,10 @@ upstream/pearl/                                 # pinned git submodule of pearl-
 
 ## When in doubt
 
+- **About to write code?** Start with [`docs/development/quickstart.md`](docs/development/quickstart.md) — the agent build manual. Deps, network config, copy-paste-ready hello-world examples for read-chain / derive-address / build-sign-tx / broadcast.
 - Read `docs/development/pearl-chain-primer.md` (chain mechanics).
 - Read `docs/development/pearl-app-development.md` (KaspaCom app patterns).
+- Read `docs/development/escrow-multisig-on-pearl.md` (multisig / escrow / tap-trees).
 - Read `docs/FAQ.md` (common build questions).
 - Read `docs/GLOSSARY.md` (Pearl jargon).
 - Grep `upstream/pearl/` for the actual code.

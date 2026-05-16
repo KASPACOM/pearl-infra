@@ -22,6 +22,7 @@ This repo is the planning and infrastructure base for KaspaCom Pearl apps:
 Start here before any Pearl task:
 
 - **LLM / agent context** (single page): [`AGENTS.md`](AGENTS.md)
+- **🛠 Build-on-Pearl quickstart** (agent build manual — deps, network config, copy-paste hello-world code): [`docs/development/quickstart.md`](docs/development/quickstart.md)
 - **Team briefing** (meeting-ready, live numbers): [`docs/team-briefing.md`](docs/team-briefing.md)
 - **Builder FAQ** ("can I build X on Pearl?"): [`docs/FAQ.md`](docs/FAQ.md)
 - **Glossary** (Pearl-specific terms): [`docs/GLOSSARY.md`](docs/GLOSSARY.md)
