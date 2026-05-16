@@ -296,6 +296,7 @@ Security rules:
 - Custody owner handoff must use two-step ownership transfer; ownership renounce is disabled.
 - Emergency pause must not block expired buyer refunds or expired created-trade cleanup.
 - Implementation PRs that add escrow code/tests are not deployment approval and must not be treated as evidence of a deployed contract.
+- Base Sepolia testnet escrow is deployed at `0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9` by tx `0x450b48091ea67a46de25d3d40ab394e621011f7c099f01237052797eb730a981`; this is testnet evidence only and is not Base mainnet approval.
 - Deployment evidence must include contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link.
 
 ## Pearl Indexer APIs

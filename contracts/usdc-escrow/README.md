@@ -13,7 +13,7 @@ Solidity contracts for the Base USDC leg of the Pearl OTC settlement desk.
 
 Foundry setup exists for local contract tests and Base Sepolia deployment dry runs.
 Base mainnet deployment is intentionally not configured yet.
-No escrow contract has been deployed by this package or by the current implementation PR.
+The Base Sepolia testnet escrow deployment is recorded in `deployments/base-sepolia.json`.
 
 ## Implementation
 
@@ -50,6 +50,20 @@ The deploy script hardcodes native Base Sepolia USDC:
 ```text
 0x036CbD53842c5426634e7929541eC2318f3dCF7e
 ```
+
+Current testnet deployment:
+
+| Field | Value |
+| --- | --- |
+| Network | Base Sepolia |
+| Chain ID | `84532` |
+| Contract | `0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9` |
+| Deploy tx | `0x450b48091ea67a46de25d3d40ab394e621011f7c099f01237052797eb730a981` |
+| Owner | `0x537dB45aC71bf8e1f1e28530732FAeabD607778E` |
+| Pending owner | `0x0000000000000000000000000000000000000000` |
+| Fee recipient | `0x537dB45aC71bf8e1f1e28530732FAeabD607778E` |
+| Native USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Explorer | `https://sepolia.basescan.org/address/0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9` |
 
 Dry-run / simulate with:
 

@@ -2,6 +2,7 @@ import type { UsdcEscrowNetwork, UsdcEscrowNetworkConfig } from './types.js';
 
 export const BASE_MAINNET_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 export const BASE_SEPOLIA_USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+export const BASE_SEPOLIA_USDC_ESCROW = '0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9';
 
 export const USDC_ESCROW_NETWORKS: Readonly<Record<UsdcEscrowNetwork, UsdcEscrowNetworkConfig>> = {
   base: {
@@ -15,6 +16,7 @@ export const USDC_ESCROW_NETWORKS: Readonly<Record<UsdcEscrowNetwork, UsdcEscrow
     network: 'base_sepolia',
     chainId: 84532,
     usdcToken: BASE_SEPOLIA_USDC,
+    escrowContract: BASE_SEPOLIA_USDC_ESCROW,
     requiredConfirmations: 6,
     blockExplorerUrl: 'https://sepolia.basescan.org',
   },

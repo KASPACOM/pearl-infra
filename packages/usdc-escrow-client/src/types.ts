@@ -6,6 +6,7 @@ export interface UsdcEscrowNetworkConfig {
   network: UsdcEscrowNetwork;
   chainId: UsdcEscrowChainId;
   usdcToken: string;
+  escrowContract?: string;
   requiredConfirmations: number;
   blockExplorerUrl: string;
 }
