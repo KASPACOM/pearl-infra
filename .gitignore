@@ -8,6 +8,7 @@ coverage/
 .cache/
 contracts/usdc-escrow/cache/
 contracts/usdc-escrow/out/
+contracts/usdc-escrow/broadcast/
 *.tsbuildinfo
 .DS_Store
 *.log
