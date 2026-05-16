@@ -14,7 +14,7 @@ Backend API for the Pearl OTC settlement desk.
 ## Should Not Own
 
 - Pearl chain ingestion. Use `services/pearl-indexer`.
-- Arbitrum log ingestion. Use the USDC escrow client/worker path.
+- Base log ingestion. Use the USDC escrow client/worker path.
 - Frontend state decisions. Expose canonical state from backend events.
 
 ## Status

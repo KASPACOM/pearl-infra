@@ -15,18 +15,18 @@ The system SHALL ingest and normalize public Pearl OTC market data such as offer
 - **THEN** it shows normalized active buy/sell offers, recent trade stats, and liquidity levels with source timestamps
 
 ### Requirement: Pearl OTC settlement desk
-The system SHALL define a quote-based PRL/USDC settlement desk that coordinates Pearl Taproot escrow with Arbitrum USDC escrow before any full order-book marketplace is implemented.
+The system SHALL define a quote-based PRL/USDC settlement desk that coordinates Pearl Taproot escrow with Base USDC escrow before any full order-book marketplace is implemented.
 
 #### Scenario: Buyer accepts a firm PRL quote
 - **WHEN** a buyer accepts an unexpired quote
-- **THEN** the system creates a trade with fixed PRL amount, USDC amount, fee, expiry, Pearl escrow requirements, and Arbitrum escrow requirements
+- **THEN** the system creates a trade with fixed PRL amount, USDC amount, fee, expiry, Pearl escrow requirements, and Base USDC escrow requirements
 
 #### Scenario: Both settlement legs are funded
-- **WHEN** Pearl escrow and Arbitrum USDC escrow both reach the configured confirmation threshold
+- **WHEN** Pearl escrow and Base USDC escrow both reach the configured confirmation threshold
 - **THEN** the settlement worker is authorized to release PRL and USDC according to the trade terms exactly once
 
 ### Requirement: Escrow proof indexer
-The system SHALL define indexer data models and APIs that allow a public proof page to reconstruct trade state from Pearl and Arbitrum observations.
+The system SHALL define indexer data models and APIs that allow a public proof page to reconstruct trade state from Pearl and Base observations.
 
 #### Scenario: User opens trade proof page
 - **WHEN** a user opens the public proof page for a trade

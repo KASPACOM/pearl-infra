@@ -4,6 +4,7 @@ export const PRL_USDC_ESCROW_ABI = [
   'event Released(bytes32 indexed tradeId, address indexed seller, uint256 sellerAmount, uint256 feeAmount)',
   'event Refunded(bytes32 indexed tradeId, address indexed buyer, uint256 amount)',
   'event Cancelled(bytes32 indexed tradeId)',
+  'function usdcToken() view returns (address)',
   'function createTrade(bytes32 tradeId, address buyer, address seller, uint256 amount, uint256 fee, uint64 expiry)',
   'function deposit(bytes32 tradeId)',
   'function release(bytes32 tradeId)',

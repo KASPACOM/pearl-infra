@@ -19,7 +19,6 @@ contract PrlUsdcEscrow {
     struct Trade {
         address buyer;
         address seller;
-        address usdcToken;
         uint256 amount;
         uint256 fee;
         uint64 expiry;
@@ -28,6 +27,7 @@ contract PrlUsdcEscrow {
 
     address public owner;
     address public feeRecipient;
+    address public immutable usdcToken;
     bool public paused;
 
     mapping(bytes32 => Trade) public trades;
@@ -50,17 +50,18 @@ contract PrlUsdcEscrow {
         _;
     }
 
-    constructor(address feeRecipient_) {
+    constructor(address feeRecipient_, address usdcToken_) {
         require(feeRecipient_ != address(0), "fee recipient required");
+        require(usdcToken_ != address(0), "token required");
         owner = msg.sender;
         feeRecipient = feeRecipient_;
+        usdcToken = usdcToken_;
     }
 
     function createTrade(
         bytes32 tradeId,
         address buyer,
         address seller,
-        address usdcToken,
         uint256 amount,
         uint256 fee,
         uint64 expiry
@@ -68,14 +69,12 @@ contract PrlUsdcEscrow {
         require(tradeId != bytes32(0), "trade id required");
         require(trades[tradeId].status == TradeStatus.None, "trade exists");
         require(buyer != address(0) && seller != address(0), "party required");
-        require(usdcToken != address(0), "token required");
         require(amount > 0, "amount required");
         require(expiry > block.timestamp, "expiry must be future");
 
         trades[tradeId] = Trade({
             buyer: buyer,
             seller: seller,
-            usdcToken: usdcToken,
             amount: amount,
             fee: fee,
             expiry: expiry,
@@ -92,7 +91,7 @@ contract PrlUsdcEscrow {
         require(msg.sender == trade.buyer, "not buyer");
 
         uint256 total = trade.amount + trade.fee;
-        require(IERC20Like(trade.usdcToken).transferFrom(msg.sender, address(this), total), "transfer failed");
+        require(IERC20Like(usdcToken).transferFrom(msg.sender, address(this), total), "transfer failed");
         trade.status = TradeStatus.Deposited;
 
         emit Deposited(tradeId, msg.sender, total);
@@ -103,9 +102,9 @@ contract PrlUsdcEscrow {
         require(trade.status == TradeStatus.Deposited, "not releasable");
 
         trade.status = TradeStatus.Released;
-        require(IERC20Like(trade.usdcToken).transfer(trade.seller, trade.amount), "seller transfer failed");
+        require(IERC20Like(usdcToken).transfer(trade.seller, trade.amount), "seller transfer failed");
         if (trade.fee > 0) {
-            require(IERC20Like(trade.usdcToken).transfer(feeRecipient, trade.fee), "fee transfer failed");
+            require(IERC20Like(usdcToken).transfer(feeRecipient, trade.fee), "fee transfer failed");
         }
 
         emit Released(tradeId, trade.seller, trade.amount, trade.fee);
@@ -118,7 +117,7 @@ contract PrlUsdcEscrow {
 
         uint256 total = trade.amount + trade.fee;
         trade.status = TradeStatus.Refunded;
-        require(IERC20Like(trade.usdcToken).transfer(trade.buyer, total), "refund transfer failed");
+        require(IERC20Like(usdcToken).transfer(trade.buyer, total), "refund transfer failed");
 
         emit Refunded(tradeId, trade.buyer, total);
     }

@@ -1,6 +1,7 @@
 export type OtcQuoteSide = 'buy_prl' | 'sell_prl';
 export type SettlementAsset = 'USDC';
-export type SettlementNetwork = 'arbitrum';
+export type SettlementNetwork = 'base';
+export type SettlementChainId = 8453 | 84532;
 
 export type TradeState =
   | 'quoted'
@@ -46,7 +47,9 @@ export interface PearlEscrowLeg {
 
 export interface UsdcEscrowLeg {
   network: SettlementNetwork;
+  chainId: SettlementChainId;
   contract: string;
+  usdcToken: string;
   tradeKey: string;
   expectedAmountMicros: string;
   requiredConfirmations: number;
@@ -79,7 +82,7 @@ export interface TradeEvent {
   tradeId: string;
   fromState: TradeState;
   toState: TradeState;
-  source: 'system' | 'admin' | 'pearl_indexer' | 'arbitrum_indexer' | 'settlement_worker';
+  source: 'system' | 'admin' | 'pearl_indexer' | 'evm_indexer' | 'settlement_worker';
   sourceEventId: string;
   txHash?: string;
   outpoint?: string;

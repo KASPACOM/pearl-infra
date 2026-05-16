@@ -53,7 +53,8 @@
 - [x] 8.1 Define the OTC settlement desk product architecture, components, settlement states, and MVP scope.
 - [x] 8.2 Define RFQ quote and trade lifecycle API contracts.
 - [x] 8.3 Define Pearl escrow package format: Taproot address, funding outpoint, release/refund templates, signatures, and refund eligibility.
-- [x] 8.4 Define Arbitrum USDC escrow contract interface and event schema.
+- [x] 8.4 Define Base USDC escrow contract interface and event schema.
 - [x] 8.5 Define Pearl indexer schema and APIs needed for escrow proof pages.
 - [x] 8.6 Add security gates for mainnet-disabled escrow code, simnet verification, arbiter key handling, and admin overrides.
 - [x] 8.7 Scaffold implementation packages only after 8.2-8.6 have concrete success criteria and verification commands.
+- [x] 8.8 Switch the MVP USDC escrow leg to Base-first settlement with Base/Base Sepolia network config.

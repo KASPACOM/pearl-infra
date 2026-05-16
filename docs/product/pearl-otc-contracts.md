@@ -8,7 +8,7 @@ This task is complete when:
 
 - RFQ quote and trade lifecycle APIs are defined.
 - Pearl escrow package fields are defined.
-- Arbitrum USDC escrow interface/events are defined.
+- Base USDC escrow interface/events are defined.
 - Pearl indexer proof APIs are defined.
 - Security gates block accidental mainnet custody or unverified escrow code.
 
@@ -25,7 +25,7 @@ Request:
   "side": "buy_prl",
   "amountPrl": "1000.00000000",
   "settlementAsset": "USDC",
-  "settlementNetwork": "arbitrum",
+  "settlementNetwork": "base",
   "buyerPearlAddress": "prl1p...",
   "usdcRefundAddress": "0x...",
   "clientRequestId": "uuid"
@@ -84,8 +84,10 @@ Response:
     "refundEligibleAfterHeight": 123456
   },
   "usdcEscrow": {
-    "network": "arbitrum",
+    "network": "base",
+    "chainId": 8453,
     "contract": "0x...",
+    "usdcToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "tradeKey": "0x...",
     "expectedAmountUsdc": "170.00",
     "requiredConfirmations": 6,
@@ -135,7 +137,7 @@ Public response:
     "releaseTxid": "txid",
     "releaseConfirmations": 3
   },
-  "arbitrum": {
+  "base": {
     "depositTxHash": "0x...",
     "depositConfirmations": 6,
     "releaseTxHash": "0x..."
@@ -240,7 +242,14 @@ Rules:
 - OP_CHECKXMSSSIG is not allowed in hot-wallet escrow.
 - OP_CAT is not allowed in MVP escrow templates.
 
-## Arbitrum USDC Escrow Contract Interface
+## Base USDC Escrow Contract Interface
+
+MVP network config:
+
+| Environment | Chain ID | Native USDC |
+|---|---:|---|
+| Base mainnet | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 
 Minimal Solidity-facing interface:
 
@@ -249,7 +258,6 @@ interface IPrlUsdcEscrow {
     struct Trade {
         address buyer;
         address seller;
-        address usdcToken;
         uint256 amount;
         uint256 fee;
         uint64 expiry;
@@ -262,6 +270,7 @@ interface IPrlUsdcEscrow {
     event Refunded(bytes32 indexed tradeId, address indexed buyer, uint256 amount);
     event Cancelled(bytes32 indexed tradeId);
 
+    function usdcToken() external view returns (address);
     function createTrade(bytes32 tradeId, address buyer, address seller, uint256 amount, uint256 fee, uint64 expiry) external;
     function deposit(bytes32 tradeId) external;
     function release(bytes32 tradeId) external;
@@ -372,5 +381,27 @@ Implementation verification once code exists:
 npm run typecheck
 npm test
 npm run test:simnet
-npm run test:arbitrum-fork
+npm run test:base-fork
 ```
+
+## Test Ladder
+
+You do not need a running Pearl node for every MVP test.
+
+Can run before `pearld`/indexer is live:
+
+- quote and trade state-machine unit tests;
+- API validation and idempotency tests;
+- database migration/repository tests;
+- Base USDC escrow contract unit tests;
+- Base Sepolia or local EVM fork tests;
+- mocked Pearl indexer proof fixtures;
+- frontend checkout/proof views against mocked API responses.
+
+Requires a real `pearld` plus marketplace indexer:
+
+- detecting actual Pearl escrow funding outpoints;
+- detecting Pearl release/refund spends;
+- confirmation and reorg handling against real block data;
+- broadcasting signed Pearl transactions;
+- full quote-to-release integration tests involving PRL.

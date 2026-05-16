@@ -1,6 +1,6 @@
 # Repository Layout
 
-Pearl infra is organized as a monorepo because the OTC product crosses frontend, backend, chain indexing, and Arbitrum contracts.
+Pearl infra is organized as a monorepo because the OTC product crosses frontend, backend, chain indexing, and Base contracts.
 
 ## Top-Level Folders
 
@@ -8,7 +8,7 @@ Pearl infra is organized as a monorepo because the OTC product crosses frontend,
 |---|---|---|
 | `apps/` | User-facing frontends | `otc-web` starts as the checkout/proof/admin UI shell |
 | `services/` | Backend processes | API, Pearl indexer service, settlement worker |
-| `contracts/` | Solidity contracts | Arbitrum USDC escrow lives here |
+| `contracts/` | Solidity contracts | Base USDC escrow lives here |
 | `packages/` | Shared TypeScript libraries | SDK, RPC, indexer models, script helpers, USDC client ABI/types |
 | `ops/` | Runtime/runbooks | Pearl node and indexer deployment notes |
 | `docs/` | Product/spec/research docs | OpenSpec, build guides, product architecture |
@@ -42,7 +42,7 @@ Pearl infra is organized as a monorepo because the OTC product crosses frontend,
 
 `services/settlement-worker`
 
-- Joins Pearl and Arbitrum state.
+- Joins Pearl and Base state.
 - Broadcasts releases/refunds.
 - Fails closed into manual review.
 
@@ -50,7 +50,7 @@ Pearl infra is organized as a monorepo because the OTC product crosses frontend,
 
 `contracts/usdc-escrow`
 
-- Arbitrum USDC escrow contract.
+- Base USDC escrow contract.
 - Holds USDC by trade ID.
 - Releases/refunds only through explicit state transitions.
 

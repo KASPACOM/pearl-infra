@@ -21,7 +21,7 @@ This repo is the planning and infrastructure base for KaspaCom Pearl apps:
 ```text
 apps/       Frontend apps, starting with the OTC checkout/proof UI
 services/   Backend API, Pearl indexer, settlement workers
-contracts/  Arbitrum Solidity contracts, starting with USDC escrow
+contracts/  Base Solidity contracts, starting with USDC escrow
 packages/   Shared TypeScript libraries and typed domain contracts
 ops/        Pearl node/indexer deployment templates and runbooks
 docs/       Product specs, development guides, OpenSpec, research

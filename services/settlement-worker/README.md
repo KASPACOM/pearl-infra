@@ -1,6 +1,6 @@
 # Settlement Worker
 
-Worker that joins Pearl escrow state and Arbitrum USDC escrow state into final trade transitions.
+Worker that joins Pearl escrow state and Base USDC escrow state into final trade transitions.
 
 ## Responsibility
 
@@ -12,4 +12,4 @@ Worker that joins Pearl escrow state and Arbitrum USDC escrow state into final t
 
 ## Safety Rule
 
-The worker should fail closed. If Pearl and Arbitrum state disagree, the trade goes to manual review instead of broadcasting.
+The worker should fail closed. If Pearl and Base state disagree, the trade goes to manual review instead of broadcasting.

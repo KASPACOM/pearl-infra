@@ -44,6 +44,7 @@ Pearl is a new Bitcoin-style UTXO L1 launched by **Pearl Research Labs** in Apri
 | Avg OTC* settlement time | ~40 minutes | `/stats` |
 | OTC* active offers | 68 | `/stats` |
 | OTC* settlement chain (for USDC leg) | Arbitrum | `/trades/public` |
+| KaspaCom OTC MVP settlement chain | Base USDC | product decision |
 | Pearl-certified models on HF | 3 (Llama 8B, Llama 70B, Gemma 31B) | `huggingface.co/pearl-ai` |
 | 70B model lifetime downloads | 126,565 | HF API |
 | 8B model lifetime downloads | 87,908 | HF API |
@@ -93,7 +94,7 @@ This is **infrastructure work, not protocol work**. No Solidity audits, no EVM g
 - ❌ **No published TypeScript SDK** for app developers.
 - ❌ **No Pearl Pay / merchant payment links / hosted checkout.**
 - ❌ **No KRC-20-style token standard** (UTXO chain, no contracts — would be a new standard).
-- ❌ **No EVM bridge** for moving PRL to Arbitrum/ETH (OTC* settles via off-chain escrow on Arbitrum, not a bridge).
+- ❌ **No EVM bridge** for moving PRL to Base/ETH (OTC settlement is off-chain escrow, not a bridge).
 - ❌ **No compute marketplace control plane** beyond the raw miner stack.
 - ❌ **No fiat on-ramp.**
 
@@ -114,7 +115,7 @@ The repo's current recommendation is **Pearl Pay + chain-data SDK foundation fir
 
 ### Tier 3 — DeFi-adjacent on UTXO
 6. **OTC* market mirror / aggregator** — tap `api.pearl-otc.com`, normalize, plug into our existing market UIs. Cheap to ship, useful as a market-data widget.
-7. **PRL ↔ USDC custodial bridge** (Arbitrum) — Pearl-OTC* already does this trustfully; we could either compete or partner.
+7. **PRL ↔ USDC custodial bridge** (Base first) — Pearl-OTC* already proves trustful escrow demand; we can compete with a cleaner Base USDC flow or partner.
 8. **Token-issuance standard on Pearl** — propose a "KRP-20" using OP_RETURN + indexer convention (like Kasplex KRC-20 on Kaspa, BRC-20 on BTC). High strategic value, very high indexer cost. Talk to Pearl Research Labs first — they may already be planning one.
 
 ### Tier 4 — Compute marketplace

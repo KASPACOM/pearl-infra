@@ -7,7 +7,7 @@ Frontend for the Pearl OTC settlement desk.
 - RFQ buy/sell PRL flow.
 - Trade checkout page.
 - Pearl escrow proof display.
-- Arbitrum USDC escrow payment status.
+- Base USDC escrow payment status.
 - Public proof page.
 - Admin/dispute views can start here, but should split once they grow.
 

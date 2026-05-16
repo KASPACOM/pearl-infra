@@ -19,6 +19,30 @@ pearl-indexer
 otc trade state machine / proof API
 ```
 
+## Hardware Sizing
+
+These are MVP operator targets, not upstream Pearl protocol minimums.
+
+### Testnet / Simnet Development
+
+- 2 vCPU
+- 4 GB RAM
+- 50-100 GB SSD
+- Docker on Ubuntu 22.04/24.04
+- RPC bound to localhost or a private network
+
+### Mainnet Node + Marketplace Indexer
+
+- 4 vCPU minimum; 8 vCPU preferred once indexer load grows
+- 8 GB RAM minimum; 16 GB preferred
+- 200-500 GB NVMe SSD with room to grow
+- 100 Mbps network minimum
+- static IP or stable private networking
+- volume snapshots/backups for node and indexer data
+- separate Postgres volume/database for marketplace state
+
+No GPU is required for a non-mining OTC node/indexer. GPU hardware is only needed if KaspaCom also runs Pearl useful-work mining or inference services.
+
 ## Ports
 
 | Network | RPC | P2P | Wallet Server |

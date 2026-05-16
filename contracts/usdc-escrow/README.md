@@ -1,6 +1,6 @@
 # PRL/USDC Escrow Contracts
 
-Solidity contracts for the Arbitrum USDC leg of the Pearl OTC settlement desk.
+Solidity contracts for the Base USDC leg of the Pearl OTC settlement desk.
 
 ## Responsibility
 
@@ -15,5 +15,5 @@ Skeleton only. Before production:
 
 - Replace inline ownership/pausing with reviewed OpenZeppelin modules or equivalent.
 - Add Foundry/Hardhat tests.
-- Add local fork tests against Arbitrum USDC.
+- Add local fork tests against Base USDC.
 - Add deployment scripts and multisig ownership.
