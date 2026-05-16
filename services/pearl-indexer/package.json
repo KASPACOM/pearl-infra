@@ -9,6 +9,10 @@
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {
-    "@kaspacom/pearl-rpc": "0.0.0"
+    "@kaspacom/pearl-rpc": "0.0.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
   }
 }
