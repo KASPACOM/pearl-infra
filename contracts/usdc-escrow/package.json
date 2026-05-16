@@ -1,0 +1,9 @@
+{
+  "name": "@kaspacom/prl-usdc-escrow-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"contracts scaffold: add foundry or hardhat before compiling\"",
+    "test": "echo \"contracts scaffold: add foundry or hardhat tests\""
+  }
+}

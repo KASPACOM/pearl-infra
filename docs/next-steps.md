@@ -56,8 +56,9 @@ Practical implication: app ideas should center on wallets, payments, indexing, O
      - later app UIs only where Pearl does not already cover the use case
 
 3. **Data source strategy**
-   - Phase 1: use Pearl's public explorer/Blockbook surfaces + `pearld` RPC contracts/mocks.
-   - Phase 2: run our own Pearl node/indexer only if we need reliability, custom indexing, webhooks, payment confirmations, or data Pearl's explorer does not expose.
+   - Phase 1 for OTC: run our own Pearl node/indexer and keep Pearl's public Blockbook as fallback/cross-check.
+   - Phase 1 for non-money apps: public explorer/Blockbook surfaces are acceptable while the node-backed adapter matures.
+   - Phase 2: harden self-hosting into production deployment with monitoring, regional redundancy, and runbooks.
 
 4. **Product order**
    - Chain data adapter/API, reusing existing explorer/Blockbook where possible
@@ -85,7 +86,7 @@ Deliverables:
    - `/blocks/recent`
    - `/tx/:txid` contract stub
    - `/address/:address` contract stub
-   - source adapters for Pearl explorer/Blockbook first, self-hosted node later if needed
+   - source adapters for self-hosted `pearld` first, Pearl explorer/Blockbook fallback second
 4. CI:
    - install
    - typecheck

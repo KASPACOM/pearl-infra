@@ -112,7 +112,7 @@ Toolchain: Go 1.26+, Rust stable, C/C++ compiler, `task` runner. See `docs/devel
 
 For mining: also Python 3.12 + `uv`, vLLM, and a supported NVIDIA GPU (Llama-3.3-70B-Pearl needs ~4×H200; Llama-3.1-8B-Pearl is more accessible).
 
-For **app development**, you don't need to run a node at first — use the public OTC/Blockbook endpoints. Self-host later if reliability or custom indexing becomes a requirement.
+For simple app development, you do not need to run a node at first — use the public OTC/Blockbook endpoints. For the Pearl OTC desk MVP, run a KaspaCom-owned node/indexer from day one because release/refund decisions are money-flow decisions.
 
 ---
 
