@@ -70,10 +70,12 @@
 
 ### 9.2 OTC API And Trade State
 
-- [ ] 9.2.1 Add quote create/accept/get/proof API skeleton under `services/otc-api`.
-- [ ] 9.2.2 Implement one canonical trade state machine using shared `packages/pearl-sdk` types.
-- [ ] 9.2.3 Add idempotency keys for quote acceptance, settlement transitions, callbacks, and admin actions.
-- [ ] 9.2.4 Add mocked persistence tests before introducing production database plumbing.
+- [x] 9.2.1 Add quote create/accept/get/proof API core under `services/otc-api`.
+- [x] 9.2.2 Implement one canonical trade state machine using shared `packages/pearl-sdk` types.
+- [x] 9.2.3 Add idempotency keys for quote creation, quote acceptance, settlement transitions, callbacks, and admin actions.
+- [x] 9.2.4 Add mocked persistence tests before introducing production database plumbing.
+- [ ] 9.2.5 Add HTTP routes around the API core.
+- [ ] 9.2.6 Replace in-memory persistence with the shared database layer.
 
 ### 9.3 Pearl Indexer
 
