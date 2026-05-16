@@ -88,7 +88,7 @@ npm test
 npm run typecheck
 ```
 
-CI runs the same two checks on pull requests to `main`.
+CI runs the same two checks on pull requests to `dev` and `main`.
 
 ## Goal-Based Execution
 
