@@ -6,6 +6,7 @@ export interface UsdcEscrowNetworkConfig {
   network: UsdcEscrowNetwork;
   chainId: UsdcEscrowChainId;
   usdcToken: string;
+  escrowContract?: string;
   requiredConfirmations: number;
   blockExplorerUrl: string;
 }
@@ -35,4 +36,11 @@ export interface UsdcEscrowObservation {
   observedAt: string;
 }
 
-export type UsdcEscrowEventName = 'TradeCreated' | 'Deposited' | 'Released' | 'Refunded' | 'Cancelled';
+export type UsdcEscrowEventName =
+  | 'TradeCreated'
+  | 'Deposited'
+  | 'Released'
+  | 'Refunded'
+  | 'Cancelled'
+  | 'Paused'
+  | 'Unpaused';
