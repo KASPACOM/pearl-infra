@@ -295,6 +295,8 @@ Security rules:
 - Base mainnet deployment remains disabled until review, multisig ownership, and testnet evidence exist.
 - Custody owner handoff must use two-step ownership transfer; ownership renounce is disabled.
 - Emergency pause must not block expired buyer refunds or expired created-trade cleanup.
+- Implementation PRs that add escrow code/tests are not deployment approval and must not be treated as evidence of a deployed contract.
+- Deployment evidence must include contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link.
 
 ## Pearl Indexer APIs
 

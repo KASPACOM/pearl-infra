@@ -67,6 +67,7 @@
 - [x] 9.1.2 Add tests for create, deposit, release, refund, cancel-expired, pause, and unauthorized callers.
 - [x] 9.1.3 Add Base Sepolia deployment config using the native USDC address.
 - [x] 9.1.4 Keep mainnet deployment disabled until review, multisig ownership, and testnet evidence exist.
+- [x] 9.1.5 Record that this implementation PR does not deploy any escrow contract.
 
 ### 9.2 OTC API And Trade State
 
@@ -108,3 +109,7 @@
 - [ ] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
 - [ ] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
 - [ ] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
+- [ ] 9.6.6 Deploy the Base Sepolia USDC escrow and record contract address, deploy tx, owner, fee recipient, and native USDC address.
+- [ ] 9.6.7 Complete two-step ownership transfer to the approved multisig or approved testnet owner and record acceptance evidence.
+- [ ] 9.6.8 Keep Base mainnet deployment blocked until contract review, Base Sepolia evidence, multisig ownership plan, and explicit Sione approval are all recorded.
+- [ ] 9.6.9 If Base mainnet is approved later, record mainnet contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link before enabling production settlement.

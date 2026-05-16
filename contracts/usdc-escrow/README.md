@@ -13,6 +13,7 @@ Solidity contracts for the Base USDC leg of the Pearl OTC settlement desk.
 
 Foundry setup exists for local contract tests and Base Sepolia deployment dry runs.
 Base mainnet deployment is intentionally not configured yet.
+No escrow contract has been deployed by this package or by the current implementation PR.
 
 ## Implementation
 
@@ -69,3 +70,13 @@ No Base mainnet deployment script is included. Mainnet stays disabled until:
 - ownership is transferred to the approved multisig;
 - Base Sepolia deployment evidence is recorded;
 - Sione explicitly approves the mainnet run.
+
+Required deployment evidence:
+
+- deployed contract address;
+- deployment transaction hash;
+- `owner()` and `pendingOwner()` after deployment;
+- two-step ownership acceptance transaction for the approved multisig/owner;
+- configured `feeRecipient`;
+- configured native USDC token address;
+- block explorer verification link.
