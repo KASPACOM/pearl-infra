@@ -16,6 +16,26 @@ Fallback:
 
 - `https://blockbook.pearlresearch.ai`
 
+## Single-Machine Start
+
+The MVP deployable shape is one Linux VM with `pearld`, Postgres, and the Pearl indexer service in one Docker Compose project.
+
+```bash
+cd ops/indexer
+docker compose up -d
+```
+
+Required environment:
+
+```bash
+PEARLD_RPC_USER=...
+PEARLD_RPC_PASS=...
+PEARLD_MINING_ADDRESS=tprl1p...
+PEARL_INDEXER_POSTGRES_PASSWORD=...
+```
+
+See [`docs/operations/single-machine-indexer.md`](../../docs/operations/single-machine-indexer.md) for sizing, failure modes, and the implementation sequence.
+
 ## MVP Responsibilities
 
 - Track chain tip and detect stalled sync.
