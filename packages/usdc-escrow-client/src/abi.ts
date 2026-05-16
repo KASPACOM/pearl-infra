@@ -6,9 +6,11 @@ export const PRL_USDC_ESCROW_ABI = [
   'event Cancelled(bytes32 indexed tradeId)',
   'event Paused(address account)',
   'event Unpaused(address account)',
+  'event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner)',
   'event OwnershipTransferred(address indexed previousOwner, address indexed newOwner)',
   'function feeRecipient() view returns (address)',
   'function owner() view returns (address)',
+  'function pendingOwner() view returns (address)',
   'function paused() view returns (bool)',
   'function usdcToken() view returns (address)',
   'function trades(bytes32 tradeId) view returns (address buyer, address seller, uint256 amount, uint256 fee, uint64 expiry, uint8 status)',
@@ -19,4 +21,6 @@ export const PRL_USDC_ESCROW_ABI = [
   'function cancelExpired(bytes32 tradeId)',
   'function pause()',
   'function unpause()',
+  'function transferOwnership(address newOwner)',
+  'function acceptOwnership()',
 ] as const;

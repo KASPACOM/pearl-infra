@@ -31,6 +31,7 @@ contract PrlUsdcEscrowTest {
     address private constant SELLER = address(0x5E11E2);
     address private constant FEE_RECIPIENT = address(0xFEE);
     address private constant STRANGER = address(0xBAD);
+    address private constant NEW_OWNER = address(0xA11CE);
     uint256 private constant AMOUNT = 100e6;
     uint256 private constant FEE = 2e6;
 
@@ -131,6 +132,51 @@ contract PrlUsdcEscrowTest {
         VM.prank(BUYER);
         VM.expectRevert();
         escrow.deposit(TRADE_ID);
+
+        VM.expectRevert();
+        escrow.release(TRADE_ID);
+    }
+
+    function testPauseAllowsExpiredBuyerRefundAndCreatedTradeCleanup() external {
+        _depositTrade();
+        escrow.pause();
+        VM.warp(_futureExpiry() + 1);
+
+        VM.prank(BUYER);
+        escrow.refund(TRADE_ID);
+
+        _assertEq(usdc.balanceOf(BUYER), AMOUNT + FEE);
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Refunded);
+
+        bytes32 cleanupTradeId = keccak256("cleanup-trade");
+        escrow.unpause();
+        escrow.createTrade(cleanupTradeId, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+        escrow.pause();
+        VM.warp(_futureExpiry() + 1);
+
+        VM.prank(STRANGER);
+        escrow.cancelExpired(cleanupTradeId);
+
+        _assertStatus(_status(cleanupTradeId), PrlUsdcEscrow.TradeStatus.Cancelled);
+    }
+
+    function testRenounceOwnershipIsDisabled() external {
+        VM.expectRevert(bytes("renounce disabled"));
+        escrow.renounceOwnership();
+        _assertEq(escrow.owner(), address(this));
+    }
+
+    function testOwnershipTransferUsesTwoStepHandoff() external {
+        escrow.transferOwnership(NEW_OWNER);
+
+        _assertEq(escrow.owner(), address(this));
+        _assertEq(escrow.pendingOwner(), NEW_OWNER);
+
+        VM.prank(NEW_OWNER);
+        escrow.acceptOwnership();
+
+        _assertEq(escrow.owner(), NEW_OWNER);
+        _assertEq(escrow.pendingOwner(), address(0));
     }
 
     function testRejectsUnauthorizedCallers() external {
@@ -184,7 +230,11 @@ contract PrlUsdcEscrowTest {
     }
 
     function _status() private view returns (PrlUsdcEscrow.TradeStatus status) {
-        (,,,,, status) = escrow.trades(TRADE_ID);
+        return _status(TRADE_ID);
+    }
+
+    function _status(bytes32 tradeId) private view returns (PrlUsdcEscrow.TradeStatus status) {
+        (,,,,, status) = escrow.trades(tradeId);
     }
 
     function _assertStatus(PrlUsdcEscrow.TradeStatus actual, PrlUsdcEscrow.TradeStatus expected) private pure {

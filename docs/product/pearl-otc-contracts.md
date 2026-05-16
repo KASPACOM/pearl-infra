@@ -293,6 +293,8 @@ Security rules:
 - Every trade lifecycle event must include `tradeId`.
 - Base Sepolia deployment uses native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
 - Base mainnet deployment remains disabled until review, multisig ownership, and testnet evidence exist.
+- Custody owner handoff must use two-step ownership transfer; ownership renounce is disabled.
+- Emergency pause must not block expired buyer refunds or expired created-trade cleanup.
 
 ## Pearl Indexer APIs
 

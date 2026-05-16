@@ -17,11 +17,13 @@ Base mainnet deployment is intentionally not configured yet.
 ## Implementation
 
 - `PrlUsdcEscrow` has one immutable `usdcToken` set at deployment.
-- Ownership, pausing, and ERC-20 transfers use OpenZeppelin `Ownable`, `Pausable`, and `SafeERC20`.
+- Ownership, pausing, and ERC-20 transfers use OpenZeppelin `Ownable2Step`, `Pausable`, and `SafeERC20`.
 - `createTrade`, `release`, `pause`, and `unpause` are owner-only.
+- `renounceOwnership` is disabled so custody/admin authority cannot be accidentally burned.
 - `deposit` is buyer-only.
 - `refund` is owner-only before expiry, or buyer-only after expiry.
 - `cancelExpired` is permissionless cleanup for created-but-undeposited expired trades.
+- Emergency pause blocks new creates, deposits, and releases, but does not block refunds or expired cleanup.
 
 ## Commands
 

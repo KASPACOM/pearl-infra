@@ -4,9 +4,10 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract PrlUsdcEscrow is Ownable, Pausable {
+contract PrlUsdcEscrow is Ownable2Step, Pausable {
     using SafeERC20 for IERC20;
 
     enum TradeStatus {
@@ -100,7 +101,7 @@ contract PrlUsdcEscrow is Ownable, Pausable {
         emit Released(tradeId, trade.seller, trade.amount, trade.fee);
     }
 
-    function refund(bytes32 tradeId) external whenNotPaused {
+    function refund(bytes32 tradeId) external {
         Trade storage trade = trades[tradeId];
         require(trade.status == TradeStatus.Deposited, "not refundable");
         require(
@@ -114,7 +115,7 @@ contract PrlUsdcEscrow is Ownable, Pausable {
         emit Refunded(tradeId, trade.buyer, total);
     }
 
-    function cancelExpired(bytes32 tradeId) external whenNotPaused {
+    function cancelExpired(bytes32 tradeId) external {
         Trade storage trade = trades[tradeId];
         require(trade.status == TradeStatus.Created, "not cancellable");
         require(block.timestamp > trade.expiry, "not expired");
@@ -129,5 +130,9 @@ contract PrlUsdcEscrow is Ownable, Pausable {
 
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    function renounceOwnership() public view override onlyOwner {
+        revert("renounce disabled");
     }
 }
