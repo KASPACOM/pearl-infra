@@ -13,6 +13,7 @@ import {
 
 test('recognizes escrow event names', () => {
   assert.equal(isUsdcEscrowEventName('Deposited'), true);
+  assert.equal(isUsdcEscrowEventName('Paused'), true);
   assert.equal(isUsdcEscrowEventName('Transfer'), false);
 });
 

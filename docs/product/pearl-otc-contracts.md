@@ -287,10 +287,12 @@ MVP authorization:
 
 Security rules:
 
-- Use OpenZeppelin `SafeERC20`, `Pausable`, and role access control.
+- Use OpenZeppelin `SafeERC20`, `Pausable`, and reviewed ownership/access control.
 - No upgradeability in MVP unless there is an explicit governance decision.
 - No arbitrary token support in MVP; USDC only.
-- Every event must include `tradeId`.
+- Every trade lifecycle event must include `tradeId`.
+- Base Sepolia deployment uses native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
+- Base mainnet deployment remains disabled until review, multisig ownership, and testnet evidence exist.
 
 ## Pearl Indexer APIs
 

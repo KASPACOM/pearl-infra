@@ -6,6 +6,8 @@ dist/
 build/
 coverage/
 .cache/
+contracts/usdc-escrow/cache/
+contracts/usdc-escrow/out/
 *.tsbuildinfo
 .DS_Store
 *.log

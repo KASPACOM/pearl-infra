@@ -6,6 +6,8 @@ export const USDC_ESCROW_EVENT_NAMES: readonly UsdcEscrowEventName[] = [
   'Released',
   'Refunded',
   'Cancelled',
+  'Paused',
+  'Unpaused',
 ] as const;
 
 export function isUsdcEscrowEventName(value: string): value is UsdcEscrowEventName {

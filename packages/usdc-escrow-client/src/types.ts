@@ -35,4 +35,11 @@ export interface UsdcEscrowObservation {
   observedAt: string;
 }
 
-export type UsdcEscrowEventName = 'TradeCreated' | 'Deposited' | 'Released' | 'Refunded' | 'Cancelled';
+export type UsdcEscrowEventName =
+  | 'TradeCreated'
+  | 'Deposited'
+  | 'Released'
+  | 'Refunded'
+  | 'Cancelled'
+  | 'Paused'
+  | 'Unpaused';

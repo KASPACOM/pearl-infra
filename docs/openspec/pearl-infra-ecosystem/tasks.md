@@ -63,10 +63,10 @@
 
 ### 9.1 Base Smart Contract
 
-- [ ] 9.1.1 Add Foundry or Hardhat project setup under `contracts/usdc-escrow`.
-- [ ] 9.1.2 Add tests for create, deposit, release, refund, cancel-expired, pause, and unauthorized callers.
-- [ ] 9.1.3 Add Base Sepolia deployment config using the native USDC address.
-- [ ] 9.1.4 Keep mainnet deployment disabled until review, multisig ownership, and testnet evidence exist.
+- [x] 9.1.1 Add Foundry or Hardhat project setup under `contracts/usdc-escrow`.
+- [x] 9.1.2 Add tests for create, deposit, release, refund, cancel-expired, pause, and unauthorized callers.
+- [x] 9.1.3 Add Base Sepolia deployment config using the native USDC address.
+- [x] 9.1.4 Keep mainnet deployment disabled until review, multisig ownership, and testnet evidence exist.
 
 ### 9.2 OTC API And Trade State
 
