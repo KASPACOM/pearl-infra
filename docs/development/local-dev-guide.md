@@ -290,7 +290,8 @@ Recommended first implementation work:
    - `/blocks/recent`;
    - `/tx/:txid`;
    - `/address/:address`;
-   - public endpoint adapters first; self-hosted node later only if needed.
+   - self-hosted `pearld` adapter first for OTC;
+   - public Blockbook adapter as fallback/cross-check.
 
 ## 9. Verification Checklist For Devs
 

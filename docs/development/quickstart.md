@@ -7,7 +7,7 @@
 1. **Pearl has no on-chain VM.** No EVM, no WASM, no Solidity. Don't try to "deploy a contract" — there is nowhere to deploy. All your app logic lives in your own backend.
 2. **Pearl is a Bitcoin Taproot fork.** Every operation (build address, build tx, sign, broadcast) maps to a Bitcoin operation with a small config swap. Use Bitcoin libraries.
 3. **There is no official Pearl JS/TS SDK.** Don't go looking for one. You wire up 4 standard libraries and you're done.
-4. **The only address type is Taproot (P2TR).** All Pearl addresses look like `prl1p…`. Bech32m encoded, HRP is `prl` on mainnet.
+4. **The only address type is Taproot (P2TR).** Mainnet Pearl addresses look like `prl1p…`. Testnet/Testnet2 addresses should use the `tprl1…` prefix. Bech32m encoded, HRP is `prl` on mainnet.
 5. **All starter code in this file is unverified against Pearl.** It follows Bitcoin Taproot patterns and *should* work for Pearl, but you MUST test on simnet before pointing it at mainnet. See §7.
 
 ## 1. Stack and dependencies
@@ -50,8 +50,8 @@ export const PEARL_MAINNET: Network = {
   wif: 0x80,                      // WIF private-key prefix — verify upstream/pearl/chaincfg
 };
 
-// Mining is currently on a small set of public testnets too; HRPs not yet documented.
-// When you need testnet, grep upstream/pearl/chaincfg for `bech32HRPSegwit`.
+// Testnet/Testnet2 should use HRP `tprl` (`tprl1p...` addresses).
+// Verify exact chain flags and ports against upstream/pearl/chaincfg before shipping.
 
 // pearld JSON-RPC endpoint. Use your own pearld in dev; mainnet RPC requires auth.
 export const PEARL_RPC = {
@@ -268,7 +268,8 @@ See [`escrow-multisig-on-pearl.md`](escrow-multisig-on-pearl.md). The TL;DR is: 
 
 | Option | When to use |
 |---|---|
-| Blockbook endpoints at `blockbook.pearlresearch.ai` | Quick dev; **community-operated, don't depend in production** |
+| Our own `pearld` + indexer | OTC MVP and production money flows |
+| Blockbook endpoints at `blockbook.pearlresearch.ai` | Quick dev, fallback reads, and cross-checking; **not primary for escrow decisions** |
 | Index the chain yourself by scanning blocks | Production; medium effort |
 | Use `oyster` wallet daemon and only track wallet-owned addresses | When the addresses are your wallet's, not arbitrary ones |
 

@@ -47,3 +47,13 @@
 - [ ] 7.2 Add minimal CI plan for lint/typecheck/test once implementation begins.
 - [x] 7.3 Run OpenSpec validation/status and include evidence in the bootstrap report.
 - [x] 7.4 Present repo/specs to Sione for approval before implementing product code.
+
+## 8. Pearl OTC Settlement Desk Planning
+
+- [x] 8.1 Define the OTC settlement desk product architecture, components, settlement states, and MVP scope.
+- [x] 8.2 Define RFQ quote and trade lifecycle API contracts.
+- [x] 8.3 Define Pearl escrow package format: Taproot address, funding outpoint, release/refund templates, signatures, and refund eligibility.
+- [x] 8.4 Define Arbitrum USDC escrow contract interface and event schema.
+- [x] 8.5 Define Pearl indexer schema and APIs needed for escrow proof pages.
+- [x] 8.6 Add security gates for mainnet-disabled escrow code, simnet verification, arbiter key handling, and admin overrides.
+- [x] 8.7 Scaffold implementation packages only after 8.2-8.6 have concrete success criteria and verification commands.

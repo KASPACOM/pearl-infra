@@ -143,7 +143,7 @@ Ask the team to commit on these. Default-good answers in parentheses.
 
 1. **Public or private repo?** (Public — it's already public, keep it public, attracts contributors.)
 2. **Build SDK first vs. Pearl Pay first?** (SDK first — Pay needs it.)
-3. **Do we run a public Pearl node?** (Yes eventually, no in Phase 1 — Pearl OTC*'s API + Blockbook is enough for now.)
+3. **Do we run a public Pearl node?** (For the OTC desk MVP, yes: run our own `pearld` + indexer from day one; Pearl OTC*'s API + Blockbook are fallback/cross-check sources.)
 4. **Do we engage Pearl Research Labs directly?** (Yes — via Discord `discord.gg/joinpearl`. Coordinate on token-standard, faucet, possible co-marketing.)
 5. **Is there budget for a GPU operator to demo inference?** (TBD — only if Tier-4 compute marketplace is committed.)
 6. **Who owns the project on the KaspaCom side?** (TBD — needs a clear lead.)

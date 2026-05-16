@@ -1,0 +1,28 @@
+{
+  "name": "@kaspacom/pearl-infra",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "contracts/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b packages/pearl-rpc packages/pearl-sdk packages/pearl-script packages/pearl-indexer packages/usdc-escrow-client",
+    "test": "node --test packages/*/test/*.test.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.7.1",
+    "@noble/secp256k1": "^2.2.3",
+    "bitcoinjs-lib": "^6.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

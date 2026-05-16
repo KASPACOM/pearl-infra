@@ -1,0 +1,10 @@
+{
+  "name": "@kaspacom/otc-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "echo \"otc-api scaffold: no service code yet\"",
+    "test": "echo \"otc-api scaffold: no tests yet\""
+  }
+}
