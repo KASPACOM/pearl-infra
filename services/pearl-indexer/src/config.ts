@@ -6,6 +6,8 @@ export interface PearlIndexerServiceConfig {
   pollIntervalMs: number;
   startHeight: number;
   databaseUrl?: string;
+  httpPort: number;
+  httpHost: string;
 }
 
 export function readPearlIndexerServiceConfig(env: NodeJS.ProcessEnv = process.env): PearlIndexerServiceConfig {
@@ -17,5 +19,7 @@ export function readPearlIndexerServiceConfig(env: NodeJS.ProcessEnv = process.e
     pollIntervalMs: Number(env.PEARL_INDEXER_POLL_INTERVAL_MS ?? 10_000),
     startHeight: Number(env.PEARL_INDEXER_START_HEIGHT ?? 0),
     databaseUrl: env.PEARL_INDEXER_DATABASE_URL,
+    httpPort: Number(env.PEARL_INDEXER_HTTP_PORT ?? 8088),
+    httpHost: env.PEARL_INDEXER_HTTP_HOST ?? '0.0.0.0',
   };
 }
