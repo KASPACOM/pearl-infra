@@ -8,25 +8,31 @@ This is the OTC MVP truth layer for Pearl-side escrow state. Public Blockbook ca
 
 ## Topology
 
+The single docker compose file at `ops/indexer/docker-compose.yml` runs **two parallel network stacks** on the same Linux VM: testnet2 and mainnet. Each network gets its own pearld, its own postgres volume, and its own indexer container so a re-sync or schema migration on one network never touches the other. Either stack can be brought up alone via `docker compose up -d pearld postgres pearl-indexer` (testnet2) or `docker compose up -d pearld-mainnet postgres-mainnet pearl-indexer-mainnet` (mainnet); `docker compose up -d` brings up both.
+
 ```text
 Linux VM
   |
   | docker compose
   v
-pearld (:44111 RPC testnet2, :44112 P2P)
-  |
-  | JSON-RPC over private docker network
-  v
-pearl-indexer
-  |
-  | writes normalized block + escrow watch state
-  v
-postgres (:5432 localhost only)
-  |
-  | later read API
-  v
-otc-api / settlement-worker / proof page
++-- testnet2 stack ----------------------+   +-- mainnet stack ----------------------+
+| pearld (RPC :44111, P2P :44112)        |   | pearld-mainnet (RPC :44107, P2P :44108)|
+|   |                                    |   |   |                                   |
+|   | JSON-RPC over private docker net   |   |   | JSON-RPC over private docker net  |
+|   v                                    |   |   v                                   |
+| pearl-indexer (HTTP :8088 → 127.0.0.1) |   | pearl-indexer-mainnet (HTTP :8089)    |
+|   |                                    |   |   |                                   |
+|   v                                    |   |   v                                   |
+| postgres (:5432 localhost)             |   | postgres-mainnet (:5433 localhost)    |
++----------------------------------------+   +---------------------------------------+
+                |                                              |
+                +------------------------+---------------------+
+                                         v
+            otc-api / settlement-worker / proof page
+                  (routes per-network by HTTP base URL)
 ```
+
+Mainnet pearld P2P is exposed on `0.0.0.0:44108` for peer connectivity; mainnet RPC stays on `127.0.0.1:44107` and the watched-addresses API on `127.0.0.1:8089`. Same loopback discipline as testnet2.
 
 ## Resource Sizing
 
