@@ -17,6 +17,11 @@ services:
       - "--miningaddr=${PEARLD_MINING_ADDRESS:?set PEARLD_MINING_ADDRESS}"
       - "--txindex"
       - "--debuglevel=info"
+      # RPC TLS is unnecessary on a docker private network and would otherwise need
+      # the indexer to verify pearld's self-signed cert. Keep RPC bound to localhost
+      # via the port mapping above; --notls + container-network isolation is the
+      # equivalent of how btcd/pearld are run inside the upstream desktop wallet.
+      - "--notls"
 
   postgres:
     image: postgres:16-alpine
