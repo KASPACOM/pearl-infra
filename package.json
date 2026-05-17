@@ -10,8 +10,8 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc -b packages/pearl-rpc packages/pearl-sdk packages/pearl-script packages/pearl-escrow packages/pearl-indexer packages/usdc-escrow-client services/pearl-indexer services/otc-api apps/otc-web",
-    "test": "npm run typecheck && node --test packages/*/test/*.test.ts services/pearl-indexer/test/*.test.ts services/otc-api/test/*.test.ts apps/otc-web/test/*.test.ts"
+    "typecheck": "tsc -b packages/pearl-rpc packages/pearl-sdk packages/pearl-script packages/pearl-escrow packages/pearl-indexer packages/usdc-escrow-client services/pearl-indexer services/otc-api services/settlement-worker apps/otc-web",
+    "test": "npm run typecheck && node --test packages/*/test/*.test.ts services/pearl-indexer/test/*.test.ts services/otc-api/test/*.test.ts services/settlement-worker/test/*.test.ts apps/otc-web/test/*.test.ts"
   },
   "dependencies": {
     "@noble/hashes": "^1.7.1",

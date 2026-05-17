@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "echo \"settlement-worker scaffold: no worker code yet\"",
-    "test": "echo \"settlement-worker scaffold: no tests yet\""
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@kaspacom/pearl-sdk": "0.0.0"
   }
 }
