@@ -87,7 +87,10 @@ services:
       - "--rpcpass=${PEARLD_RPC_PASS:?set PEARLD_RPC_PASS}"
       - "--rpclisten=0.0.0.0:44107"
       - "--listen=0.0.0.0:44108"
-      - "--miningaddr=${PEARLD_MINING_ADDRESS:?set PEARLD_MINING_ADDRESS}"
+      # Mainnet pearld validates the address against the network HRP, so the
+      # testnet PEARLD_MINING_ADDRESS does not work here. Provide a mainnet-
+      # encoded placeholder (we are not actually mining; the flag is required).
+      - "--miningaddr=${PEARLD_MAINNET_MINING_ADDRESS:?set PEARLD_MAINNET_MINING_ADDRESS}"
       - "--txindex"
       - "--debuglevel=info"
       # Upstream warns against --notls on mainnet because public RPC + cleartext
