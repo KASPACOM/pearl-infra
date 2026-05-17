@@ -3,6 +3,8 @@ import type { PearlScriptNetworkName } from '@kaspacom/pearl-script';
 export type PearlEscrowScriptType = 'p2tr';
 export type PearlEscrowTemplateKind = 'release' | 'refund';
 export type PearlEscrowSignerRole = 'buyer' | 'seller' | 'arbiter' | 'desk';
+export type PearlEscrowSideEffectAction = 'release' | 'refund';
+export type PearlEscrowBroadcastStatus = 'prepared' | 'signed' | 'submitted' | 'confirmed' | 'failed';
 
 export interface PearlEscrowOutput {
   address: string;
@@ -93,6 +95,67 @@ export interface PearlEscrowUnsignedTx {
   outputAmountGrains: string;
   feeGrains: string;
   lockTime: number;
+}
+
+export interface PearlEscrowSignerPolicyInput {
+  escrow: PearlEscrowPackage;
+  action: PearlEscrowSideEffectAction;
+  unsignedTx: PearlEscrowUnsignedTx;
+  destinationAddress: string;
+  feeGrains: string;
+  feeCapGrains: string;
+  policyVersion: string;
+  decisionEventId: string;
+  derivationPath?: string;
+  signerKeyId?: string;
+  observedStateHash: string;
+}
+
+export interface PearlEscrowSignerRequest {
+  tradeId: string;
+  action: PearlEscrowSideEffectAction;
+  network: PearlScriptNetworkName;
+  fundingOutpoint: string;
+  unsignedTxHex: string;
+  txTemplateHash: string;
+  policyVersion: string;
+  decisionEventId: string;
+  idempotencyKey: string;
+  derivationPath?: string;
+  signerKeyId?: string;
+  expected: {
+    destinationAddress: string;
+    feeGrains: string;
+    feeCapGrains: string;
+    outputAmountGrains: string;
+    observedStateHash: string;
+  };
+  createdAt: string;
+}
+
+export interface PearlEscrowSignerResponse {
+  tradeId: string;
+  action: PearlEscrowSideEffectAction;
+  idempotencyKey: string;
+  signedTxHex: string;
+  signedTxid: string;
+  signerKeyId: string;
+  signedAt: string;
+}
+
+export interface PearlEscrowBroadcastAttempt {
+  tradeId: string;
+  action: PearlEscrowSideEffectAction;
+  idempotencyKey: string;
+  status: PearlEscrowBroadcastStatus;
+  attempt: number;
+  signedTxid?: string;
+  signedTxHex?: string;
+  broadcastTxid?: string;
+  error?: string;
+  nextRetryAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreatePearlEscrowPackageInput {

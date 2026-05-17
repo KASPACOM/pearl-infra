@@ -204,7 +204,7 @@ Current delegation queue after PR #24:
 - [x] 9.7.2 Replace the OTC API mock Pearl escrow allocator with a mainnet-disabled real allocator that creates per-trade escrow packages.
 - [x] 9.7.3 Add simnet fixture tests for escrow address derivation, funding output matching, release transaction construction, and refund transaction construction.
 - [x] 9.7.4 Add signer/key-handling design for Pearl Taproot/XMSS constraints, operator custody boundaries, and recovery-package storage.
-- [ ] 9.7.5 Add broadcast, retry, fee, and idempotency hooks consumed by the settlement worker for PRL release/refund transactions.
+- [x] 9.7.5 Add broadcast, retry, fee, and idempotency hooks consumed by the settlement worker for PRL release/refund transactions.
 
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 

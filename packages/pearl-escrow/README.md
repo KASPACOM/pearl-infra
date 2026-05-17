@@ -7,9 +7,10 @@ Current scope:
 - creates Pearl P2TR escrow addresses from a provided internal public key;
 - builds release and refund transaction templates with expected funding amount, optional funding outpoint, signer policy, and refund eligibility;
 - validates release/refund destination addresses against the Pearl network;
+- creates signer policy requests, fee-cap checks, idempotency keys, and broadcast retry records;
 - blocks mainnet package creation unless `allowMainnet` is explicitly set.
 
-This package does not yet sign or broadcast transactions. Signing, XMSS policy, simnet transaction fixtures, and settlement-worker broadcast hooks are tracked separately in `9.7.3` through `9.7.5`.
+This package does not hold private keys, sign transactions, or broadcast transactions. Signing happens behind the signer boundary; broadcasting uses the Pearl RPC package.
 
 ## Usage
 
