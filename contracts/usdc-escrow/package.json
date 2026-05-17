@@ -5,7 +5,8 @@
   "scripts": {
     "build": "./scripts/forge.sh build",
     "test": "./scripts/forge.sh test",
-    "test:base-sepolia-dry-run": "./scripts/forge.sh script script/DeployBaseSepolia.s.sol:DeployBaseSepolia --rpc-url base_sepolia"
+    "test:base-sepolia-dry-run": "./scripts/forge.sh script script/DeployBaseSepolia.s.sol:DeployBaseSepolia --rpc-url base_sepolia",
+    "test:base-sepolia-mock-run": "./scripts/forge.sh script script/RunBaseSepoliaMockEscrow.s.sol:RunBaseSepoliaMockEscrow --rpc-url base_sepolia"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.6.1"

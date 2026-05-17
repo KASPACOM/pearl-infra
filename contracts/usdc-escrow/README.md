@@ -65,6 +65,21 @@ Current testnet deployment:
 | Native USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Explorer | `https://sepolia.basescan.org/address/0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9` |
 
+Base Sepolia lifecycle evidence is recorded in `deployments/base-sepolia-mock-run.json`.
+That run deployed a mock USDC-style ERC-20 because native testnet USDC was not available, then executed:
+
+1. mock token deploy;
+2. mock-token escrow deploy;
+3. mock token mint;
+4. `createTrade`;
+5. buyer approval;
+6. buyer deposit;
+7. owner release;
+8. `transferOwnership` to the requested testnet owner.
+
+The mock run ended with trade status `Released`, seller balance `100000000`, fee recipient balance `1000000`, escrow balance `0`, and `pendingOwner()` set to `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`.
+The requested owner must call `acceptOwnership()` before ownership transfer is complete.
+
 Dry-run / simulate with:
 
 ```bash

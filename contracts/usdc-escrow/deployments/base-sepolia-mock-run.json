@@ -1,0 +1,50 @@
+{
+  "network": "base_sepolia",
+  "chainId": 84532,
+  "scope": "testnet-lifecycle-evidence",
+  "runName": "base-sepolia-mock-escrow-run-2026-05-17",
+  "ranAtBlock": 41630641,
+  "ranAtUtc": "2026-05-17T14:52:50Z",
+  "deployer": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "buyer": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "seller": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+  "feeRecipient": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "requestedOwner": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+  "mockUsdc": {
+    "name": "Base Sepolia Mock USDC",
+    "symbol": "mUSDC",
+    "decimals": 6,
+    "address": "0x983e517e872301828d5d35aD646929beC41bD54c",
+    "deployTx": "0x9d04bd9004c25d0b66f789e94d5489b8dc613a899334eed6a3773117d53e34db"
+  },
+  "escrow": {
+    "address": "0x032f81C51b3304cc7c0ffe3C920fC74E51eD99Eb",
+    "deployTx": "0x9894e0e9e9874d385f21b1d4639f700555a6219224b7429c500f8dc0708be31d",
+    "owner": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+    "pendingOwner": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+    "usdcToken": "0x983e517e872301828d5d35aD646929beC41bD54c"
+  },
+  "trade": {
+    "tradeId": "0xe9bec142dceb2686265b7cec40c9e0df384d8fdfa01c7106fb9c011d28cb22ac",
+    "sellerAmountMicros": "100000000",
+    "feeAmountMicros": "1000000",
+    "finalStatus": "Released",
+    "sellerFinalBalanceMicros": "100000000",
+    "feeRecipientFinalBalanceMicros": "1000000",
+    "escrowFinalBalanceMicros": "0"
+  },
+  "transactions": {
+    "mint": "0xe3ef113ef0d910ddfd604c8a82a8d15b2d09ea7d48851fa2f43f5e8d6048a19e",
+    "createTrade": "0x2b0ce2af63941e480b6bf44751b9d7d57e3c0d040bfda99b655396a8bf86f1df",
+    "approve": "0x6bd344bcc2a7fa36db34f2194321ef39556195af108d57ff6f2335d8180b799b",
+    "deposit": "0x7f8fb0f44ed92711493fdadd94d85014b94d3f50a486a23667d5cff8f8c638d1",
+    "release": "0x8e2aaaf15c8e765590ea46c99c9716f790d72122e7dcdebc9fa2969fe932b441",
+    "transferOwnership": "0x9d9a5f3a614902b7df8721184354525b9bd56e7f36df1feb42630c3892e8e7fa"
+  },
+  "mainnetApproval": false,
+  "notes": [
+    "This run uses a mock USDC-style ERC-20 on Base Sepolia because native testnet USDC liquidity/faucet access was not available.",
+    "The production-shaped native Base Sepolia USDC escrow remains recorded separately in base-sepolia.json.",
+    "Ownership transfer has been initiated to the requested owner address, but Ownable2Step requires that wallet to call acceptOwnership before 9.6.7 can be marked complete."
+  ]
+}
