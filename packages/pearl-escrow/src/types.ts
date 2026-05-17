@@ -57,6 +57,44 @@ export interface PearlEscrowPackage {
   };
 }
 
+export interface PearlEscrowFundingCandidate {
+  txid: string;
+  vout: number;
+  amountGrains: string;
+  address?: string;
+  scriptPubKeyHex?: string;
+  blockHeight?: number;
+  confirmations?: number;
+}
+
+export interface PearlEscrowFundingMatch {
+  matched: boolean;
+  status: 'matched' | 'underpaid' | 'overpaid' | 'script_mismatch' | 'outpoint_mismatch';
+  outpoint: string;
+  expectedAmountGrains: string;
+  observedAmountGrains: string;
+  scriptPubKeyHex?: string;
+  blockHeight?: number;
+  confirmations?: number;
+}
+
+export interface CreatePearlEscrowUnsignedTxInput {
+  escrow: PearlEscrowPackage;
+  kind: PearlEscrowTemplateKind;
+  feeGrains?: string;
+  sequence?: number;
+}
+
+export interface PearlEscrowUnsignedTx {
+  kind: PearlEscrowTemplateKind;
+  unsignedTxHex: string;
+  inputOutpoint: string;
+  inputAmountGrains: string;
+  outputAmountGrains: string;
+  feeGrains: string;
+  lockTime: number;
+}
+
 export interface CreatePearlEscrowPackageInput {
   tradeId: string;
   network: PearlScriptNetworkName;
