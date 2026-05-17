@@ -83,8 +83,14 @@
 - [x] 9.3.1 Add single-machine indexer runbook and Docker Compose topology.
 - [x] 9.3.2 Add minimal block polling loop with mocked `pearld` RPC tests.
 - [x] 9.3.3 Add initial Postgres schema for blocks, indexer state, and escrow watches.
-- [ ] 9.3.4 Add restart-safe Postgres sink and `next_height` state.
-- [ ] 9.3.5 Add escrow watch registration API and proof API.
+- [x] 9.3.4 Add restart-safe Postgres sink and `next_height` state.
+- [ ] 9.3.5 Add escrow watch registration API and proof API. Generalized into a shared "watched addresses" primitive that also serves 10.8 (bridge deposits + reserves). See `docs/operations/escrow-watch-api.md` for the design.
+  - [ ] 9.3.5.a Migration `002_watched_addresses.sql` — drop `escrow_watches`, add `watched_addresses` + `address_observations` + `address_spends`.
+  - [ ] 9.3.5.b Repository module + types + in-memory fake.
+  - [ ] 9.3.5.c Postgres implementation of repository.
+  - [ ] 9.3.5.d HTTP handler (POST `/watches`, GET `/watches/:id`, POST `/watches/:id/close`) + server boot wiring into `main.ts`.
+  - [ ] 9.3.5.e Unit tests (repository + handler).
+  - [ ] 9.3.5.f Integration smoke: register → close → read round-trip against postgres on the Hetzner box.
 - [ ] 9.3.6 Add funding output detection for watched P2TR escrow addresses.
 - [ ] 9.3.7 Add spend detection using resolved prevouts, with release/refund/unknown classification.
 - [ ] 9.3.8 Add detach/replay reorg tests.
