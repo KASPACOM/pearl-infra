@@ -24,7 +24,11 @@ export interface PgTransactionalClient extends PgQueryClient {
 const NEXT_HEIGHT_KEY = 'next_height';
 
 export class PgBlockSink implements PearlBlockSink {
-  constructor(private readonly client: PgTransactionalClient) {}
+  private readonly client: PgTransactionalClient;
+
+  constructor(client: PgTransactionalClient) {
+    this.client = client;
+  }
 
   async saveBlock(block: PearlBlockSummary): Promise<SaveBlockResult> {
     return this.client.withTransaction(async (tx) => {
