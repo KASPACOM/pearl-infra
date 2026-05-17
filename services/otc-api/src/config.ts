@@ -4,6 +4,9 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
   return {
     pearlNetwork: (env.PEARL_NETWORK as OtcApiConfig['pearlNetwork'] | undefined) ?? 'testnet2',
     quoteTtlMs: Number(env.OTC_QUOTE_TTL_MS ?? 5 * 60 * 1000),
+    pearlFundingTtlMs: Number(env.OTC_PEARL_FUNDING_TTL_MS ?? 15 * 60 * 1000),
+    usdcDepositTtlMs: Number(env.OTC_USDC_DEPOSIT_TTL_MS ?? 15 * 60 * 1000),
+    settlementTtlMs: Number(env.OTC_SETTLEMENT_TTL_MS ?? 30 * 60 * 1000),
     priceUsdcPerPrl: env.OTC_PRICE_USDC_PER_PRL ?? '0.170000',
     feeBps: Number(env.OTC_FEE_BPS ?? 0),
     pearlEscrowConfirmations: Number(env.PEARL_ESCROW_CONFIRMATIONS ?? 3),

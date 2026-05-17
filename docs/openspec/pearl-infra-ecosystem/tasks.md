@@ -94,9 +94,9 @@ Merged implementation checkpoints:
 - [x] 9.2.4 Add mocked persistence tests before introducing production database plumbing.
 - [x] 9.2.5 Add HTTP routes around the API core.
 - [ ] 9.2.6 Replace in-memory persistence with the shared database layer.
-- [ ] 9.2.7 Add explicit deadline fields to the trade model: `quote_expires_at`, `pearl_funding_deadline`, `usdc_deposit_deadline`, `settlement_deadline`, and `refund_available_at`.
+- [x] 9.2.7 Add explicit deadline fields to the trade model: `quote_expires_at`, `pearl_funding_deadline`, `usdc_deposit_deadline`, `settlement_deadline`, and `refund_available_at`.
 - [ ] 9.2.8 Enforce that `createTrade()` on the EVM escrow is called only after quote acceptance / real match, never on page load or quote preview.
-- [ ] 9.2.9 Add internal statuses for edge cases: `late_prl_funding`, `usdc_refunded`, `prl_release_failed`, `amount_mismatch`, `reorged`, `stale_indexer`, and `unknown_spend`.
+- [x] 9.2.9 Add internal statuses for edge cases: `late_prl_funding`, `usdc_refunded`, `prl_release_failed`, `amount_mismatch`, `reorged`, `stale_indexer`, and `unknown_spend`.
 - [ ] 9.2.10 Verify on-chain USDC escrow terms match backend trade terms before the frontend is allowed to show the buyer the deposit action.
 - [ ] 9.2.11 Persist every external side effect with idempotency key, source event ID, tx hash/outpoint, observed height/block, and actor.
 

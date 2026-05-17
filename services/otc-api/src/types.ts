@@ -31,6 +31,9 @@ export interface AcceptQuoteRequest {
 export interface OtcApiConfig {
   pearlNetwork: OtcTrade['pearlEscrow']['network'];
   quoteTtlMs: number;
+  pearlFundingTtlMs: number;
+  usdcDepositTtlMs: number;
+  settlementTtlMs: number;
   priceUsdcPerPrl: string;
   feeBps: number;
   pearlEscrowConfirmations: number;

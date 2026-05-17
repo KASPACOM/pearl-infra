@@ -6,6 +6,7 @@ import {
   formatMicrosToUsdc,
   type OtcQuote,
   type OtcTrade,
+  type OtcTradeDeadlines,
   parsePrlToGrains,
   parseUsdcToMicros,
   type TradeEvent,
@@ -98,7 +99,8 @@ export class OtcTradeService {
     if (quote.status !== 'active') {
       throw new Error(`quote is not active: ${quote.status}`);
     }
-    if (new Date(quote.expiresAt).getTime() <= this.now().getTime()) {
+    const acceptedAt = this.now();
+    if (new Date(quote.expiresAt).getTime() <= acceptedAt.getTime()) {
       throw new Error('quote expired');
     }
     if (await this.repository.findTradeByQuoteId(quoteId)) {
@@ -107,7 +109,8 @@ export class OtcTradeService {
 
     const tradeId = createStableId('trade', [quote.quoteId, request.clientRequestId]);
     const baseConfig = getUsdcEscrowNetworkConfig(this.config.baseNetwork);
-    const timestamp = this.now().toISOString();
+    const timestamp = acceptedAt.toISOString();
+    const deadlines = createTradeDeadlines(quote, acceptedAt, this.config);
     const pearlEscrow = this.pearlEscrowAllocator.allocateEscrow({
       tradeId,
       quote,
@@ -136,8 +139,9 @@ export class OtcTradeService {
         tradeKey: createTradeKey(tradeId),
         expectedAmountMicros: (parseUsdcToMicros(quote.amountUsdc) + parseUsdcToMicros(quote.feeUsdc)).toString(),
         requiredConfirmations: baseConfig.requiredConfirmations,
-        expiresAt: quote.expiresAt,
+        expiresAt: deadlines.usdcDepositDeadline,
       },
+      deadlines,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -199,6 +203,7 @@ export function createPublicProof(trade: OtcTrade, events: TradeEvent[], observe
   return {
     tradeId: trade.tradeId,
     status: trade.state,
+    deadlines: trade.deadlines,
     quote: {
       side: trade.side,
       amountPrl: trade.amountPrl,
@@ -245,6 +250,16 @@ function createStableId(prefix: string, parts: readonly string[]): string {
 
 function createTradeKey(tradeId: string): string {
   return `0x${createHash('sha256').update(tradeId).digest('hex')}`;
+}
+
+function createTradeDeadlines(quote: OtcQuote, acceptedAt: Date, config: OtcApiConfig): OtcTradeDeadlines {
+  return {
+    quoteExpiresAt: quote.expiresAt,
+    pearlFundingDeadline: new Date(acceptedAt.getTime() + config.pearlFundingTtlMs).toISOString(),
+    usdcDepositDeadline: new Date(acceptedAt.getTime() + config.usdcDepositTtlMs).toISOString(),
+    settlementDeadline: new Date(acceptedAt.getTime() + config.settlementTtlMs).toISOString(),
+    refundAvailableAt: new Date(acceptedAt.getTime() + config.usdcDepositTtlMs).toISOString(),
+  };
 }
 
 function calculateQuoteAmounts(
