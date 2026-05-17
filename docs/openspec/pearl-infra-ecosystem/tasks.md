@@ -88,24 +88,41 @@ Merged implementation checkpoints:
 - PR #22 — split `PEARLD_MAINNET_MINING_ADDRESS` env so the mainnet pearld
   container stops crash-looping on a testnet-encoded placeholder. Mainnet
   observation is live on Hetzner (port 8089).
+- PR #23 — recorded Base Sepolia escrow lifecycle evidence.
 - PR #24 — replaced in-memory OTC API persistence with a Postgres
   repository, gated `createTrade()` on real quote acceptance, added the
   on-chain USDC term verifier, and added the side-effect ledger. Closes
   9.2.6, 9.2.8, 9.2.10, and 9.2.11.
+- PR #25 — synced implementation checklist after PRs #20-#22 and #24.
+- PR #26 — added the funding output detection design for 9.3.6 and 9.3.6.a.
+- PR #27 — added the first `packages/pearl-escrow` P2TR escrow package.
+- PR #28 — wired OTC API quote acceptance to the real Pearl escrow allocator.
+- PR #29 — added Pearl escrow simnet fixture tests.
+- PR #30 — added the Pearl indexer funding output detection scanner slice.
+- PR #31 — documented Pearl escrow signer custody and recovery-package design.
+- PR #32 — added Pearl escrow signer/broadcast hooks and Pearl RPC broadcast
+  wrapper. Closes 9.7.5.
+- PR #33 — added the settlement-worker decision core and release/refund guard
+  regression tests. Closes 9.5.1 through 9.5.9.
 
-Current delegation queue after PR #24:
+Current delegation queue after PR #33:
 
 - Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.7`, `9.3.7.a`, `9.3.8`,
-  `9.3.8.a`, and `9.3.9`.
-- Backend owner: 9.2.x complete in PR #24. Next: align with frontend on
-  surfacing the deadline/edge-state model exposed by `services/otc-api`.
+  `9.3.8.a`, and `9.3.9`. PR #30 landed the first funding scanner slice;
+  keep the parent tasks open until full classification, spend detection,
+  reorg replay, and integration ingest are complete.
+- Backend owner: 9.2.x complete in PR #24. Stay available for frontend/API
+  alignment on deadline and edge-state surfaces.
 - Frontend owner: `9.4.1` through `9.4.4`, then `9.4.6` through `9.4.8`.
   Unblocked now that backend exposes deadlines (9.2.7), edge states
   (9.2.9), and the on-chain USDC term verifier (9.2.10).
-- Settlement-worker owner: `9.5.1` through `9.5.9`, sequenced after indexer
-  funding/spend detection and backend side-effect persistence.
+- Settlement-worker owner: 9.5.x core decision engine complete in PR #33.
+  Next worker work is integration wiring once indexer funding/spend outputs
+  and live Base event inputs are available.
 - Base Solidity/EVM owner: `9.6.5`, `9.6.7`, `9.6.8`, and `9.6.9`.
-- Pearl escrow specialist: `9.7.1` through `9.7.5`.
+- Pearl escrow specialist: 9.7.x package complete through signer/broadcast
+  hooks in PR #32. Next escrow work is live signer/broadcaster integration,
+  gated by simnet/testnet run evidence.
 - DevOps owner: `9.6.1`, `9.6.2`, `9.6.3`, and `9.6.11`.
 - Igra bridge Solidity/EVM owner: `10.6` and `10.7`.
 - Bridge service/federation owner: `10.8.4` through `10.11`, sequenced after

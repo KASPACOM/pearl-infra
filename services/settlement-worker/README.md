@@ -14,6 +14,8 @@ Worker that joins Pearl escrow state and Base USDC escrow state into final trade
 
 The worker should fail closed. If Pearl and Base state disagree, the trade goes to manual review instead of broadcasting.
 
+Release preparation is not terminal completion. A `prepare_usdc_release` decision only authorizes the USDC release side effect after PRL release confirmation; the trade is marked released only after the Base release is observed.
+
 ## Pearl Release/Refund Hooks
 
 The Pearl escrow package exposes the settlement-worker handoff primitives:
