@@ -18,7 +18,22 @@ export type TradeState =
   | 'refunded'
   | 'disputed'
   | 'cancelled'
-  | 'failed_manual_review';
+  | 'failed_manual_review'
+  | 'late_prl_funding'
+  | 'usdc_refunded'
+  | 'prl_release_failed'
+  | 'amount_mismatch'
+  | 'reorged'
+  | 'stale_indexer'
+  | 'unknown_spend';
+
+export interface OtcTradeDeadlines {
+  quoteExpiresAt: string;
+  pearlFundingDeadline: string;
+  usdcDepositDeadline: string;
+  settlementDeadline: string;
+  refundAvailableAt: string;
+}
 
 export interface OtcQuote {
   quoteId: string;
@@ -74,6 +89,7 @@ export interface OtcTrade {
   sellerUsdcReceiveAddress: string;
   pearlEscrow: PearlEscrowLeg;
   usdcEscrow: UsdcEscrowLeg;
+  deadlines: OtcTradeDeadlines;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,6 +110,7 @@ export interface TradeEvent {
 export interface PublicTradeProof {
   tradeId: string;
   status: OtcTrade['state'];
+  deadlines: OtcTradeDeadlines;
   quote: Pick<OtcQuote, 'side' | 'amountPrl' | 'amountUsdc' | 'feePrl' | 'feeUsdc' | 'priceUsdcPerPrl'>;
   pearl: {
     escrowAddress: string;
@@ -116,22 +133,38 @@ export interface PublicTradeProof {
   observedAt: string;
 }
 
+const EDGE_REVIEW_STATES = [
+  'amount_mismatch',
+  'reorged',
+  'stale_indexer',
+  'unknown_spend',
+] as const satisfies readonly TradeState[];
+
+const MANUAL_REVIEW_TRANSITIONS = ['failed_manual_review'] as const satisfies readonly TradeState[];
+
 const ALLOWED_TRANSITIONS: Readonly<Record<TradeState, readonly TradeState[]>> = {
   quoted: ['quote_expired', 'pearl_escrow_pending', 'cancelled', 'disputed', 'failed_manual_review'],
   quote_expired: [],
-  pearl_escrow_pending: ['pearl_escrow_seen', 'cancelled', 'disputed', 'failed_manual_review'],
-  pearl_escrow_seen: ['pearl_escrow_confirmed', 'pearl_escrow_pending', 'disputed', 'failed_manual_review'],
-  pearl_escrow_confirmed: ['usdc_escrow_pending', 'refund_available', 'disputed', 'failed_manual_review'],
-  usdc_escrow_pending: ['usdc_escrow_confirmed', 'refund_available', 'disputed', 'failed_manual_review'],
-  usdc_escrow_confirmed: ['release_pending', 'disputed', 'failed_manual_review'],
-  release_pending: ['released', 'disputed', 'failed_manual_review'],
+  pearl_escrow_pending: ['pearl_escrow_seen', 'late_prl_funding', 'cancelled', 'disputed', 'failed_manual_review', ...EDGE_REVIEW_STATES],
+  pearl_escrow_seen: ['pearl_escrow_confirmed', 'pearl_escrow_pending', 'late_prl_funding', 'disputed', 'failed_manual_review', ...EDGE_REVIEW_STATES],
+  pearl_escrow_confirmed: ['usdc_escrow_pending', 'refund_available', 'disputed', 'failed_manual_review', ...EDGE_REVIEW_STATES],
+  usdc_escrow_pending: ['usdc_escrow_confirmed', 'refund_available', 'usdc_refunded', 'disputed', 'failed_manual_review', ...EDGE_REVIEW_STATES],
+  usdc_escrow_confirmed: ['release_pending', 'usdc_refunded', 'disputed', 'failed_manual_review', ...EDGE_REVIEW_STATES],
+  release_pending: ['released', 'prl_release_failed', 'disputed', 'failed_manual_review', ...EDGE_REVIEW_STATES],
   released: [],
-  refund_available: ['refund_pending', 'disputed', 'failed_manual_review'],
-  refund_pending: ['refunded', 'disputed', 'failed_manual_review'],
+  refund_available: ['refund_pending', 'usdc_refunded', 'disputed', 'failed_manual_review'],
+  refund_pending: ['refunded', 'usdc_refunded', 'disputed', 'failed_manual_review'],
   refunded: [],
   disputed: ['release_pending', 'refund_available', 'failed_manual_review'],
   cancelled: [],
-  failed_manual_review: ['disputed'],
+  failed_manual_review: [],
+  late_prl_funding: MANUAL_REVIEW_TRANSITIONS,
+  usdc_refunded: MANUAL_REVIEW_TRANSITIONS,
+  prl_release_failed: MANUAL_REVIEW_TRANSITIONS,
+  amount_mismatch: MANUAL_REVIEW_TRANSITIONS,
+  reorged: MANUAL_REVIEW_TRANSITIONS,
+  stale_indexer: MANUAL_REVIEW_TRANSITIONS,
+  unknown_spend: MANUAL_REVIEW_TRANSITIONS,
 };
 
 export function canTransitionTrade(fromState: TradeState, toState: TradeState): boolean {

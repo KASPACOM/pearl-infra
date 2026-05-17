@@ -10,6 +10,9 @@ import type { OtcApiConfig } from '../src/types.ts';
 const config: OtcApiConfig = {
   pearlNetwork: 'testnet2',
   quoteTtlMs: 5 * 60 * 1000,
+  pearlFundingTtlMs: 10 * 60 * 1000,
+  usdcDepositTtlMs: 15 * 60 * 1000,
+  settlementTtlMs: 30 * 60 * 1000,
   priceUsdcPerPrl: '0.170000',
   feeBps: 100,
   pearlEscrowConfirmations: 3,
@@ -78,8 +81,15 @@ test('serves quote, accept, trade, and proof routes', async () => {
       clientRequestId: 'accept-http-1',
     });
     assert.equal(tradeResponse.status, 201);
-    const trade = (await tradeResponse.json()) as { tradeId: string; state: string };
+    const trade = (await tradeResponse.json()) as {
+      tradeId: string;
+      state: string;
+      deadlines: { usdcDepositDeadline: string };
+      usdcEscrow: { expiresAt: string };
+    };
     assert.equal(trade.state, 'pearl_escrow_pending');
+    assert.equal(trade.deadlines.usdcDepositDeadline, '2026-05-16T12:15:00.000Z');
+    assert.equal(trade.usdcEscrow.expiresAt, trade.deadlines.usdcDepositDeadline);
 
     const getTradeResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}`);
     assert.equal(getTradeResponse.status, 200);
@@ -88,8 +98,9 @@ test('serves quote, accept, trade, and proof routes', async () => {
 
     const proofResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/proof`);
     assert.equal(proofResponse.status, 200);
-    const proof = (await proofResponse.json()) as { tradeId: string; events: unknown[] };
+    const proof = (await proofResponse.json()) as { tradeId: string; events: unknown[]; deadlines: { usdcDepositDeadline: string } };
     assert.equal(proof.tradeId, trade.tradeId);
+    assert.equal(proof.deadlines.usdcDepositDeadline, '2026-05-16T12:15:00.000Z');
     assert.equal(proof.events.length, 1);
   });
 });

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { canTransitionTrade } from '@kaspacom/pearl-sdk';
+
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import { OtcTradeService, type PearlEscrowAllocator } from '../src/trade-service.ts';
 import type { OtcApiConfig } from '../src/types.ts';
@@ -8,6 +10,9 @@ import type { OtcApiConfig } from '../src/types.ts';
 const config: OtcApiConfig = {
   pearlNetwork: 'testnet2',
   quoteTtlMs: 5 * 60 * 1000,
+  pearlFundingTtlMs: 10 * 60 * 1000,
+  usdcDepositTtlMs: 15 * 60 * 1000,
+  settlementTtlMs: 30 * 60 * 1000,
   priceUsdcPerPrl: '0.170000',
   feeBps: 100,
   pearlEscrowConfirmations: 3,
@@ -77,7 +82,15 @@ test('accepts a quote into pearl escrow pending state', async () => {
   assert.equal(trade.usdcEscrow.chainId, 84532);
   assert.equal(trade.usdcEscrow.contract, config.baseEscrowContract);
   assert.equal(trade.usdcEscrow.expectedAmountMicros, '171700000');
+  assert.equal(trade.usdcEscrow.expiresAt, '2026-05-16T12:15:00.000Z');
   assert.equal(trade.pearlEscrow.requiredConfirmations, 3);
+  assert.deepEqual(trade.deadlines, {
+    quoteExpiresAt: quote.expiresAt,
+    pearlFundingDeadline: '2026-05-16T12:10:00.000Z',
+    usdcDepositDeadline: '2026-05-16T12:15:00.000Z',
+    settlementDeadline: '2026-05-16T12:30:00.000Z',
+    refundAvailableAt: '2026-05-16T12:15:00.000Z',
+  });
   assert.match(trade.usdcEscrow.tradeKey, /^0x[0-9a-f]{64}$/);
 });
 
@@ -132,7 +145,23 @@ test('projects public proof without private addresses', async () => {
 
   assert.equal(proof.tradeId, trade.tradeId);
   assert.equal(proof.base.chainId, 84532);
+  assert.deepEqual(proof.deadlines, trade.deadlines);
   assert.equal(proof.events.length, 1);
   assert.equal(serialized.includes('buyerUsdcAddress'), false);
   assert.equal(serialized.includes('sellerUsdcReceiveAddress'), false);
+});
+
+test('models edge states as manual-review paths instead of release paths', () => {
+  assert.equal(canTransitionTrade('pearl_escrow_pending', 'late_prl_funding'), true);
+  assert.equal(canTransitionTrade('late_prl_funding', 'release_pending'), false);
+  assert.equal(canTransitionTrade('late_prl_funding', 'disputed'), false);
+  assert.equal(canTransitionTrade('late_prl_funding', 'failed_manual_review'), true);
+  assert.equal(canTransitionTrade('usdc_escrow_confirmed', 'usdc_refunded'), true);
+  assert.equal(canTransitionTrade('usdc_refunded', 'release_pending'), false);
+  assert.equal(canTransitionTrade('usdc_refunded', 'disputed'), false);
+  assert.equal(canTransitionTrade('release_pending', 'prl_release_failed'), true);
+  assert.equal(canTransitionTrade('usdc_escrow_confirmed', 'amount_mismatch'), true);
+  assert.equal(canTransitionTrade('pearl_escrow_seen', 'reorged'), true);
+  assert.equal(canTransitionTrade('usdc_escrow_pending', 'stale_indexer'), true);
+  assert.equal(canTransitionTrade('pearl_escrow_pending', 'unknown_spend'), true);
 });
