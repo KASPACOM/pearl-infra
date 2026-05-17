@@ -6,6 +6,7 @@ import { canTransitionTrade } from '@kaspacom/pearl-sdk';
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import { OtcTradeService, type PearlEscrowAllocator } from '../src/trade-service.ts';
 import type { OtcApiConfig } from '../src/types.ts';
+import type { UsdcEscrowReader } from '../src/usdc-escrow-reader.ts';
 
 const config: OtcApiConfig = {
   pearlNetwork: 'testnet2',
@@ -34,6 +35,10 @@ const escrowAllocator: PearlEscrowAllocator = {
 
 function createService(now = new Date('2026-05-16T12:00:00.000Z')): OtcTradeService {
   return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, () => now);
+}
+
+function createServiceWithUsdcReader(reader: UsdcEscrowReader, now = new Date('2026-05-16T12:00:00.000Z')): OtcTradeService {
+  return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, reader, () => now);
 }
 
 test('creates an idempotent Base USDC quote', async () => {
@@ -119,6 +124,130 @@ test('rejects expired quotes', async () => {
       }),
     /quote expired/,
   );
+});
+
+test('prepares createTrade intent only after quote acceptance and records side effect idempotently', async () => {
+  const service = createService();
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-create-intent',
+  });
+
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-create-intent',
+  });
+
+  const first = await service.prepareUsdcCreateTrade(trade.tradeId, {
+    idempotencyKey: 'create-trade-1',
+    actor: 'settlement-worker',
+  });
+  const second = await service.prepareUsdcCreateTrade(trade.tradeId, {
+    idempotencyKey: 'create-trade-1',
+    actor: 'settlement-worker',
+  });
+
+  assert.equal(first.tradeKey, trade.usdcEscrow.tradeKey);
+  assert.equal(first.buyer, trade.buyerUsdcAddress);
+  assert.equal(first.seller, trade.sellerUsdcReceiveAddress);
+  assert.equal(first.amountMicros, '170000000');
+  assert.equal(first.feeMicros, '1700000');
+  assert.equal(first.expiryUnixSeconds, 1778933700);
+  assert.equal(first.sideEffect.effectType, 'usdc_create_trade');
+  assert.equal(first.sideEffect.status, 'prepared');
+  assert.equal(second.sideEffect.createdAt, first.sideEffect.createdAt);
+  assert.equal((await service.listSideEffects(trade.tradeId)).length, 1);
+
+  await assert.rejects(
+    () =>
+      service.prepareUsdcCreateTrade('missing-trade', {
+        idempotencyKey: 'create-trade-missing',
+        actor: 'settlement-worker',
+      }),
+    /trade not found/,
+  );
+});
+
+test('verifies on-chain USDC escrow terms before allowing buyer deposit', async () => {
+  const service = createServiceWithUsdcReader({
+    async getTrade() {
+      return {
+        buyer: '0x3333333333333333333333333333333333333333',
+        seller: '0x4444444444444444444444444444444444444444',
+        amountMicros: '170000000',
+        feeMicros: '1700000',
+        expiryUnixSeconds: 1778933700,
+        status: 'created',
+      };
+    },
+  });
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-verify',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-verify',
+  });
+
+  const verification = await service.verifyUsdcEscrowTerms(trade.tradeId);
+
+  assert.equal(verification.verified, true);
+  assert.equal(verification.depositAllowed, true);
+  assert.deepEqual(verification.mismatches, []);
+});
+
+test('blocks buyer deposit when on-chain USDC escrow terms mismatch', async () => {
+  const service = createServiceWithUsdcReader({
+    async getTrade() {
+      return {
+        buyer: '0x9999999999999999999999999999999999999999',
+        seller: '0x4444444444444444444444444444444444444444',
+        amountMicros: '1',
+        feeMicros: '1700000',
+        expiryUnixSeconds: 1778933700,
+        status: 'created',
+      };
+    },
+  });
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-mismatch',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-mismatch',
+  });
+
+  const verification = await service.verifyUsdcEscrowTerms(trade.tradeId);
+
+  assert.equal(verification.verified, false);
+  assert.equal(verification.depositAllowed, false);
+  assert.deepEqual(verification.mismatches.sort(), ['amount', 'buyer']);
 });
 
 test('projects public proof without private addresses', async () => {

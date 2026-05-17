@@ -88,7 +88,8 @@ Current delegation queue after PR #19:
 
 - Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.7`, `9.3.7.a`, `9.3.8`,
   `9.3.8.a`, and `9.3.9`.
-- Backend owner: `9.2.6`, `9.2.8`, `9.2.10`, and `9.2.11`.
+- Backend owner: claimed in `feat/otc-api-persistence` for `9.2.6`,
+  `9.2.8`, `9.2.10`, and `9.2.11`.
 - Frontend owner: `9.4.1` through `9.4.4`, then `9.4.6` through `9.4.8`
   after backend exposes deadline and on-chain verification state.
 - Settlement-worker owner: `9.5.1` through `9.5.9`, sequenced after indexer
@@ -119,12 +120,12 @@ Current delegation queue after PR #19:
 - [x] 9.2.3 Add idempotency keys for quote creation, quote acceptance, settlement transitions, callbacks, and admin actions.
 - [x] 9.2.4 Add mocked persistence tests before introducing production database plumbing.
 - [x] 9.2.5 Add HTTP routes around the API core.
-- [ ] 9.2.6 Replace in-memory persistence with the shared database layer.
+- [x] 9.2.6 Replace in-memory persistence with the shared database layer.
 - [x] 9.2.7 Add explicit deadline fields to the trade model: `quote_expires_at`, `pearl_funding_deadline`, `usdc_deposit_deadline`, `settlement_deadline`, and `refund_available_at`.
-- [ ] 9.2.8 Enforce that `createTrade()` on the EVM escrow is called only after quote acceptance / real match, never on page load or quote preview.
+- [x] 9.2.8 Enforce that `createTrade()` on the EVM escrow is called only after quote acceptance / real match, never on page load or quote preview.
 - [x] 9.2.9 Add internal statuses for edge cases: `late_prl_funding`, `usdc_refunded`, `prl_release_failed`, `amount_mismatch`, `reorged`, `stale_indexer`, and `unknown_spend`.
-- [ ] 9.2.10 Verify on-chain USDC escrow terms match backend trade terms before the frontend is allowed to show the buyer the deposit action.
-- [ ] 9.2.11 Persist every external side effect with idempotency key, source event ID, tx hash/outpoint, observed height/block, and actor.
+- [x] 9.2.10 Verify on-chain USDC escrow terms match backend trade terms before the frontend is allowed to show the buyer the deposit action.
+- [x] 9.2.11 Persist every external side effect with idempotency key, source event ID, tx hash/outpoint, observed height/block, and actor.
 
 ### 9.3 Pearl Indexer
 

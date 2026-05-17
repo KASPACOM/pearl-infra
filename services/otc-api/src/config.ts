@@ -12,5 +12,7 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     pearlEscrowConfirmations: Number(env.PEARL_ESCROW_CONFIRMATIONS ?? 3),
     baseEscrowContract: env.BASE_USDC_ESCROW_CONTRACT ?? '0x0000000000000000000000000000000000000000',
     baseNetwork: (env.BASE_USDC_ESCROW_NETWORK as OtcApiConfig['baseNetwork'] | undefined) ?? 'base_sepolia',
+    databaseUrl: env.OTC_API_DATABASE_URL,
+    baseRpcUrl: env.BASE_RPC_URL,
   };
 }
