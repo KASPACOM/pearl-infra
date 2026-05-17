@@ -1,13 +1,13 @@
 {
-  "name": "@kaspacom/pearl-script",
+  "name": "@kaspacom/pearl-escrow",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "bitcoinjs-lib": "^6.1.7",
-    "tiny-secp256k1": "^2.2.4"
+    "@kaspacom/pearl-script": "0.0.0",
+    "@kaspacom/pearl-sdk": "0.0.0"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
