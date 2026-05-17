@@ -74,6 +74,32 @@ Merged implementation checkpoints:
 - PR #11 — added watched-addresses schema plus `bridge_exit_requests`.
 - PR #12 — added watched-address repository, Postgres implementation, HTTP
   handler, and indexer boot wiring.
+- PR #13 — synced OTC/bridge checklist items and added product-level escrow
+  invariants.
+- PR #14 — hardened Base USDC escrow expiry tests and ownership checklist.
+- PR #15 — added watched-address repository and HTTP unit tests.
+- PR #16 — added the Hetzner watched-address integration smoke and localhost
+  HTTP bind.
+- PR #17 — added OTC trade deadlines and fail-closed edge states.
+- PR #18 — added the OTC operator edge-case runbook.
+- PR #19 — defined `wPRL` token controls for the Igra bridge track.
+
+Current delegation queue after PR #19:
+
+- Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.7`, `9.3.7.a`, `9.3.8`,
+  `9.3.8.a`, and `9.3.9`.
+- Backend owner: `9.2.6`, `9.2.8`, `9.2.10`, and `9.2.11`.
+- Frontend owner: `9.4.1` through `9.4.4`, then `9.4.6` through `9.4.8`
+  after backend exposes deadline and on-chain verification state.
+- Settlement-worker owner: `9.5.1` through `9.5.9`, sequenced after indexer
+  funding/spend detection and backend side-effect persistence.
+- Base Solidity/EVM owner: `9.6.5`, `9.6.7`, `9.6.8`, and `9.6.9`.
+- Pearl escrow specialist: `9.7.1` through `9.7.5`.
+- DevOps owner: `9.6.1`, `9.6.2`, `9.6.3`, and `9.6.11`.
+- Igra bridge Solidity/EVM owner: `10.6` and `10.7`.
+- Bridge service/federation owner: `10.8.4` through `10.11`, sequenced after
+  bridge contract shape is fixed.
+- Pool planning owner: `10.12`, deferred until entry/exit pilot evidence exists.
 
 ### 9.1 Base Smart Contract
 
@@ -106,7 +132,7 @@ Merged implementation checkpoints:
 - [x] 9.3.2 Add minimal block polling loop with mocked `pearld` RPC tests.
 - [x] 9.3.3 Add initial Postgres schema for blocks, indexer state, and escrow watches.
 - [x] 9.3.4 Add restart-safe Postgres sink and `next_height` state.
-- [ ] 9.3.5 Add escrow watch registration API and proof API. Generalized into a shared "watched addresses" primitive that also serves 10.8 (bridge deposits + reserves). See `docs/operations/escrow-watch-api.md` for the design.
+- [x] 9.3.5 Add escrow watch registration API and proof API. Generalized into a shared "watched addresses" primitive that also serves 10.8 (bridge deposits + reserves). See `docs/operations/escrow-watch-api.md` for the design.
   - [x] 9.3.5.a Migration `002_watched_addresses.sql` — drop `escrow_watches`, add `watched_addresses` + `address_observations` + `address_spends` + `bridge_exit_requests`.
   - [x] 9.3.5.b Repository module + types + in-memory fake. Completed in PR #12.
   - [x] 9.3.5.c Postgres implementation of repository. Completed in PR #12.
@@ -157,6 +183,14 @@ Merged implementation checkpoints:
 - [ ] 9.6.9 If Base mainnet is approved later, record mainnet contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link before enabling production settlement.
 - [x] 9.6.10 Add operator runbook for late PRL funding, refunded USDC, failed PRL release, unknown Pearl spend, stale indexer, and emergency pause.
 - [ ] 9.6.11 Add monitoring checks for trades past deadline, deposits close to expiry, manual-review backlog, duplicate events, and mismatched on-chain/backend terms.
+
+### 9.7 Pearl P2TR Escrow Package
+
+- [ ] 9.7.1 Define the `packages/pearl-escrow` package interface: P2TR escrow address, expected amount, funding outpoint, release transaction template, refund transaction template, signature metadata, and refund eligibility.
+- [ ] 9.7.2 Replace the OTC API mock Pearl escrow allocator with a mainnet-disabled real allocator that creates per-trade escrow packages.
+- [ ] 9.7.3 Add simnet fixture tests for escrow address derivation, funding output matching, release transaction construction, and refund transaction construction.
+- [ ] 9.7.4 Add signer/key-handling design for Pearl Taproot/XMSS constraints, operator custody boundaries, and recovery-package storage.
+- [ ] 9.7.5 Add broadcast, retry, fee, and idempotency hooks consumed by the settlement worker for PRL release/refund transactions.
 
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 
