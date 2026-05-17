@@ -3,6 +3,10 @@ import type { OtcApiConfig } from './types.js';
 export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiConfig {
   return {
     pearlNetwork: (env.PEARL_NETWORK as OtcApiConfig['pearlNetwork'] | undefined) ?? 'testnet2',
+    pearlEscrowAllocator: (env.PEARL_ESCROW_ALLOCATOR as OtcApiConfig['pearlEscrowAllocator'] | undefined) ?? 'mock',
+    pearlEscrowXpub: env.PEARL_ESCROW_XPUB,
+    pearlEscrowDerivationPrefix: env.PEARL_ESCROW_DERIVATION_PREFIX ?? '0',
+    allowMainnetPearlEscrow: env.PEARL_ESCROW_ALLOW_MAINNET === 'true',
     quoteTtlMs: Number(env.OTC_QUOTE_TTL_MS ?? 5 * 60 * 1000),
     pearlFundingTtlMs: Number(env.OTC_PEARL_FUNDING_TTL_MS ?? 15 * 60 * 1000),
     usdcDepositTtlMs: Number(env.OTC_USDC_DEPOSIT_TTL_MS ?? 15 * 60 * 1000),

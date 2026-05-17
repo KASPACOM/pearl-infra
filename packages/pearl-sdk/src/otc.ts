@@ -54,10 +54,18 @@ export interface PearlEscrowLeg {
   address: string;
   expectedAmountGrains: string;
   requiredConfirmations: number;
+  escrowScriptType?: 'p2tr';
+  internalPubkeyHex?: string;
+  taprootOutputScriptHex?: string;
+  derivationPath?: string;
   refundEligibleAfterHeight?: number;
+  refundEligibleAfterUnixTime?: number;
   fundingOutpoint?: string;
   releaseTxid?: string;
   refundTxid?: string;
+  releaseTemplate?: unknown;
+  refundTemplate?: unknown;
+  simnetVerified?: boolean;
 }
 
 export interface UsdcEscrowLeg {

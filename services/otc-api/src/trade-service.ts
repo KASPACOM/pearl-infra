@@ -35,6 +35,7 @@ export interface PearlEscrowAllocator {
     quote: OtcQuote;
     request: AcceptQuoteRequest;
     config: OtcApiConfig;
+    deadlines: OtcTradeDeadlines;
   }): OtcTrade['pearlEscrow'];
 }
 
@@ -44,6 +45,7 @@ export class MockPearlEscrowAllocator implements PearlEscrowAllocator {
     quote: OtcQuote;
     request: AcceptQuoteRequest;
     config: OtcApiConfig;
+    deadlines: OtcTradeDeadlines;
   }): OtcTrade['pearlEscrow'] {
     return {
       network: input.config.pearlNetwork,
@@ -135,6 +137,7 @@ export class OtcTradeService {
       quote,
       request,
       config: this.config,
+      deadlines,
     });
     const trade: OtcTrade = {
       tradeId,

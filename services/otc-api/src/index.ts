@@ -3,6 +3,7 @@ export * from './http.js';
 export * from './id.js';
 export * from './postgres.js';
 export * from './quote-engine.js';
+export * from './pearl-escrow-allocator.js';
 export * from './repository.js';
 export * from './trade-service.js';
 export * from './types.js';

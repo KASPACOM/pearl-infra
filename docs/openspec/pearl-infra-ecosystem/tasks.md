@@ -198,7 +198,7 @@ Current delegation queue after PR #24:
 ### 9.7 Pearl P2TR Escrow Package
 
 - [x] 9.7.1 Define the `packages/pearl-escrow` package interface: P2TR escrow address, expected amount, funding outpoint, release transaction template, refund transaction template, signature metadata, and refund eligibility.
-- [ ] 9.7.2 Replace the OTC API mock Pearl escrow allocator with a mainnet-disabled real allocator that creates per-trade escrow packages.
+- [x] 9.7.2 Replace the OTC API mock Pearl escrow allocator with a mainnet-disabled real allocator that creates per-trade escrow packages.
 - [ ] 9.7.3 Add simnet fixture tests for escrow address derivation, funding output matching, release transaction construction, and refund transaction construction.
 - [ ] 9.7.4 Add signer/key-handling design for Pearl Taproot/XMSS constraints, operator custody boundaries, and recovery-package storage.
 - [ ] 9.7.5 Add broadcast, retry, fee, and idempotency hooks consumed by the settlement worker for PRL release/refund transactions.

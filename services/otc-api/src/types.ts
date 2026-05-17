@@ -30,6 +30,10 @@ export interface AcceptQuoteRequest {
 
 export interface OtcApiConfig {
   pearlNetwork: OtcTrade['pearlEscrow']['network'];
+  pearlEscrowAllocator: 'mock' | 'p2tr_xpub';
+  pearlEscrowXpub?: string;
+  pearlEscrowDerivationPrefix: string;
+  allowMainnetPearlEscrow: boolean;
   quoteTtlMs: number;
   pearlFundingTtlMs: number;
   usdcDepositTtlMs: number;
