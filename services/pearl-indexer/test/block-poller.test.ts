@@ -4,7 +4,10 @@ import test from 'node:test';
 import {
   MemoryBlockSink,
   PearlBlockPoller,
+  type PearlBlockSink,
   type PearlBlockSource,
+  type PearlBlockSummary,
+  type SaveBlockResult,
 } from '../src/block-poller.ts';
 
 function createMockSource(tipHeight: number): PearlBlockSource {
@@ -51,4 +54,29 @@ test('does not reindex when next height is past tip', async () => {
   assert.equal(result.indexedBlocks, 0);
   assert.equal(result.nextHeight, 4);
   assert.deepEqual(sink.blocks, []);
+});
+
+test('stops at fork point and rewinds nextHeight when sink reports a reorg', async () => {
+  const reorgSink: PearlBlockSink = {
+    async saveBlock(block: PearlBlockSummary): Promise<SaveBlockResult> {
+      if (block.height === 2) {
+        return {
+          kind: 'reorg',
+          detachedFromHeight: 1,
+          indexedHash: 'hash-1-stale',
+          newPreviousHash: block.previousHash,
+        };
+      }
+      return { kind: 'saved' };
+    },
+  };
+  const poller = new PearlBlockPoller(createMockSource(5), reorgSink);
+
+  const result = await poller.pollOnce({ nextHeight: 1 });
+
+  // Block 1 saved. Block 2 detected reorg → stop, rewind nextHeight to 1.
+  assert.equal(result.indexedBlocks, 1);
+  assert.equal(result.reorgDetected, true);
+  assert.equal(result.reorgDetachedFromHeight, 1);
+  assert.equal(result.nextHeight, 1);
 });
