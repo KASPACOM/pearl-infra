@@ -20,8 +20,20 @@ Backend API for the Pearl OTC settlement desk.
 ## Current Implementation Slice
 
 - Framework-free TypeScript service core for quote creation, quote acceptance, trade transition, and public proof projection.
-- Node HTTP routes for quote creation, quote acceptance, trade reads, proof reads, and health checks.
-- In-memory repository for API/state-machine tests.
+- Node HTTP routes for quote creation, quote acceptance, trade reads, proof reads, USDC create-trade intents, USDC term verification, side-effect records, and health checks.
+- Postgres repository for quotes, trades, events, and side effects. The in-memory repository remains for API/state-machine tests and local no-DB runs.
 - Pluggable Pearl escrow allocator so the real Pearl escrow service can replace mocked escrow instructions later.
+- Optional Base RPC reader for verifying contract `trades(tradeKey)` terms before the frontend enables buyer deposit.
 
-The next step is replacing in-memory persistence with the shared database layer.
+## Persistence
+
+Apply `migrations/001_otc_state.sql` to the OTC database, then run with:
+
+```bash
+OTC_API_DATABASE_URL=postgres://...
+BASE_RPC_URL=https://...
+BASE_USDC_ESCROW_CONTRACT=0x...
+npm start --workspace @kaspacom/otc-api
+```
+
+If `OTC_API_DATABASE_URL` is unset, the service starts with in-memory state and logs that persistence is disabled. If `BASE_RPC_URL` is unset, USDC term verification returns unavailable and the frontend must not offer buyer deposit.

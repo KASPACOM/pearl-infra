@@ -43,6 +43,36 @@ export async function handleOtcHttpRequest(service: OtcTradeService, request: In
     return { statusCode: 200, body: await service.getPublicProof(parts[2]) };
   }
 
+  if (
+    method === 'POST' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'usdc-escrow' &&
+    parts[4] === 'create-intent'
+  ) {
+    return { statusCode: 200, body: await service.prepareUsdcCreateTrade(parts[2], await readJsonBody(request)) };
+  }
+
+  if (
+    method === 'GET' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'usdc-escrow' &&
+    parts[4] === 'verification'
+  ) {
+    return { statusCode: 200, body: await service.verifyUsdcEscrowTerms(parts[2]) };
+  }
+
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'trades' && parts[3] === 'side-effects') {
+    return { statusCode: 201, body: await service.recordSideEffect(parts[2], await readJsonBody(request)) };
+  }
+
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'trades' && parts[3] === 'side-effects') {
+    return { statusCode: 200, body: await service.listSideEffects(parts[2]) };
+  }
+
   return {
     statusCode: 404,
     body: {
@@ -104,6 +134,12 @@ function mapError(error: unknown): JsonResponse {
   }
   if (message.includes('expired') || message.includes('unsupported') || message.includes('not active')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
+  }
+  if (message.includes('deadline passed') || message.includes('terminal')) {
+    return { statusCode: 400, body: { error: 'bad_request', message } };
+  }
+  if (message.includes('unavailable')) {
+    return { statusCode: 503, body: { error: 'unavailable', message } };
   }
 
   return { statusCode: 500, body: { error: 'internal_error', message } };

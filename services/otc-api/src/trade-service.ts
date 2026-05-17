@@ -11,11 +11,23 @@ import {
   parseUsdcToMicros,
   type TradeEvent,
   type TradeState,
+  tradeStateIsTerminal,
 } from '@kaspacom/pearl-sdk';
 import { getUsdcEscrowNetworkConfig } from '@kaspacom/usdc-escrow-client';
 
 import type { OtcRepository } from './repository.js';
-import type { AcceptQuoteRequest, CreateQuoteRequest, OtcApiConfig, PublicTradeProof } from './types.js';
+import type {
+  AcceptQuoteRequest,
+  CreateQuoteRequest,
+  OtcApiConfig,
+  OtcSideEffect,
+  PrepareUsdcCreateTradeRequest,
+  PublicTradeProof,
+  RecordSideEffectRequest,
+  UsdcCreateTradeIntent,
+  UsdcEscrowVerification,
+} from './types.js';
+import type { UsdcEscrowReader } from './usdc-escrow-reader.js';
 
 export interface PearlEscrowAllocator {
   allocateEscrow(input: {
@@ -46,18 +58,25 @@ export class OtcTradeService {
   private readonly repository: OtcRepository;
   private readonly config: OtcApiConfig;
   private readonly pearlEscrowAllocator: PearlEscrowAllocator;
+  private readonly usdcEscrowReader?: UsdcEscrowReader;
   private readonly now: () => Date;
 
   constructor(
     repository: OtcRepository,
     config: OtcApiConfig,
     pearlEscrowAllocator: PearlEscrowAllocator = new MockPearlEscrowAllocator(),
+    usdcEscrowReaderOrNow?: UsdcEscrowReader | (() => Date),
     now: () => Date = () => new Date(),
   ) {
     this.repository = repository;
     this.config = config;
     this.pearlEscrowAllocator = pearlEscrowAllocator;
-    this.now = now;
+    if (typeof usdcEscrowReaderOrNow === 'function') {
+      this.now = usdcEscrowReaderOrNow;
+    } else {
+      this.usdcEscrowReader = usdcEscrowReaderOrNow;
+      this.now = now;
+    }
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
@@ -197,6 +216,111 @@ export class OtcTradeService {
     const events = await this.repository.listEvents(tradeId);
     return createPublicProof(trade, events, this.now());
   }
+
+  async prepareUsdcCreateTrade(
+    tradeId: string,
+    request: PrepareUsdcCreateTradeRequest,
+  ): Promise<UsdcCreateTradeIntent> {
+    const trade = await this.getTrade(tradeId);
+    if (tradeStateIsTerminal(trade.state)) {
+      throw new Error(`trade is terminal: ${trade.state}`);
+    }
+    if (new Date(trade.deadlines.usdcDepositDeadline).getTime() < this.now().getTime()) {
+      throw new Error('usdc deposit deadline passed');
+    }
+
+    const expected = createExpectedUsdcTerms(trade);
+    const sideEffect = await this.saveSideEffect(tradeId, {
+      idempotencyKey: request.idempotencyKey,
+      effectType: 'usdc_create_trade',
+      status: 'prepared',
+      actor: request.actor,
+      sourceEventId: createStableId('event', [tradeId, 'usdc_create_trade', request.idempotencyKey]),
+      chainId: trade.usdcEscrow.chainId,
+      metadata: {
+        contract: trade.usdcEscrow.contract,
+        trade_key: trade.usdcEscrow.tradeKey,
+        buyer: expected.buyer,
+        seller: expected.seller,
+        amount_micros: expected.amountMicros,
+        fee_micros: expected.feeMicros,
+        expiry_unix_seconds: expected.expiryUnixSeconds,
+      },
+    });
+
+    return {
+      tradeId,
+      contract: trade.usdcEscrow.contract,
+      chainId: trade.usdcEscrow.chainId,
+      tradeKey: trade.usdcEscrow.tradeKey,
+      buyer: expected.buyer,
+      seller: expected.seller,
+      amountMicros: expected.amountMicros,
+      feeMicros: expected.feeMicros,
+      expiryUnixSeconds: expected.expiryUnixSeconds,
+      sideEffect,
+    };
+  }
+
+  async verifyUsdcEscrowTerms(tradeId: string): Promise<UsdcEscrowVerification> {
+    if (!this.usdcEscrowReader) {
+      throw new Error('usdc escrow reader unavailable');
+    }
+    const trade = await this.getTrade(tradeId);
+    const expected = createExpectedUsdcTerms(trade);
+    const onChain = await this.usdcEscrowReader.getTrade(trade.usdcEscrow.tradeKey);
+    const mismatches = compareUsdcTerms(expected, onChain);
+    const verified = mismatches.length === 0;
+    return {
+      tradeId,
+      verified,
+      depositAllowed:
+        verified &&
+        onChain.status === 'created' &&
+        !tradeStateIsTerminal(trade.state) &&
+        new Date(trade.deadlines.usdcDepositDeadline).getTime() >= this.now().getTime(),
+      mismatches,
+      expected: {
+        contract: trade.usdcEscrow.contract,
+        chainId: trade.usdcEscrow.chainId,
+        tradeKey: trade.usdcEscrow.tradeKey,
+        usdcToken: trade.usdcEscrow.usdcToken,
+        ...expected,
+      },
+      onChain,
+    };
+  }
+
+  async recordSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
+    await this.getTrade(tradeId);
+    return this.saveSideEffect(tradeId, request);
+  }
+
+  async listSideEffects(tradeId: string): Promise<OtcSideEffect[]> {
+    await this.getTrade(tradeId);
+    return this.repository.listSideEffects(tradeId);
+  }
+
+  private async saveSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
+    const timestamp = this.now().toISOString();
+    const { sideEffect } = await this.repository.saveSideEffect({
+      idempotencyKey: request.idempotencyKey,
+      tradeId,
+      effectType: request.effectType,
+      status: request.status,
+      actor: request.actor,
+      ...(request.sourceEventId ? { sourceEventId: request.sourceEventId } : {}),
+      ...(request.txHash ? { txHash: request.txHash } : {}),
+      ...(request.outpoint ? { outpoint: request.outpoint } : {}),
+      ...(request.blockNumber == null ? {} : { blockNumber: request.blockNumber }),
+      ...(request.blockHash ? { blockHash: request.blockHash } : {}),
+      ...(request.chainId == null ? {} : { chainId: request.chainId }),
+      metadata: request.metadata ?? {},
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    return sideEffect;
+  }
 }
 
 export function createPublicProof(trade: OtcTrade, events: TradeEvent[], observedAt: Date): PublicTradeProof {
@@ -250,6 +374,36 @@ function createStableId(prefix: string, parts: readonly string[]): string {
 
 function createTradeKey(tradeId: string): string {
   return `0x${createHash('sha256').update(tradeId).digest('hex')}`;
+}
+
+function createExpectedUsdcTerms(trade: OtcTrade): {
+  buyer: string;
+  seller: string;
+  amountMicros: string;
+  feeMicros: string;
+  expiryUnixSeconds: number;
+} {
+  return {
+    buyer: trade.buyerUsdcAddress,
+    seller: trade.sellerUsdcReceiveAddress,
+    amountMicros: parseUsdcToMicros(trade.amountUsdc).toString(),
+    feeMicros: parseUsdcToMicros(trade.feeUsdc).toString(),
+    expiryUnixSeconds: Math.floor(new Date(trade.usdcEscrow.expiresAt).getTime() / 1000),
+  };
+}
+
+function compareUsdcTerms(
+  expected: ReturnType<typeof createExpectedUsdcTerms>,
+  onChain: NonNullable<UsdcEscrowVerification['onChain']>,
+): string[] {
+  const mismatches: string[] = [];
+  if (onChain.status === 'none') mismatches.push('status');
+  if (onChain.buyer.toLowerCase() !== expected.buyer.toLowerCase()) mismatches.push('buyer');
+  if (onChain.seller.toLowerCase() !== expected.seller.toLowerCase()) mismatches.push('seller');
+  if (onChain.amountMicros !== expected.amountMicros) mismatches.push('amount');
+  if (onChain.feeMicros !== expected.feeMicros) mismatches.push('fee');
+  if (onChain.expiryUnixSeconds !== expected.expiryUnixSeconds) mismatches.push('expiry');
+  return mismatches;
 }
 
 function createTradeDeadlines(quote: OtcQuote, acceptedAt: Date, config: OtcApiConfig): OtcTradeDeadlines {
