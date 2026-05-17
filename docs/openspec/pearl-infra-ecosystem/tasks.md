@@ -108,8 +108,8 @@
 - [ ] 9.6.2 Add indexer environment contract and secrets checklist.
 - [ ] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
 - [ ] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
-- [ ] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
+- [x] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
 - [x] 9.6.6 Deploy the Base Sepolia USDC escrow and record contract address, deploy tx, owner, fee recipient, and native USDC address.
 - [ ] 9.6.7 Complete two-step ownership transfer to the approved multisig or approved testnet owner and record acceptance evidence.
-- [ ] 9.6.8 Keep Base mainnet deployment blocked until contract review, Base Sepolia evidence, multisig ownership plan, and explicit Sione approval are all recorded.
+- [x] 9.6.8 Keep Base mainnet deployment blocked until contract review, Base Sepolia evidence, multisig ownership plan, and explicit Sione approval are all recorded.
 - [ ] 9.6.9 If Base mainnet is approved later, record mainnet contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link before enabling production settlement.
