@@ -1,10 +1,22 @@
 import type { PearlRpcClient } from '@kaspacom/pearl-rpc';
 
+export interface PearlBlockOutput {
+  txid: string;
+  vout: number;
+  amountGrains: string;
+  scriptPubKey: {
+    hex: string;
+    type?: string;
+    address?: string;
+  };
+}
+
 export interface PearlBlockSummary {
   hash: string;
   height: number;
   previousHash?: string;
   txids: string[];
+  outputs: PearlBlockOutput[];
   timestamp: string;
 }
 
@@ -104,12 +116,38 @@ export class PearlBlockPoller {
   }
 }
 
+interface PearldVerboseVout {
+  value: number | string;
+  n: number;
+  scriptPubKey: {
+    hex: string;
+    type?: string;
+    address?: string;
+  };
+}
+
+interface PearldVerboseTx {
+  txid: string;
+  vout: PearldVerboseVout[];
+}
+
 interface PearldVerboseBlock {
   hash: string;
   height: number;
   previousblockhash?: string;
-  tx: string[];
+  tx: PearldVerboseTx[];
   time: number;
+}
+
+function valueToGrains(value: number | string): string {
+  // Pearl follows the Bitcoin 8-decimal convention: 1 PRL = 1e8 grains.
+  // pearld returns the value as a number in some responses, a decimal string in
+  // others. Parse via fixed-string to avoid floating-point rounding (a value of
+  // 0.00000001 must round-trip exactly to 1n, not 0n).
+  const str = typeof value === 'number' ? value.toFixed(8) : value;
+  const [whole, fractionRaw = ''] = str.split('.');
+  const fraction = (fractionRaw + '00000000').slice(0, 8);
+  return (BigInt(whole) * 100_000_000n + BigInt(fraction)).toString();
 }
 
 export function createPearldBlockSource(client: PearlRpcClient): PearlBlockSource {
@@ -117,14 +155,32 @@ export function createPearldBlockSource(client: PearlRpcClient): PearlBlockSourc
     getBlockCount: () => client.call<number>('getblockcount'),
     getBlockHash: (height) => client.call<string>('getblockhash', [height]),
     async getBlock(hash) {
-      // Pearl's getblock takes an int verbosity (1 = JSON with txids, 2 = full tx data).
-      // The bool form `true` works on legacy Bitcoin Core but pearld rejects it as "must be type int".
-      const block = await client.call<PearldVerboseBlock>('getblock', [hash, 1]);
+      // verbosity=2 returns full tx data with vout[] so the funding scanner can
+      // match decoded P2TR addresses without a second RPC per tx.
+      const block = await client.call<PearldVerboseBlock>('getblock', [hash, 2]);
+      const txids: string[] = [];
+      const outputs: PearlBlockOutput[] = [];
+      for (const tx of block.tx) {
+        txids.push(tx.txid);
+        for (const vout of tx.vout) {
+          outputs.push({
+            txid: tx.txid,
+            vout: vout.n,
+            amountGrains: valueToGrains(vout.value),
+            scriptPubKey: {
+              hex: vout.scriptPubKey.hex,
+              type: vout.scriptPubKey.type,
+              address: vout.scriptPubKey.address,
+            },
+          });
+        }
+      }
       return {
         hash: block.hash,
         height: block.height,
         previousHash: block.previousblockhash,
-        txids: block.tx,
+        txids,
+        outputs,
         timestamp: new Date(block.time * 1000).toISOString(),
       };
     },
