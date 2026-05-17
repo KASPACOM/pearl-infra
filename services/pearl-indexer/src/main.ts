@@ -9,6 +9,12 @@ import {
 } from './block-poller.js';
 import { readPearlIndexerServiceConfig } from './config.js';
 import { PgBlockSink, pgPoolAdapter } from './postgres-sink.js';
+import { createWatchedAddressHttpServer } from './watched-address-http.js';
+import {
+  MemoryWatchedAddressRepository,
+  PgWatchedAddressRepository,
+  type WatchedAddressRepository,
+} from './watched-address-repository.js';
 
 const config = readPearlIndexerServiceConfig();
 
@@ -20,12 +26,15 @@ const rpcClient = new PearlRpcClient({
 
 let sink: PearlBlockSink;
 let resumeFrom: number;
+let watchRepo: WatchedAddressRepository;
 
 if (config.databaseUrl) {
   const pool = new pg.Pool({ connectionString: config.databaseUrl });
-  const pgSink = new PgBlockSink(pgPoolAdapter(pool));
+  const pgClient = pgPoolAdapter(pool);
+  const pgSink = new PgBlockSink(pgClient);
   sink = pgSink;
   resumeFrom = await pgSink.loadNextHeight(config.startHeight);
+  watchRepo = new PgWatchedAddressRepository(pgClient);
   console.log(
     JSON.stringify({
       msg: 'pearl-indexer postgres sink ready',
@@ -37,6 +46,7 @@ if (config.databaseUrl) {
 } else {
   sink = new MemoryBlockSink();
   resumeFrom = config.startHeight;
+  watchRepo = new MemoryWatchedAddressRepository();
   console.warn(
     JSON.stringify({
       msg: 'pearl-indexer running with in-memory sink — state will NOT survive restart',
@@ -44,6 +54,17 @@ if (config.databaseUrl) {
     }),
   );
 }
+
+const httpServer = createWatchedAddressHttpServer(watchRepo);
+httpServer.listen(config.httpPort, config.httpHost, () => {
+  console.log(
+    JSON.stringify({
+      msg: 'pearl-indexer http server listening',
+      host: config.httpHost,
+      port: config.httpPort,
+    }),
+  );
+});
 
 const poller = new PearlBlockPoller(createPearldBlockSource(rpcClient), sink);
 let nextHeight = resumeFrom;
