@@ -180,8 +180,8 @@ Current delegation queue after PR #19:
   - Native Base Sepolia USDC lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`.
   - Mock-token lifecycle evidence remains recorded in `contracts/usdc-escrow/deployments/base-sepolia-mock-run.json` as secondary isolated proof.
 - [x] 9.6.6 Deploy the Base Sepolia USDC escrow and record contract address, deploy tx, owner, fee recipient, and native USDC address.
-- [ ] 9.6.7 Complete two-step ownership transfer to the approved multisig or approved testnet owner and record acceptance evidence.
-  - `transferOwnership` is initiated to `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`; acceptance tx and final `owner()` evidence are still required.
+- [x] 9.6.7 Complete two-step ownership transfer to the approved multisig or approved testnet owner and record acceptance evidence.
+  - `transferOwnership` and `acceptOwnership` evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`; final `owner()` is `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`.
 - [x] 9.6.8 Keep Base mainnet deployment blocked until contract review, Base Sepolia evidence, multisig ownership plan, and explicit Sione approval are all recorded.
 - [ ] 9.6.9 If Base mainnet is approved later, record mainnet contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link before enabling production settlement.
 - [x] 9.6.10 Add operator runbook for late PRL funding, refunded USDC, failed PRL release, unknown Pearl spend, stale indexer, and emergency pause.

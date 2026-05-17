@@ -59,8 +59,8 @@ Current testnet deployment:
 | Chain ID | `84532` |
 | Contract | `0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9` |
 | Deploy tx | `0x450b48091ea67a46de25d3d40ab394e621011f7c099f01237052797eb730a981` |
-| Owner | `0x537dB45aC71bf8e1f1e28530732FAeabD607778E` |
-| Pending owner | `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978` |
+| Owner | `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978` |
+| Pending owner | `0x0000000000000000000000000000000000000000` |
 | Fee recipient | `0x537dB45aC71bf8e1f1e28530732FAeabD607778E` |
 | Native USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Explorer | `https://sepolia.basescan.org/address/0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9` |
@@ -74,8 +74,7 @@ That run used the original Base Sepolia escrow above with native Base Sepolia US
 4. owner release;
 5. `transferOwnership` to the requested testnet owner.
 
-The native-USDC run ended with trade status `Released`, seller receiving `10000000`, fee recipient receiving `1000000`, escrow balance `0`, and `pendingOwner()` set to `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`.
-The requested owner must call `acceptOwnership()` before ownership transfer is complete.
+The native-USDC run ended with trade status `Released`, seller receiving `10000000`, fee recipient receiving `1000000`, escrow balance `0`, `owner()` set to `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`, and `pendingOwner()` cleared to zero.
 
 Secondary mock-token lifecycle evidence is recorded in `deployments/base-sepolia-mock-run.json`.
 That run deployed a mock USDC-style ERC-20 for isolated contract lifecycle proof, then executed:
