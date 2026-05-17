@@ -54,6 +54,15 @@ services:
       PEARL_INDEXER_DATABASE_URL: postgres://pearl_indexer:${PEARL_INDEXER_POSTGRES_PASSWORD}@postgres:5432/pearl_indexer
       PEARL_INDEXER_START_HEIGHT: ${PEARL_INDEXER_START_HEIGHT:-0}
       PEARL_INDEXER_POLL_INTERVAL_MS: ${PEARL_INDEXER_POLL_INTERVAL_MS:-10000}
+      PEARL_INDEXER_HTTP_HOST: 0.0.0.0
+      PEARL_INDEXER_HTTP_PORT: 8088
+    ports:
+      # Watched-addresses API. Bound to host loopback only — the API is
+      # unauthenticated (phase 1) and lives on the docker private network for
+      # otc-api / the future bridge service to consume in-cluster. The host
+      # loopback exposure is just for the ops smoke harness; production traffic
+      # never leaves the docker network.
+      - "127.0.0.1:8088:8088"
 
 volumes:
   pearld-testnet2-data:
