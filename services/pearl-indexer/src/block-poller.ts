@@ -117,7 +117,9 @@ export function createPearldBlockSource(client: PearlRpcClient): PearlBlockSourc
     getBlockCount: () => client.call<number>('getblockcount'),
     getBlockHash: (height) => client.call<string>('getblockhash', [height]),
     async getBlock(hash) {
-      const block = await client.call<PearldVerboseBlock>('getblock', [hash, true]);
+      // Pearl's getblock takes an int verbosity (1 = JSON with txids, 2 = full tx data).
+      // The bool form `true` works on legacy Bitcoin Core but pearld rejects it as "must be type int".
+      const block = await client.call<PearldVerboseBlock>('getblock', [hash, 1]);
       return {
         hash: block.hash,
         height: block.height,
