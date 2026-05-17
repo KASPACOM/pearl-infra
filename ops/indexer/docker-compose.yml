@@ -64,6 +64,77 @@ services:
       # never leaves the docker network.
       - "127.0.0.1:8088:8088"
 
+  # ---------------------------------------------------------------------------
+  # Mainnet stack — runs alongside testnet2 on the same docker network. Lets us
+  # observe mainnet block flow + serve watched-addresses for OTC trades on
+  # mainnet PRL while testnet2 remains the testnet observation environment.
+  # Each network has its own pearld, its own postgres volume, and its own
+  # indexer container so a re-sync or migration on one network never touches
+  # the other. otc-api routes per-network by HTTP base URL (8088 vs 8089).
+  # ---------------------------------------------------------------------------
+
+  pearld-mainnet:
+    image: pearl-research-labs/pearld:latest
+    container_name: kaspacom-pearld-mainnet
+    restart: unless-stopped
+    volumes:
+      - pearld-mainnet-data:/root/.pearld
+    ports:
+      - "44108:44108"
+      - "127.0.0.1:44107:44107"
+    command:
+      - "--rpcuser=${PEARLD_RPC_USER:?set PEARLD_RPC_USER}"
+      - "--rpcpass=${PEARLD_RPC_PASS:?set PEARLD_RPC_PASS}"
+      - "--rpclisten=0.0.0.0:44107"
+      - "--listen=0.0.0.0:44108"
+      - "--miningaddr=${PEARLD_MINING_ADDRESS:?set PEARLD_MINING_ADDRESS}"
+      - "--txindex"
+      - "--debuglevel=info"
+      # Upstream warns against --notls on mainnet because public RPC + cleartext
+      # creds is a foot-gun. Ours is bound to host loopback + docker private
+      # network only, never publicly reachable, so the threat model the warning
+      # targets does not apply here. Re-evaluate if RPC ever gets exposed beyond
+      # 127.0.0.1.
+      - "--notls"
+
+  postgres-mainnet:
+    image: postgres:16-alpine
+    container_name: kaspacom-pearl-indexer-mainnet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pearl_indexer
+      POSTGRES_USER: pearl_indexer
+      POSTGRES_PASSWORD: ${PEARL_INDEXER_POSTGRES_PASSWORD:?set PEARL_INDEXER_POSTGRES_PASSWORD}
+    volumes:
+      - pearl-indexer-mainnet-postgres-data:/var/lib/postgresql/data
+      - ../../services/pearl-indexer/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  pearl-indexer-mainnet:
+    build:
+      context: ../..
+      dockerfile: services/pearl-indexer/Dockerfile
+    container_name: kaspacom-pearl-indexer-mainnet
+    restart: unless-stopped
+    depends_on:
+      - pearld-mainnet
+      - postgres-mainnet
+    environment:
+      PEARL_NETWORK: mainnet
+      PEARLD_RPC_URL: http://pearld-mainnet:44107
+      PEARLD_RPC_USER: ${PEARLD_RPC_USER:?set PEARLD_RPC_USER}
+      PEARLD_RPC_PASS: ${PEARLD_RPC_PASS:?set PEARLD_RPC_PASS}
+      PEARL_INDEXER_DATABASE_URL: postgres://pearl_indexer:${PEARL_INDEXER_POSTGRES_PASSWORD}@postgres-mainnet:5432/pearl_indexer
+      PEARL_INDEXER_START_HEIGHT: ${PEARL_INDEXER_MAINNET_START_HEIGHT:-0}
+      PEARL_INDEXER_POLL_INTERVAL_MS: ${PEARL_INDEXER_POLL_INTERVAL_MS:-10000}
+      PEARL_INDEXER_HTTP_HOST: 0.0.0.0
+      PEARL_INDEXER_HTTP_PORT: 8088
+    ports:
+      - "127.0.0.1:8089:8088"
+
 volumes:
   pearld-testnet2-data:
   pearl-indexer-postgres-data:
+  pearld-mainnet-data:
+  pearl-indexer-mainnet-postgres-data:
