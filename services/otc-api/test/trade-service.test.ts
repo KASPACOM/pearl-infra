@@ -10,6 +10,9 @@ import type { UsdcEscrowReader } from '../src/usdc-escrow-reader.ts';
 
 const config: OtcApiConfig = {
   pearlNetwork: 'testnet2',
+  pearlEscrowAllocator: 'mock',
+  pearlEscrowDerivationPrefix: '0',
+  allowMainnetPearlEscrow: false,
   quoteTtlMs: 5 * 60 * 1000,
   pearlFundingTtlMs: 10 * 60 * 1000,
   usdcDepositTtlMs: 15 * 60 * 1000,

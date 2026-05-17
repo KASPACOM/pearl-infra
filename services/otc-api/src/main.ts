@@ -4,6 +4,7 @@ import { InMemoryOtcRepository, PgOtcRepository } from './repository.js';
 import { OtcTradeService } from './trade-service.js';
 import { readOtcApiConfig } from './config.js';
 import { createOtcHttpServer } from './http.js';
+import { createConfiguredPearlEscrowAllocator } from './pearl-escrow-allocator.js';
 import { pgPoolAdapter } from './postgres.js';
 import { EthersUsdcEscrowReader } from './usdc-escrow-reader.js';
 
@@ -15,7 +16,8 @@ const repository = config.databaseUrl
 const usdcEscrowReader = config.baseRpcUrl
   ? new EthersUsdcEscrowReader(config.baseRpcUrl, config.baseEscrowContract)
   : undefined;
-const service = new OtcTradeService(repository, config, undefined, usdcEscrowReader);
+const pearlEscrowAllocator = createConfiguredPearlEscrowAllocator(config);
+const service = new OtcTradeService(repository, config, pearlEscrowAllocator, usdcEscrowReader);
 const server = createOtcHttpServer(service);
 
 server.listen(port, () => {
@@ -24,6 +26,7 @@ server.listen(port, () => {
       msg: 'otc-api listening',
       port,
       persistence: config.databaseUrl ? 'postgres' : 'memory',
+      pearlEscrowAllocator: config.pearlEscrowAllocator,
       usdcEscrowReader: config.baseRpcUrl ? 'ethers' : 'disabled',
     }),
   );

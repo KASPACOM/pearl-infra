@@ -24,6 +24,7 @@ Backend API for the Pearl OTC settlement desk.
 - Postgres repository for quotes, trades, events, and side effects. The in-memory repository remains for API/state-machine tests and local no-DB runs.
 - Pluggable Pearl escrow allocator so the real Pearl escrow service can replace mocked escrow instructions later.
 - Optional Base RPC reader for verifying contract `trades(tradeKey)` terms before the frontend enables buyer deposit.
+- Configured Pearl escrow allocation. Local runs default to mock addresses; set `PEARL_ESCROW_ALLOCATOR=p2tr_xpub` and `PEARL_ESCROW_XPUB=<xpub/tpub>` to derive one non-hardened P2TR child address per accepted trade.
 
 ## Persistence
 
