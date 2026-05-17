@@ -10,6 +10,16 @@ import type {
   SettlementSnapshot,
 } from './types.js';
 
+const MANUAL_REVIEW_TRADE_STATES: readonly TradeState[] = [
+  'late_prl_funding',
+  'usdc_refunded',
+  'prl_release_failed',
+  'amount_mismatch',
+  'reorged',
+  'stale_indexer',
+  'unknown_spend',
+];
+
 export function createSettlementSnapshot(input: {
   trade: SettlementSnapshot['trade'];
   pearl: PearlProofState;
@@ -117,7 +127,15 @@ function evaluateSettlementSnapshot(
     };
   }
 
-  if (snapshot.pearl.status === 'released') {
+  if (snapshot.pearl.status === 'released' && snapshot.base.status === 'deposited') {
+    return {
+      action: 'prepare_usdc_release',
+      toState: 'released',
+      reason: 'PRL release is confirmed and USDC remains deposited',
+    };
+  }
+
+  if (snapshot.pearl.status === 'released' && snapshot.base.status === 'released') {
     return {
       action: 'mark_released',
       toState: 'released',
@@ -133,7 +151,7 @@ function evaluateSettlementSnapshot(
     };
   }
 
-  if (snapshot.pearl.status === 'confirmed' && snapshot.base.status === 'deposited') {
+  if (isPrlReleaseAllowed(snapshot)) {
     return {
       action: 'prepare_prl_release',
       toState: 'release_pending',
@@ -160,8 +178,17 @@ function evaluateSettlementSnapshot(
 }
 
 function getManualReviewReason(snapshot: SettlementSnapshot): string | undefined {
+  if (MANUAL_REVIEW_TRADE_STATES.includes(snapshot.trade.state)) {
+    return `trade is already in manual-review state: ${snapshot.trade.state}`;
+  }
   if (['amount_mismatch', 'reorged', 'unknown_spend', 'late'].includes(snapshot.pearl.status)) {
     return `Pearl proof is unsafe: ${snapshot.pearl.status}`;
+  }
+  if (
+    ['seen', 'confirmed'].includes(snapshot.pearl.status) &&
+    new Date(snapshot.pearl.observedAt).getTime() > new Date(snapshot.trade.deadlines.pearlFundingDeadline).getTime()
+  ) {
+    return 'Pearl funding was observed after the funding deadline';
   }
   if (['reorged', 'stale'].includes(snapshot.base.status)) {
     return `Base escrow observation is unsafe: ${snapshot.base.status}`;
@@ -176,6 +203,17 @@ function getManualReviewReason(snapshot: SettlementSnapshot): string | undefined
     return 'PRL release and USDC refund both observed';
   }
   return undefined;
+}
+
+function isPrlReleaseAllowed(snapshot: SettlementSnapshot): boolean {
+  return (
+    snapshot.trade.state === 'usdc_escrow_confirmed' &&
+    snapshot.pearl.status === 'confirmed' &&
+    snapshot.base.status === 'deposited' &&
+    snapshot.pearl.confirmations >= snapshot.trade.pearlEscrow.requiredConfirmations &&
+    snapshot.base.confirmations >= snapshot.trade.usdcEscrow.requiredConfirmations &&
+    new Date(snapshot.pearl.observedAt).getTime() <= new Date(snapshot.trade.deadlines.pearlFundingDeadline).getTime()
+  );
 }
 
 function sha256Json(value: unknown): string {

@@ -21,7 +21,7 @@ test('joins mocked Pearl proof state with mocked Base escrow event into a releas
       txid: 'tx1',
       outpoint: 'tx1:0',
       confirmations: 6,
-      observedAt: '2026-05-17T17:50:00.000Z',
+      observedAt: '2026-05-17T16:50:00.000Z',
     },
     base: {
       status: 'deposited',
@@ -51,7 +51,7 @@ test('records settlement decisions idempotently by decision key', async () => {
       sourceEventId: 'pearl:funding:tx2:0',
       outpoint: 'tx2:0',
       confirmations: 6,
-      observedAt: '2026-05-17T17:50:00.000Z',
+      observedAt: '2026-05-17T16:50:00.000Z',
     },
     base: {
       status: 'created',
@@ -139,12 +139,106 @@ test('prepares PRL refund only after refund availability when USDC was never dep
   assert.equal(afterDeadline.toState, 'refund_pending');
 });
 
+test('enforces PRL release guard across state, deadlines, confirmations, and deposited USDC', () => {
+  const allowed = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'usdc_escrow_confirmed' }),
+      pearl: pearlProof({ status: 'confirmed', confirmations: 6, observedAt: '2026-05-17T16:50:00.000Z' }),
+      base: baseEvent({ status: 'deposited', confirmations: 12 }),
+      now: NOW,
+    }),
+    NOW,
+  );
+  const underconfirmed = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'usdc_escrow_confirmed' }),
+      pearl: pearlProof({ status: 'confirmed', confirmations: 5, observedAt: '2026-05-17T16:50:00.000Z' }),
+      base: baseEvent({ status: 'deposited', confirmations: 12 }),
+      now: NOW,
+    }),
+    NOW,
+  );
+  const wrongState = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'pearl_escrow_confirmed' }),
+      pearl: pearlProof({ status: 'confirmed', confirmations: 6, observedAt: '2026-05-17T16:50:00.000Z' }),
+      base: baseEvent({ status: 'deposited', confirmations: 12 }),
+      now: NOW,
+    }),
+    NOW,
+  );
+  const lateObserved = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'usdc_escrow_confirmed' }),
+      pearl: pearlProof({ status: 'confirmed', confirmations: 6, observedAt: '2026-05-17T17:05:00.000Z' }),
+      base: baseEvent({ status: 'deposited', confirmations: 12 }),
+      now: NOW,
+    }),
+    NOW,
+  );
+
+  assert.equal(allowed.action, 'prepare_prl_release');
+  assert.equal(underconfirmed.action, 'wait');
+  assert.equal(wrongState.action, 'wait');
+  assert.equal(lateObserved.action, 'manual_review');
+  assert.match(lateObserved.reason, /after the funding deadline/);
+});
+
+test('never releases PRL when buyer refunded USDC and seller funds Pearl late', () => {
+  const decision = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'usdc_refunded' }),
+      pearl: pearlProof({ status: 'late', confirmations: 6, observedAt: '2026-05-17T17:45:00.000Z' }),
+      base: baseEvent({ status: 'refunded', confirmations: 12 }),
+      now: NOW,
+    }),
+    NOW,
+  );
+
+  assert.equal(decision.action, 'manual_review');
+  assert.notEqual(decision.action, 'prepare_prl_release');
+});
+
+test('keeps USDC escrowed when PRL release broadcast failed', () => {
+  const decision = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'prl_release_failed' }),
+      pearl: pearlProof({ status: 'confirmed', confirmations: 6, observedAt: '2026-05-17T16:50:00.000Z' }),
+      base: baseEvent({ status: 'deposited', confirmations: 12 }),
+      now: NOW,
+    }),
+    NOW,
+  );
+
+  assert.equal(decision.action, 'manual_review');
+  assert.notEqual(decision.action, 'prepare_usdc_release');
+});
+
+test('prepares USDC release exactly once after PRL release despite duplicate observations', async () => {
+  const repository = new InMemorySettlementDecisionRepository();
+  const snapshot = createSettlementSnapshot({
+    trade: tradeFixture({ state: 'release_pending' }),
+    pearl: pearlProof({ status: 'released', sourceEventId: 'pearl:release:tx3', confirmations: 6 }),
+    base: baseEvent({ status: 'deposited', sourceEventId: 'base:deposit:0x333', confirmations: 12 }),
+    now: NOW,
+  });
+
+  const first = await recordSettlementDecision(repository, snapshot, NOW);
+  const duplicate = await recordSettlementDecision(repository, snapshot, new Date('2026-05-17T18:10:00.000Z'));
+
+  assert.equal(first.created, true);
+  assert.equal(first.decision.action, 'prepare_usdc_release');
+  assert.equal(first.decision.toState, 'released');
+  assert.equal(duplicate.created, false);
+  assert.equal(duplicate.decision.decisionId, first.decision.decisionId);
+});
+
 function pearlProof(overrides: Partial<Parameters<typeof createSettlementSnapshot>[0]['pearl']> = {}) {
   return {
     status: 'confirmed' as const,
     sourceEventId: 'pearl:event',
     confirmations: 6,
-    observedAt: '2026-05-17T17:50:00.000Z',
+    observedAt: '2026-05-17T16:50:00.000Z',
     ...overrides,
   };
 }

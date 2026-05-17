@@ -52,6 +52,7 @@ export type SettlementDecisionAction =
   | 'manual_review'
   | 'prepare_prl_release'
   | 'prepare_prl_refund'
+  | 'prepare_usdc_release'
   | 'mark_released'
   | 'mark_refunded';
 

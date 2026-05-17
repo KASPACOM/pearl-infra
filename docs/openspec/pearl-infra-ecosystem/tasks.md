@@ -175,11 +175,11 @@ Current delegation queue after PR #24:
 - [x] 9.5.2 Implement idempotent release/refund decision records.
 - [x] 9.5.3 Fail closed to manual review on inconsistent, stale, or reorged observations.
 - [x] 9.5.4 Add tests for duplicate events and inconsistent settlement legs.
-- [ ] 9.5.5 Enforce release guard: PRL release is allowed only when trade is active, USDC is still deposited, PRL funding was observed before the Pearl funding deadline, both legs meet confirmation thresholds, and no refund/reorg/manual-review flag exists.
-- [ ] 9.5.6 Add regression test: buyer deposits USDC, expiry passes, buyer refunds, seller funds PRL late; worker must never release PRL to buyer.
-- [ ] 9.5.7 Add regression test: PRL funded, buyer never deposits USDC; worker must choose PRL refund path after deadline.
-- [ ] 9.5.8 Add regression test: both legs funded but PRL release broadcast fails; USDC must remain escrowed or be refunded, never released to seller.
-- [ ] 9.5.9 Add regression test: PRL release confirmed and USDC release is submitted exactly once despite duplicate indexer/EVM events.
+- [x] 9.5.5 Enforce release guard: PRL release is allowed only when trade is active, USDC is still deposited, PRL funding was observed before the Pearl funding deadline, both legs meet confirmation thresholds, and no refund/reorg/manual-review flag exists.
+- [x] 9.5.6 Add regression test: buyer deposits USDC, expiry passes, buyer refunds, seller funds PRL late; worker must never release PRL to buyer.
+- [x] 9.5.7 Add regression test: PRL funded, buyer never deposits USDC; worker must choose PRL refund path after deadline.
+- [x] 9.5.8 Add regression test: both legs funded but PRL release broadcast fails; USDC must remain escrowed or be refunded, never released to seller.
+- [x] 9.5.9 Add regression test: PRL release confirmed and USDC release is submitted exactly once despite duplicate indexer/EVM events.
 
 ### 9.6 Ops And Release Gates
 
