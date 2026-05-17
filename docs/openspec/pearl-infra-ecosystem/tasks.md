@@ -83,15 +83,25 @@ Merged implementation checkpoints:
 - PR #17 — added OTC trade deadlines and fail-closed edge states.
 - PR #18 — added the OTC operator edge-case runbook.
 - PR #19 — defined `wPRL` token controls for the Igra bridge track.
+- PR #20 — synced implementation checklist after PRs #13-#19.
+- PR #21 — added the indexer mainnet stack alongside testnet2.
+- PR #22 — split `PEARLD_MAINNET_MINING_ADDRESS` env so the mainnet pearld
+  container stops crash-looping on a testnet-encoded placeholder. Mainnet
+  observation is live on Hetzner (port 8089).
+- PR #24 — replaced in-memory OTC API persistence with a Postgres
+  repository, gated `createTrade()` on real quote acceptance, added the
+  on-chain USDC term verifier, and added the side-effect ledger. Closes
+  9.2.6, 9.2.8, 9.2.10, and 9.2.11.
 
-Current delegation queue after PR #19:
+Current delegation queue after PR #24:
 
 - Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.7`, `9.3.7.a`, `9.3.8`,
   `9.3.8.a`, and `9.3.9`.
-- Backend owner: claimed in `feat/otc-api-persistence` for `9.2.6`,
-  `9.2.8`, `9.2.10`, and `9.2.11`.
-- Frontend owner: `9.4.1` through `9.4.4`, then `9.4.6` through `9.4.8`
-  after backend exposes deadline and on-chain verification state.
+- Backend owner: 9.2.x complete in PR #24. Next: align with frontend on
+  surfacing the deadline/edge-state model exposed by `services/otc-api`.
+- Frontend owner: `9.4.1` through `9.4.4`, then `9.4.6` through `9.4.8`.
+  Unblocked now that backend exposes deadlines (9.2.7), edge states
+  (9.2.9), and the on-chain USDC term verifier (9.2.10).
 - Settlement-worker owner: `9.5.1` through `9.5.9`, sequenced after indexer
   funding/spend detection and backend side-effect persistence.
 - Base Solidity/EVM owner: `9.6.5`, `9.6.7`, `9.6.8`, and `9.6.9`.
