@@ -272,22 +272,93 @@ contract PrlUsdcEscrowTest {
         escrow.pause();
     }
 
+    function testMultipleTradeIdsSettleIndependently() external {
+        bytes32 releaseTradeId = keccak256("parallel-release");
+        bytes32 refundTradeId = keccak256("parallel-refund");
+        bytes32 cancelTradeId = keccak256("parallel-cancel");
+        address releaseBuyer = address(0xB001);
+        address refundBuyer = address(0xB002);
+        address releaseSeller = address(0x5E1101);
+        address refundSeller = address(0x5E1102);
+        uint256 releaseAmount = 100e6;
+        uint256 releaseFee = 1e6;
+        uint256 refundAmount = 200e6;
+        uint256 refundFee = 2e6;
+
+        _createTrade(releaseTradeId, releaseBuyer, releaseSeller, releaseAmount, releaseFee);
+        _createTrade(refundTradeId, refundBuyer, refundSeller, refundAmount, refundFee);
+        _createTrade(cancelTradeId, address(0xB003), address(0x5E1103), 300e6, 3e6);
+        _fundApproveAndDeposit(releaseTradeId, releaseBuyer, releaseAmount + releaseFee);
+        _fundApproveAndDeposit(refundTradeId, refundBuyer, refundAmount + refundFee);
+
+        escrow.release(releaseTradeId);
+        VM.warp(_futureExpiry() + 1);
+        VM.prank(refundBuyer);
+        escrow.refund(refundTradeId);
+        escrow.cancelExpired(cancelTradeId);
+
+        _assertEq(usdc.balanceOf(releaseSeller), releaseAmount);
+        _assertEq(usdc.balanceOf(FEE_RECIPIENT), releaseFee);
+        _assertEq(usdc.balanceOf(refundBuyer), refundAmount + refundFee);
+        _assertEq(usdc.balanceOf(refundSeller), 0);
+        _assertEq(usdc.balanceOf(address(escrow)), 0);
+        _assertStatus(_status(releaseTradeId), PrlUsdcEscrow.TradeStatus.Released);
+        _assertStatus(_status(refundTradeId), PrlUsdcEscrow.TradeStatus.Refunded);
+        _assertStatus(_status(cancelTradeId), PrlUsdcEscrow.TradeStatus.Cancelled);
+    }
+
+    function testTradeIdsCannotBeReusedAfterTerminalStates() external {
+        bytes32 releasedTradeId = keccak256("released-key");
+        bytes32 refundedTradeId = keccak256("refunded-key");
+        bytes32 cancelledTradeId = keccak256("cancelled-key");
+
+        _createTrade(releasedTradeId, BUYER, SELLER, AMOUNT, FEE);
+        _fundApproveAndDeposit(releasedTradeId, BUYER, AMOUNT + FEE);
+        escrow.release(releasedTradeId);
+
+        _createTrade(refundedTradeId, address(0xB004), address(0x5E1104), AMOUNT, FEE);
+        _fundApproveAndDeposit(refundedTradeId, address(0xB004), AMOUNT + FEE);
+        escrow.refund(refundedTradeId);
+
+        _createTrade(cancelledTradeId, address(0xB005), address(0x5E1105), AMOUNT, FEE);
+        VM.warp(_futureExpiry() + 1);
+        escrow.cancelExpired(cancelledTradeId);
+
+        _expectTradeExists(releasedTradeId);
+        _expectTradeExists(refundedTradeId);
+        _expectTradeExists(cancelledTradeId);
+    }
+
     function _createTrade() private {
-        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+        _createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE);
+    }
+
+    function _createTrade(bytes32 tradeId, address buyer, address seller, uint256 amount, uint256 fee) private {
+        escrow.createTrade(tradeId, buyer, seller, amount, fee, _futureExpiry());
     }
 
     function _depositTrade() private {
         _createTrade();
-        _fundAndApproveBuyer(AMOUNT + FEE);
-
-        VM.prank(BUYER);
-        escrow.deposit(TRADE_ID);
+        _fundApproveAndDeposit(TRADE_ID, BUYER, AMOUNT + FEE);
     }
 
     function _fundAndApproveBuyer(uint256 amount) private {
         usdc.mint(BUYER, amount);
         VM.prank(BUYER);
         usdc.approve(address(escrow), amount);
+    }
+
+    function _fundApproveAndDeposit(bytes32 tradeId, address buyer, uint256 amount) private {
+        usdc.mint(buyer, amount);
+        VM.prank(buyer);
+        usdc.approve(address(escrow), amount);
+        VM.prank(buyer);
+        escrow.deposit(tradeId);
+    }
+
+    function _expectTradeExists(bytes32 tradeId) private {
+        VM.expectRevert(bytes("trade exists"));
+        escrow.createTrade(tradeId, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
     }
 
     function _futureExpiry() private view returns (uint64) {
