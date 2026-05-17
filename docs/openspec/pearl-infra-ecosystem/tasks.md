@@ -96,6 +96,7 @@
 - [ ] 9.4.2 Add checkout status page using mocked API responses.
 - [ ] 9.4.3 Add public proof page for Pearl and Base settlement legs.
 - [ ] 9.4.4 Add admin/manual-review shell for stuck trades.
+- [x] 9.4.5 Add typed OTC API client and Base USDC escrow ethers call builders using the shared ABI/config.
 
 ### 9.5 Settlement Worker
 

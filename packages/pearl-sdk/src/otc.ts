@@ -91,6 +91,31 @@ export interface TradeEvent {
   metadata?: Record<string, string | number | boolean | null>;
 }
 
+export interface PublicTradeProof {
+  tradeId: string;
+  status: OtcTrade['state'];
+  quote: Pick<OtcQuote, 'side' | 'amountPrl' | 'amountUsdc' | 'feePrl' | 'feeUsdc' | 'priceUsdcPerPrl'>;
+  pearl: {
+    escrowAddress: string;
+    escrowOutpoint?: string;
+    escrowConfirmations: number;
+    releaseTxid?: string;
+    refundTxid?: string;
+  };
+  base: {
+    chainId: number;
+    contract: string;
+    usdcToken: string;
+    tradeKey: string;
+    depositTxHash?: string;
+    releaseTxHash?: string;
+    refundTxHash?: string;
+    requiredConfirmations: number;
+  };
+  events: TradeEvent[];
+  observedAt: string;
+}
+
 const ALLOWED_TRANSITIONS: Readonly<Record<TradeState, readonly TradeState[]>> = {
   quoted: ['quote_expired', 'pearl_escrow_pending', 'cancelled', 'disputed', 'failed_manual_review'],
   quote_expired: [],

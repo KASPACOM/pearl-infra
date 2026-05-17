@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "echo \"otc-web scaffold: no app code yet\"",
-    "test": "echo \"otc-web scaffold: no tests yet\""
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@kaspacom/pearl-sdk": "0.0.0",
+    "@kaspacom/usdc-escrow-client": "0.0.0",
+    "ethers": "^6.16.0"
   }
 }

@@ -1,11 +1,12 @@
 import type {
-  OtcQuote,
   OtcQuoteSide,
   OtcTrade,
+  PublicTradeProof,
   SettlementAsset,
   SettlementNetwork,
-  TradeEvent,
 } from '@kaspacom/pearl-sdk';
+
+export type { PublicTradeProof };
 
 export type QuoteRequestStatus = 'pending' | 'created';
 
@@ -25,31 +26,6 @@ export interface AcceptQuoteRequest {
   sellerPearlRefundAddress: string;
   sellerUsdcReceiveAddress: string;
   clientRequestId: string;
-}
-
-export interface PublicTradeProof {
-  tradeId: string;
-  status: OtcTrade['state'];
-  quote: Pick<OtcQuote, 'side' | 'amountPrl' | 'amountUsdc' | 'feePrl' | 'feeUsdc' | 'priceUsdcPerPrl'>;
-  pearl: {
-    escrowAddress: string;
-    escrowOutpoint?: string;
-    escrowConfirmations: number;
-    releaseTxid?: string;
-    refundTxid?: string;
-  };
-  base: {
-    chainId: number;
-    contract: string;
-    usdcToken: string;
-    tradeKey: string;
-    depositTxHash?: string;
-    releaseTxHash?: string;
-    refundTxHash?: string;
-    requiredConfirmations: number;
-  };
-  events: TradeEvent[];
-  observedAt: string;
 }
 
 export interface OtcApiConfig {
