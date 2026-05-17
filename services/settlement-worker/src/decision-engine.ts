@@ -130,7 +130,6 @@ function evaluateSettlementSnapshot(
   if (snapshot.pearl.status === 'released' && snapshot.base.status === 'deposited') {
     return {
       action: 'prepare_usdc_release',
-      toState: 'released',
       reason: 'PRL release is confirmed and USDC remains deposited',
     };
   }

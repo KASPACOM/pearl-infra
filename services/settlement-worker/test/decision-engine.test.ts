@@ -228,7 +228,7 @@ test('prepares USDC release exactly once after PRL release despite duplicate obs
 
   assert.equal(first.created, true);
   assert.equal(first.decision.action, 'prepare_usdc_release');
-  assert.equal(first.decision.toState, 'released');
+  assert.equal(first.decision.toState, undefined);
   assert.equal(duplicate.created, false);
   assert.equal(duplicate.decision.decisionId, first.decision.decisionId);
 });
