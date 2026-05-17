@@ -24,11 +24,24 @@ export class WatchNotFoundError extends Error {
   }
 }
 
+export interface RecordObservationInput {
+  outpoint: string;
+  watchId: string;
+  blockHash: string;
+  height: number;
+  amountGrains: string;
+  classification: string;
+}
+
 export interface WatchedAddressRepository {
   register(input: RegisterWatchInput): Promise<{ watch: WatchedAddress; created: boolean }>;
   get(watchId: string): Promise<WatchedAddressWithHistory | null>;
   close(watchId: string): Promise<WatchedAddress>;
   listActive(purposes: WatchPurpose[]): Promise<WatchedAddress[]>;
+  findActiveByAddress(network: string, address: string): Promise<WatchedAddress[]>;
+  recordObservation(input: RecordObservationInput): Promise<AddressObservation>;
+  advanceConfirmations(tipHeight: number): Promise<number>;
+  detachObservationsForBlock(blockHash: string): Promise<number>;
 }
 
 type WatchedAddressRow = Record<string, unknown> & {
@@ -214,6 +227,74 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
     return result.rows.map(rowToWatch);
   }
 
+  async findActiveByAddress(network: string, address: string): Promise<WatchedAddress[]> {
+    const result = await this.client.query<WatchedAddressRow>(
+      `SELECT watch_id, purpose, network, address, required_confirmations, status,
+              metadata, created_at, updated_at
+         FROM watched_addresses
+        WHERE status = 'active' AND network = $1 AND address = $2`,
+      [network, address],
+    );
+    return result.rows.map(rowToWatch);
+  }
+
+  async recordObservation(input: RecordObservationInput): Promise<AddressObservation> {
+    const result = await this.client.query<AddressObservationRow>(
+      `INSERT INTO address_observations (
+         outpoint, watch_id, block_hash, height, amount_grains,
+         confirmations, match_status, classification
+       ) VALUES ($1, $2, $3, $4, $5, 1, 'pending', $6)
+       ON CONFLICT (outpoint) DO NOTHING
+       RETURNING outpoint, watch_id, block_hash, height, amount_grains,
+                 confirmations, match_status, observed_at`,
+      [
+        input.outpoint,
+        input.watchId,
+        input.blockHash,
+        input.height,
+        input.amountGrains,
+        input.classification,
+      ],
+    );
+    if ((result.rowCount ?? 0) === 0) {
+      const existing = await this.client.query<AddressObservationRow>(
+        `SELECT outpoint, watch_id, block_hash, height, amount_grains,
+                confirmations, match_status, observed_at
+           FROM address_observations WHERE outpoint = $1`,
+        [input.outpoint],
+      );
+      return rowToObservation(existing.rows[0]);
+    }
+    return rowToObservation(result.rows[0]);
+  }
+
+  async advanceConfirmations(tipHeight: number): Promise<number> {
+    const result = await this.client.query(
+      `UPDATE address_observations o
+          SET confirmations = $1 - o.height + 1,
+              match_status = CASE
+                WHEN ($1 - o.height + 1) >= w.required_confirmations THEN 'confirmed'
+                ELSE 'pending'
+              END
+         FROM watched_addresses w
+        WHERE o.watch_id = w.watch_id
+          AND o.match_status IN ('pending', 'confirmed')
+          AND o.confirmations <> ($1 - o.height + 1)`,
+      [tipHeight],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  async detachObservationsForBlock(blockHash: string): Promise<number> {
+    const result = await this.client.query(
+      `UPDATE address_observations
+          SET match_status = 'detached'
+        WHERE block_hash = $1 AND match_status <> 'detached'`,
+      [blockHash],
+    );
+    return result.rowCount ?? 0;
+  }
+
   private async findRow(tx: PgTxClient, watchId: string): Promise<WatchedAddressRow | null> {
     const result = await tx.query<WatchedAddressRow>(
       `SELECT watch_id, purpose, network, address, required_confirmations, status,
@@ -279,5 +360,67 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
     return Array.from(this.watches.values())
       .filter((w) => w.status === 'active' && set.has(w.purpose))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  async findActiveByAddress(network: string, address: string): Promise<WatchedAddress[]> {
+    return Array.from(this.watches.values()).filter(
+      (w) => w.status === 'active' && w.network === network && w.address === address,
+    );
+  }
+
+  async recordObservation(input: RecordObservationInput): Promise<AddressObservation> {
+    const list = this.observations.get(input.watchId) ?? [];
+    const existing = list.find((o) => o.outpoint === input.outpoint);
+    if (existing) return existing;
+    const obs: AddressObservation = {
+      outpoint: input.outpoint,
+      watchId: input.watchId,
+      blockHash: input.blockHash,
+      height: input.height,
+      amountGrains: input.amountGrains,
+      confirmations: 1,
+      matchStatus: 'pending',
+      observedAt: new Date().toISOString(),
+    };
+    list.push(obs);
+    this.observations.set(input.watchId, list);
+    return obs;
+  }
+
+  async advanceConfirmations(tipHeight: number): Promise<number> {
+    let advanced = 0;
+    for (const watch of this.watches.values()) {
+      const list = this.observations.get(watch.watchId) ?? [];
+      for (let i = 0; i < list.length; i += 1) {
+        const o = list[i];
+        if (o.matchStatus !== 'pending' && o.matchStatus !== 'confirmed') continue;
+        const newConfirms = tipHeight - o.height + 1;
+        if (newConfirms === o.confirmations) continue;
+        list[i] = {
+          ...o,
+          confirmations: newConfirms,
+          matchStatus: newConfirms >= watch.requiredConfirmations ? 'confirmed' : 'pending',
+        };
+        advanced += 1;
+      }
+    }
+    return advanced;
+  }
+
+  async detachObservationsForBlock(blockHash: string): Promise<number> {
+    let detached = 0;
+    for (const [watchId, list] of this.observations.entries()) {
+      let changed = false;
+      const updated = list.map((o) => {
+        if (o.blockHash === blockHash && o.matchStatus !== 'detached') {
+          changed = true;
+          detached += 1;
+          return { ...o, matchStatus: 'detached' as const };
+        }
+        return o;
+      });
+      if (changed) this.observations.set(watchId, updated);
+    }
+    return detached;
   }
 }

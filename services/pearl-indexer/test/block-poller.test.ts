@@ -25,6 +25,7 @@ function createMockSource(tipHeight: number): PearlBlockSource {
         height,
         previousHash: height > 0 ? `hash-${height - 1}` : undefined,
         txids: [`tx-${height}`],
+        outputs: [],
         timestamp: new Date(height * 1000).toISOString(),
       };
     },
