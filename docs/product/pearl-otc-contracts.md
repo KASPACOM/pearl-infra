@@ -101,6 +101,11 @@ Rules:
 - Accepting a quote creates one trade.
 - Trade owns all settlement addresses and expected amounts.
 - Payment instructions must come from backend state, not frontend calculation.
+- The EVM USDC escrow `createTrade()` call happens only after a quote is
+  accepted or otherwise matched. It must not happen during quote preview or page
+  load.
+- The frontend may show the USDC deposit action only after it verifies the
+  on-chain escrow terms match the backend trade terms.
 
 ### Get Trade
 
@@ -174,6 +179,53 @@ Transition rules:
 - Current state is derived from the latest accepted event.
 - Any chain reorg emits a correcting event rather than mutating history.
 - Release/refund side effects require idempotency keys.
+- Late chain observations do not revive expired trades. A PRL funding output
+  observed after the Pearl funding deadline must not authorize PRL release to
+  the buyer.
+
+## Deadlines And Release Invariants
+
+Every trade needs separate deadlines:
+
+- `quote_expires_at` - last time the quote may be accepted.
+- `pearl_funding_deadline` - last time PRL funding can count as valid escrow
+  funding.
+- `usdc_deposit_deadline` - last time buyer should be allowed to deposit USDC.
+- `settlement_deadline` - last time the worker may auto-settle without manual
+  review.
+- `refund_available_at` - first time the eligible party can request refund.
+
+The settlement worker may authorize PRL release only when all are true:
+
+- trade is in an active settlement state;
+- USDC escrow is still `Deposited`, not `Refunded`, `Released`, or `Cancelled`;
+- PRL funding was observed before `pearl_funding_deadline`;
+- USDC deposit was observed before `usdc_deposit_deadline`;
+- both sides meet confirmation thresholds;
+- neither side is stale, detached, reorged, underpaid, overpaid, duplicated, or
+  unknown;
+- the release side effect has not already been processed.
+
+If any condition fails, the trade goes to manual review or the relevant refund
+path. In particular: if the buyer deposits USDC, expiry passes, the buyer
+refunds USDC, and the seller funds PRL late, the worker must never release PRL
+to the buyer.
+
+## Edge Cases To Test
+
+The implementation test suite must cover:
+
+- buyer accepts quote but never deposits USDC;
+- seller funds PRL but buyer never deposits USDC;
+- buyer deposits USDC and seller funds PRL after the funding deadline;
+- buyer deposits USDC, expiry passes, buyer refunds, then PRL arrives late;
+- both sides fund, then PRL release broadcast fails;
+- both sides fund, then PRL funding is detached by reorg;
+- duplicate EVM and Pearl observations do not double-release;
+- wrong amount, wrong recipient, unknown spend, or stale indexer state goes to
+  manual review;
+- pause blocks new risky actions but does not block eligible buyer refunds or
+  cleanup of expired created trades.
 
 ## Pearl Escrow Package
 
