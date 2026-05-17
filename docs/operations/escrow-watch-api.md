@@ -187,6 +187,33 @@ Same JSON shape as `services/otc-api/src/http.ts`:
 - `services/pearl-indexer/test/watched-address-repository.test.ts`
 - `services/pearl-indexer/test/watched-address-http.test.ts`
 
+## Cross-chain bridge exit mirror (OpenSpec 10.8.5)
+
+The bridge's exit flow is cross-chain by definition: a wPRL burn happens on Igra, then a PRL release happens on Pearl. Joining the two tx ids requires a mirror table the indexer can both read (for reconciliation) and write to (when the spend scanner classifies a Pearl reserve spend as `exit_release`).
+
+Migration `002_watched_addresses.sql` therefore also creates `bridge_exit_requests`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `igra_burn_txid`, `igra_burn_log_index` | `(TEXT, INTEGER) PK` | one tx may emit multiple burns |
+| `igra_burn_block`, `igra_chain_id` | `BIGINT` | Igra chain coordinates |
+| `exit_id` | `TEXT` | contract-emitted identifier the bridge service deduplicates on |
+| `requested_amount_grains` | `NUMERIC(40,0)` | |
+| `pearl_recipient` | `TEXT` | P2TR address the user wants PRL at |
+| `status` | `TEXT` | `pending` \| `released` \| `refunded` \| `cancelled` \| `unknown` |
+| `pearl_release_txid` | `TEXT NULL` | populated when the spend scanner matches |
+| `pearl_release_block` | `BIGINT NULL` | |
+| `released_at` | `TIMESTAMPTZ NULL` | |
+| `metadata` | `JSONB` | relayer signatures, federation quorum proofs, etc. |
+
+Three things this PR explicitly does **not** ship for the bridge mirror:
+
+1. **The writer.** Rows are written by the future bridge service polling Igra contract events. We do not yet know the exact event shape (no Igra contract written), so designing the writer ahead of that is guesswork.
+2. **A repository module / HTTP API.** The bridge service can read/write this table directly via SQL; no need to wrap it in the indexer's repository surface until both services are co-located in the same DB and need a shared abstraction.
+3. **Spend scanner cross-table updates.** Step 7's spend scanner will, when it classifies a reserve spend as `exit_release`, update the matching `bridge_exit_requests` row by `pearl_recipient` + amount. That join logic is part of step 7, not step 5.
+
+What this PR does ship: the table itself, with indexes on `status`, `pearl_recipient`, `exit_id`, and a partial index on `pearl_release_txid` for the join hot path.
+
 ## How OTC and the bridge each consume this
 
 **OTC (9.3.5, this track):**
