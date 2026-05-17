@@ -1,14 +1,28 @@
 import type { PgTransactionalClient, PgTxClient } from './postgres-sink.js';
-import {
-  WatchConflictError,
-  WatchNotFoundError,
-  type AddressObservation,
-  type AddressSpend,
-  type RegisterWatchInput,
-  type WatchPurpose,
-  type WatchedAddress,
-  type WatchedAddressWithHistory,
+import type {
+  AddressObservation,
+  AddressSpend,
+  RegisterWatchInput,
+  WatchPurpose,
+  WatchedAddress,
+  WatchedAddressWithHistory,
 } from './watched-address-types.js';
+
+export class WatchConflictError extends Error {
+  readonly code = 'watch_conflict' as const;
+  readonly differingFields: readonly string[];
+  constructor(watchId: string, differingFields: readonly string[]) {
+    super(`watch ${watchId} already exists with differing fields: ${differingFields.join(', ')}`);
+    this.differingFields = differingFields;
+  }
+}
+
+export class WatchNotFoundError extends Error {
+  readonly code = 'watch_not_found' as const;
+  constructor(watchId: string) {
+    super(`no watch for watch_id ${watchId}`);
+  }
+}
 
 export interface WatchedAddressRepository {
   register(input: RegisterWatchInput): Promise<{ watch: WatchedAddress; created: boolean }>;

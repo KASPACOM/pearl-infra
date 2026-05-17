@@ -52,21 +52,3 @@ export interface WatchedAddressWithHistory extends WatchedAddress {
   observations: AddressObservation[];
   spends: AddressSpend[];
 }
-
-export class WatchConflictError extends Error {
-  readonly differingFields: readonly string[];
-  constructor(watchId: string, differingFields: readonly string[]) {
-    super(`watch ${watchId} already exists with differing fields: ${differingFields.join(', ')}`);
-    this.differingFields = differingFields;
-  }
-}
-
-export class WatchNotFoundError extends Error {
-  constructor(watchId: string) {
-    super(`no watch for watch_id ${watchId}`);
-  }
-}
-
-export const WATCH_PURPOSES: readonly WatchPurpose[] = ['otc_escrow', 'bridge_deposit', 'bridge_reserve'];
-
-export const PEARL_NETWORKS: readonly PearlNetwork[] = ['mainnet', 'testnet', 'testnet2', 'simnet', 'regtest'];

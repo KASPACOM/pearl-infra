@@ -111,7 +111,7 @@ Merged implementation checkpoints:
   - [x] 9.3.5.b Repository module + types + in-memory fake. Completed in PR #12.
   - [x] 9.3.5.c Postgres implementation of repository. Completed in PR #12.
   - [x] 9.3.5.d HTTP handler (POST `/watches`, GET `/watches/:id`, POST `/watches/:id/close`) + server boot wiring into `main.ts`. Completed in PR #12.
-  - [ ] 9.3.5.e Unit tests (repository + handler).
+  - [x] 9.3.5.e Unit tests (repository + handler).
   - [ ] 9.3.5.f Integration smoke: register → close → read round-trip against postgres on the Hetzner box.
 - [ ] 9.3.6 Add funding output detection for watched P2TR escrow addresses.
 - [ ] 9.3.6.a Classify PRL funding as on-time, late, underpaid, overpaid, duplicate, or reorged using the trade/deposit deadlines supplied in watch metadata.
