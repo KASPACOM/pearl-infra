@@ -77,6 +77,33 @@ contract PrlUsdcEscrowTest {
         _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Deposited);
     }
 
+    function testDepositAtExpiryIsAllowed() external {
+        uint64 expiry = _futureExpiry();
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, expiry);
+        _fundAndApproveBuyer(AMOUNT + FEE);
+        VM.warp(expiry);
+
+        VM.prank(BUYER);
+        escrow.deposit(TRADE_ID);
+
+        _assertEq(usdc.balanceOf(address(escrow)), AMOUNT + FEE);
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Deposited);
+    }
+
+    function testDepositAfterExpiryIsBlocked() external {
+        uint64 expiry = _futureExpiry();
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, expiry);
+        _fundAndApproveBuyer(AMOUNT + FEE);
+        VM.warp(expiry + 1);
+
+        VM.prank(BUYER);
+        VM.expectRevert(bytes("expired"));
+        escrow.deposit(TRADE_ID);
+
+        _assertEq(usdc.balanceOf(address(escrow)), 0);
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Created);
+    }
+
     function testReleasePaysSellerAndFeeRecipient() external {
         _depositTrade();
 
@@ -99,6 +126,28 @@ contract PrlUsdcEscrowTest {
         _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Refunded);
     }
 
+    function testBuyerRefundRequiresTimestampAfterExpiry() external {
+        uint64 expiry = _futureExpiry();
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, expiry);
+        _fundAndApproveBuyer(AMOUNT + FEE);
+
+        VM.prank(BUYER);
+        escrow.deposit(TRADE_ID);
+
+        VM.warp(expiry);
+        VM.prank(BUYER);
+        VM.expectRevert(bytes("not authorized"));
+        escrow.refund(TRADE_ID);
+
+        VM.warp(expiry + 1);
+        VM.prank(BUYER);
+        escrow.refund(TRADE_ID);
+
+        _assertEq(usdc.balanceOf(BUYER), AMOUNT + FEE);
+        _assertEq(usdc.balanceOf(address(escrow)), 0);
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Refunded);
+    }
+
     function testOwnerCanRefundBeforeExpiry() external {
         _depositTrade();
 
@@ -112,6 +161,22 @@ contract PrlUsdcEscrowTest {
         _createTrade();
         VM.warp(_futureExpiry() + 1);
 
+        VM.prank(STRANGER);
+        escrow.cancelExpired(TRADE_ID);
+
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Cancelled);
+    }
+
+    function testCancelCreatedTradeRequiresTimestampAfterExpiry() external {
+        uint64 expiry = _futureExpiry();
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, expiry);
+
+        VM.warp(expiry);
+        VM.prank(STRANGER);
+        VM.expectRevert(bytes("not expired"));
+        escrow.cancelExpired(TRADE_ID);
+
+        VM.warp(expiry + 1);
         VM.prank(STRANGER);
         escrow.cancelExpired(TRADE_ID);
 

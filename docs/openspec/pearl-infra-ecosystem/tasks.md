@@ -82,9 +82,9 @@ Merged implementation checkpoints:
 - [x] 9.1.3 Add Base Sepolia deployment config using the native USDC address.
 - [x] 9.1.4 Keep mainnet deployment disabled until review, multisig ownership, and testnet evidence exist.
 - [x] 9.1.5 Record that this implementation PR does not deploy any escrow contract.
-- [ ] 9.1.6 Add explicit tests for expiry boundary behavior: deposit at/before expiry, blocked deposit after expiry, buyer refund after expiry, and cancel of created-but-undeposited trades.
-- [ ] 9.1.7 Decide whether MVP contract keeps one `owner` or moves to role separation before mainnet: trade creator, releaser, refunder, pauser, admin.
-- [ ] 9.1.8 Add a production ownership checklist requiring multisig/two-step ownership before any mainnet USDC escrow is enabled.
+- [x] 9.1.6 Add explicit tests for expiry boundary behavior: deposit at/before expiry, blocked deposit after expiry, buyer refund after expiry, and cancel of created-but-undeposited trades.
+- [x] 9.1.7 Decide whether MVP contract keeps one `owner` or moves to role separation before mainnet: trade creator, releaser, refunder, pauser, admin.
+- [x] 9.1.8 Add a production ownership checklist requiring multisig/two-step ownership before any mainnet USDC escrow is enabled.
 
 ### 9.2 OTC API And Trade State
 

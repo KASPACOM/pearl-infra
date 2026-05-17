@@ -85,6 +85,41 @@ No Base mainnet deployment script is included. Mainnet stays disabled until:
 - Base Sepolia deployment evidence is recorded;
 - Sione explicitly approves the mainnet run.
 
+## Ownership And Role Decision
+
+Current decision:
+
+- Keep the deployed MVP contract on `Ownable2Step` instead of adding role
+  separation before the first testnet settlement runs.
+- Treat the owner as the settlement coordinator for `createTrade`, `release`,
+  early `refund`, `pause`, and `unpause`.
+- Require the owner to be an approved multisig or approved testnet owner before
+  production-like usage.
+- Revisit role separation before Base mainnet if automation needs narrower
+  permissions than a multisig-owned coordinator can safely provide.
+
+Role separation candidates, if needed later:
+
+- `TRADE_CREATOR` for opening USDC escrow slots after quote acceptance.
+- `RELEASER` for releasing seller proceeds after Pearl release proof.
+- `REFUNDER` for pre-expiry refunds on failed PRL release.
+- `PAUSER` for emergency pause.
+- `ADMIN` or multisig owner for role management, upgrades if any, and fee
+  recipient changes if introduced.
+
+Production ownership checklist:
+
+- Record intended owner/multisig address before deployment.
+- Verify `owner()` immediately after deployment.
+- If the deployer is not the final owner, call `transferOwnership(multisig)`.
+- Record `pendingOwner()` after transfer.
+- Have the multisig call `acceptOwnership()`.
+- Record acceptance transaction hash and final `owner()`.
+- Confirm `renounceOwnership()` still reverts.
+- Confirm `feeRecipient` and native USDC address.
+- Do not enable mainnet settlement until the ownership evidence is committed to
+  the repo and linked in the release checklist.
+
 Required deployment evidence:
 
 - deployed contract address;
