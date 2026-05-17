@@ -1,15 +1,15 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
-import {
-  PEARL_NETWORKS,
-  WATCH_PURPOSES,
-  WatchConflictError,
-  WatchNotFoundError,
-  type PearlNetwork,
-  type RegisterWatchInput,
-  type WatchPurpose,
-} from './watched-address-types.js';
 import type { WatchedAddressRepository } from './watched-address-repository.js';
+import type {
+  PearlNetwork,
+  RegisterWatchInput,
+  WatchPurpose,
+} from './watched-address-types.js';
+
+const WATCH_PURPOSES: readonly WatchPurpose[] = ['otc_escrow', 'bridge_deposit', 'bridge_reserve'];
+
+const PEARL_NETWORKS: readonly PearlNetwork[] = ['mainnet', 'testnet', 'testnet2', 'simnet', 'regtest'];
 
 export interface JsonResponse {
   statusCode: number;
@@ -152,17 +152,35 @@ class HttpError extends Error {
   }
 }
 
+interface CodedError {
+  code: string;
+  message: string;
+  differingFields?: readonly string[];
+}
+
+function hasCode(error: unknown, code: string): error is CodedError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === code
+  );
+}
+
 function mapError(error: unknown): JsonResponse {
   if (error instanceof HttpError) {
     return { statusCode: error.statusCode, body: { error: error.code, message: error.message } };
   }
-  if (error instanceof WatchConflictError) {
+  if (hasCode(error, 'watch_conflict')) {
     return {
       statusCode: 409,
-      body: { error: 'conflict', message: error.message, differing_fields: error.differingFields },
+      body: {
+        error: 'conflict',
+        message: error.message,
+        differing_fields: error.differingFields ?? [],
+      },
     };
   }
-  if (error instanceof WatchNotFoundError) {
+  if (hasCode(error, 'watch_not_found')) {
     return { statusCode: 404, body: { error: 'not_found', message: error.message } };
   }
   const message = error instanceof Error ? error.message : 'unexpected error';
