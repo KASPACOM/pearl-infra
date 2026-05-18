@@ -105,6 +105,10 @@ export class OtcApiClient {
     return this.post('/otc/quotes', request);
   }
 
+  getQuote(quoteId: string): Promise<OtcQuote> {
+    return this.get(`/otc/quotes/${encodeURIComponent(quoteId)}`);
+  }
+
   acceptQuote(quoteId: string, request: AcceptQuoteRequest): Promise<OtcTrade> {
     return this.post(`/otc/quotes/${encodeURIComponent(quoteId)}/accept`, request);
   }

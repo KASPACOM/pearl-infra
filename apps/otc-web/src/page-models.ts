@@ -373,6 +373,9 @@ function getDepositAction(
       reason: usdcVerification.mismatches.join('; ') || 'On-chain escrow terms do not match backend terms.',
     };
   }
+  if (!usdcVerification) {
+    return { kind: 'blocked', label: 'Deposit blocked', disabled: true, reason: 'On-chain escrow terms have not been verified.' };
+  }
   if (!wallet?.connected) {
     return { kind: 'connect_wallet', label: 'Connect wallet', disabled: false };
   }

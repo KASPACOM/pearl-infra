@@ -135,6 +135,14 @@ export class OtcTradeService {
     return quote;
   }
 
+  async getQuote(quoteId: string): Promise<OtcQuote> {
+    const quote = await this.repository.findQuoteById(quoteId);
+    if (!quote) {
+      throw new Error(`quote not found: ${quoteId}`);
+    }
+    return quote;
+  }
+
   async acceptQuote(quoteId: string, request: AcceptQuoteRequest): Promise<OtcTrade> {
     const requestHash = createPayloadHash('accept_quote', { quoteId, ...request });
     const existing = await this.repository.findTradeIdempotencyByClientRequestId(request.clientRequestId);
