@@ -7,7 +7,8 @@
     "test": "./scripts/forge.sh test",
     "test:base-sepolia-dry-run": "./scripts/forge.sh script script/DeployBaseSepolia.s.sol:DeployBaseSepolia --rpc-url base_sepolia",
     "test:base-sepolia-mock-run": "./scripts/forge.sh script script/RunBaseSepoliaMockEscrow.s.sol:RunBaseSepoliaMockEscrow --rpc-url base_sepolia",
-    "test:base-sepolia-native-run": "./scripts/forge.sh script script/RunBaseSepoliaNativeEscrow.s.sol:RunBaseSepoliaNativeEscrow --rpc-url base_sepolia"
+    "test:base-sepolia-native-run": "./scripts/forge.sh script script/RunBaseSepoliaNativeEscrow.s.sol:RunBaseSepoliaNativeEscrow --rpc-url base_sepolia",
+    "stress:base-sepolia-native": "npm run build && node scripts/base-sepolia-native-stress.mjs"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.6.1"

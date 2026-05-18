@@ -103,6 +103,31 @@ npm run test:base-sepolia-native-run
 
 Private keys and RPC URLs must stay in the local environment only.
 
+## Base Sepolia Native-USDC Stress Harness
+
+Run:
+
+```bash
+BASE_SEPOLIA_RPC_URL=...
+BASE_SEPOLIA_DEPLOYER_PRIVATE_KEY=...
+npm run stress:base-sepolia-native
+```
+
+The stress harness deploys a fresh Base Sepolia escrow using native Base Sepolia
+USDC, funds multiple ephemeral buyer/operator wallets, and exercises:
+
+- release, owner-refund, buyer-refund-after-expiry, and cancel-expired paths;
+- pause/unpause blocking checks;
+- unauthorized caller checks;
+- terminal trade ID reuse checks;
+- multiple simultaneous trade IDs with mixed release/refund outcomes;
+- final zero-USDC escrow balance assertion.
+
+It writes JSON evidence under
+`deployments/base-sepolia-native-stress-*.json` with wallet addresses, tx hashes,
+expected revert selectors/reasons, checks, and final balances. The script never
+writes private keys or raw RPC URLs.
+
 ## Mainnet Gate
 
 No Base mainnet deployment script is included. Mainnet stays disabled until:
