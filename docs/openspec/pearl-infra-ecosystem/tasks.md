@@ -123,8 +123,12 @@ Merged implementation checkpoints:
   observations/spends in the OTC API. Closes 9.8.6.
 - PR #44 — hardened Pearl funding classification and detach/replay reorg
   coverage. Closes 9.3.6, 9.3.6.a, 9.3.8, and 9.3.8.a.
+- PR #45 — added the Base Sepolia native-USDC stress harness with multiple
+  fresh wallets, release/refund/cancel/pause/unauthorized/reuse/parallel
+  checks, expected revert selectors, and redacted RPC evidence. Strengthens
+  9.6.5 evidence.
 
-Current delegation queue after PR #44:
+Current delegation queue after PR #45:
 
 - Base events owner: `9.8.7`. Add Base escrow event ingestion for created,
   deposited, released, refunded, and cancelled transitions.
@@ -144,7 +148,7 @@ Current delegation queue after PR #44:
   and `9.8.11` testnet2/Base Sepolia run with real txids. Run these after the
   remaining service adapters are wired.
 - Base Solidity/EVM owner: `9.6.7` and `9.6.9` remain open; `9.6.5`,
-  `9.6.6`, and `9.6.8` are complete.
+  `9.6.6`, and `9.6.8` are complete, with PR #45 stress evidence recorded.
 - Igra bridge Solidity/EVM owner: `10.6` and `10.7`.
 - Bridge service/federation owner: `10.8.4` through `10.11`, sequenced after
   bridge contract shape is fixed.
@@ -244,6 +248,7 @@ Current delegation queue after PR #44:
 - [x] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
   - Native Base Sepolia USDC lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`.
   - Mock-token lifecycle evidence remains recorded in `contracts/usdc-escrow/deployments/base-sepolia-mock-run.json` as secondary isolated proof.
+  - Native Base Sepolia stress evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-stress-20260518114919.json`, covering release, owner refund, buyer refund after expiry, cancel expired, pause/unpause, unauthorized callers, terminal trade ID reuse, parallel trades, expected revert selector/reason checks, and final zero escrow USDC balance.
 - [x] 9.6.6 Deploy the Base Sepolia USDC escrow and record contract address, deploy tx, owner, fee recipient, and native USDC address.
 - [ ] 9.6.7 Complete two-step ownership transfer to the approved multisig or approved testnet owner and record acceptance evidence.
   - `transferOwnership` is initiated to `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`; acceptance tx and final `owner()` evidence are still required.
@@ -262,11 +267,12 @@ Current delegation queue after PR #44:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after PR #44: API startup/idempotency, derivation allocation safety,
+Status after PR #45: API startup/idempotency, derivation allocation safety,
 watch registration, Pearl funding/spend detection, reorg hardening, and Pearl
-proof projection are merged. The remaining production blockers are Base event
-ingestion, persistent worker execution, signer boundary hardening, live
-simnet/testnet evidence, actual frontend/admin screens, and ops monitoring.
+proof projection are merged, with Base Sepolia native-USDC stress evidence now
+recorded. The remaining production blockers are Base event ingestion,
+persistent worker execution, signer boundary hardening, live simnet/testnet
+evidence, actual frontend/admin screens, and ops monitoring.
 
 - [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
   Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
