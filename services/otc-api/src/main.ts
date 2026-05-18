@@ -5,6 +5,7 @@ import { OtcTradeService } from './trade-service.js';
 import { assertOtcApiStartupConfig, readOtcApiConfig, readOtcApiRuntimeConfig } from './config.js';
 import { createOtcHttpServer } from './http.js';
 import { createConfiguredPearlEscrowAllocator } from './pearl-escrow-allocator.js';
+import { HttpPearlProofReader } from './pearl-proof-reader.js';
 import { HttpPearlEscrowWatchRegistrar } from './pearl-watch-registrar.js';
 import { pgPoolAdapter } from './postgres.js';
 import { EthersUsdcEscrowReader } from './usdc-escrow-reader.js';
@@ -23,6 +24,9 @@ const pearlEscrowAllocator = createConfiguredPearlEscrowAllocator(config, reposi
 const pearlEscrowWatchRegistrar = config.pearlIndexerWatchUrl
   ? new HttpPearlEscrowWatchRegistrar(config.pearlIndexerWatchUrl, config.pearlIndexerWatchTimeoutMs)
   : undefined;
+const pearlProofReader = config.pearlIndexerWatchUrl
+  ? new HttpPearlProofReader(config.pearlIndexerWatchUrl, config.pearlIndexerWatchTimeoutMs)
+  : undefined;
 const service = new OtcTradeService(
   repository,
   config,
@@ -30,6 +34,7 @@ const service = new OtcTradeService(
   usdcEscrowReader,
   undefined,
   pearlEscrowWatchRegistrar,
+  pearlProofReader,
 );
 const server = createOtcHttpServer(service);
 

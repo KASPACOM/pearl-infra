@@ -279,10 +279,10 @@ simnet/testnet evidence, actual frontend/admin screens, and ops monitoring.
 - [x] 9.8.5 Wire quote acceptance to watch registration so every real escrow
   package is observed by the Pearl indexer before funding instructions are
   shown.
-- [ ] 9.8.6 Derive public proof Pearl confirmations, funding outpoint, and
+- [x] 9.8.6 Derive public proof Pearl confirmations, funding outpoint, and
   spend txids from indexed observations/spends, not stale trade JSON.
-  - Pearl spend detection source data landed in PR #41; the public proof/API
-    projection still needs to consume it.
+  - Pearl spend detection source data landed in PR #41; the OTC API proof
+    projection consumes active indexer observations/spends.
 - [ ] 9.8.7 Add Base escrow event ingestion for created/deposited/released/
   refunded/cancelled transitions.
 - [ ] 9.8.8 Convert the settlement-worker decision core into a persistent

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { canTransitionTrade } from '@kaspacom/pearl-sdk';
 
+import type { PearlProofReader } from '../src/pearl-proof-reader.ts';
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import { OtcTradeService, type PearlEscrowAllocator, type PearlEscrowWatchRegistrar } from '../src/trade-service.ts';
 import type { OtcApiConfig } from '../src/types.ts';
@@ -50,6 +51,38 @@ class RecordingWatchRegistrar implements PearlEscrowWatchRegistrar {
         trade_id: trade.tradeId,
         expected_amount_grains: trade.pearlEscrow.expectedAmountGrains,
       },
+    };
+  }
+}
+
+class StaticPearlProofReader implements PearlProofReader {
+  async getPearlIndexedProof(trade: Awaited<ReturnType<OtcTradeService['acceptQuote']>>) {
+    return {
+      escrowOutpoint: 'funding_tx:0',
+      escrowConfirmations: 7,
+      releaseTxid: 'release_tx',
+      events: [
+        {
+          tradeId: trade.tradeId,
+          fromState: trade.state,
+          toState: 'pearl_escrow_confirmed' as const,
+          source: 'pearl_indexer' as const,
+          sourceEventId: 'pearl-observation:funding_tx:0:confirmed',
+          outpoint: 'funding_tx:0',
+          confirmations: 7,
+          observedAt: '2026-05-16T12:03:00.000Z',
+        },
+        {
+          tradeId: trade.tradeId,
+          fromState: trade.state,
+          toState: 'release_pending' as const,
+          source: 'pearl_indexer' as const,
+          sourceEventId: 'pearl-spend:release_tx:funding_tx:0',
+          txHash: 'release_tx',
+          outpoint: 'funding_tx:0',
+          observedAt: '2026-05-16T12:20:00.000Z',
+        },
+      ],
     };
   }
 }
@@ -456,6 +489,76 @@ test('projects public proof without private addresses', async () => {
   assert.equal(proof.events.length, 1);
   assert.equal(serialized.includes('buyerUsdcAddress'), false);
   assert.equal(serialized.includes('sellerUsdcReceiveAddress'), false);
+});
+
+test('projects public proof Pearl facts from indexed observations and spends', async () => {
+  const repository = new InMemoryOtcRepository();
+  const service = new OtcTradeService(
+    repository,
+    { ...config, pearlEscrowAllocator: 'p2tr_xpub' },
+    escrowAllocator,
+    undefined,
+    () => new Date('2026-05-16T12:30:00.000Z'),
+    new RecordingWatchRegistrar(),
+    new StaticPearlProofReader(),
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-proof-indexed',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-proof-indexed',
+  });
+
+  const proof = await service.getPublicProof(trade.tradeId);
+
+  assert.equal(proof.pearl.escrowOutpoint, 'funding_tx:0');
+  assert.equal(proof.pearl.escrowConfirmations, 7);
+  assert.equal(proof.pearl.releaseTxid, 'release_tx');
+  assert.equal(proof.pearl.refundTxid, undefined);
+  assert.equal(proof.events.some((event) => event.source === 'pearl_indexer' && event.txHash === 'release_tx'), true);
+});
+
+test('requires a Pearl proof reader for real Pearl escrow public proof', async () => {
+  const repository = new InMemoryOtcRepository();
+  const service = new OtcTradeService(
+    repository,
+    { ...config, pearlEscrowAllocator: 'p2tr_xpub' },
+    escrowAllocator,
+    undefined,
+    () => new Date('2026-05-16T12:00:00.000Z'),
+    new RecordingWatchRegistrar(),
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-proof-reader-required',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-proof-reader-required',
+  });
+
+  await assert.rejects(
+    () => service.getPublicProof(trade.tradeId),
+    /Pearl proof reader is required/,
+  );
 });
 
 test('models edge states as manual-review paths instead of release paths', () => {
