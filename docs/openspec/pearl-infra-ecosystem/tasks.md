@@ -127,8 +127,15 @@ Merged implementation checkpoints:
   fresh wallets, release/refund/cancel/pause/unauthorized/reuse/parallel
   checks, expected revert selectors, and redacted RPC evidence. Strengthens
   9.6.5 evidence.
+- PR #48 — added Base escrow event normalization/storage and the persistent
+  settlement-worker iteration that consumes Pearl proof state, Base event
+  state, signer, and broadcaster adapters. Closes 9.8.7 and 9.8.8.
+- PR #49 — added the Pearl signer boundary with fee caps, expected template
+  hash verification, release/refund output policy checks, signer key custody
+  controls, persistent request records, append-only audit records, retry-safe
+  state, and no live broadcast from the signer path. Closes 9.8.9.
 
-Current delegation queue after 9.8.7/9.8.8 implementation:
+Current delegation queue after PR #49:
 
 - Frontend owner: page models are complete in PR #37. Actual RFQ, checkout,
   proof, and admin screens remain open under `9.4.1` through `9.4.4` and
@@ -266,6 +273,9 @@ boundary policy/request/audit layer are implemented, with Base Sepolia
 native-USDC stress evidence recorded. The remaining production blockers are
 explicit deployment config, live simnet/testnet evidence, actual frontend/admin
 screens, and ops monitoring.
+
+Open 9.8 items after PR #49: `9.8.3`, `9.8.10`, `9.8.11`, `9.8.12`, and
+`9.8.13`.
 
 - [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
   Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
