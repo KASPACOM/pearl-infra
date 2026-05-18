@@ -1,5 +1,3 @@
-import type { PearlRpcClient } from '@kaspacom/pearl-rpc';
-
 export interface PearlBlockOutput {
   txid: string;
   vout: number;
@@ -32,6 +30,10 @@ export interface PearlBlockSource {
   getBlockCount(): Promise<number>;
   getBlockHash(height: number): Promise<string>;
   getBlock(hash: string): Promise<PearlBlockSummary>;
+}
+
+interface PearlRpcCaller {
+  call<T>(method: string, params?: unknown[]): Promise<T>;
 }
 
 /**
@@ -149,7 +151,8 @@ interface PearldVerboseBlock {
   hash: string;
   height: number;
   previousblockhash?: string;
-  tx: PearldVerboseTx[];
+  tx?: PearldVerboseTx[];
+  rawtx?: PearldVerboseTx[];
   time: number;
 }
 
@@ -164,7 +167,7 @@ function valueToGrains(value: number | string): string {
   return (BigInt(whole) * 100_000_000n + BigInt(fraction)).toString();
 }
 
-export function createPearldBlockSource(client: PearlRpcClient): PearlBlockSource {
+export function createPearldBlockSource(client: PearlRpcCaller): PearlBlockSource {
   return {
     getBlockCount: () => client.call<number>('getblockcount'),
     getBlockHash: (height) => client.call<string>('getblockhash', [height]),
@@ -175,7 +178,11 @@ export function createPearldBlockSource(client: PearlRpcClient): PearlBlockSourc
       const txids: string[] = [];
       const inputs: PearlBlockInput[] = [];
       const outputs: PearlBlockOutput[] = [];
-      for (const tx of block.tx) {
+      const transactions = block.rawtx ?? block.tx;
+      if (!Array.isArray(transactions)) {
+        throw new Error('pearld getblock response missing tx/rawtx array');
+      }
+      for (const tx of transactions) {
         txids.push(tx.txid);
         for (let vin = 0; vin < tx.vin.length; vin += 1) {
           const input = tx.vin[vin];
