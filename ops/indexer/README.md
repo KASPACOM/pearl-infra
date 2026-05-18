@@ -35,6 +35,7 @@ PEARL_INDEXER_POSTGRES_PASSWORD=...
 ```
 
 See [`docs/operations/single-machine-indexer.md`](../../docs/operations/single-machine-indexer.md) for sizing, failure modes, and the implementation sequence.
+See [`docs/operations/otc-deployment-env-contract.md`](../../docs/operations/otc-deployment-env-contract.md) for canonical secret names and required environment by service.
 
 ## MVP Responsibilities
 
@@ -57,3 +58,6 @@ Minimum checks:
 - node RPC responds to `getblockcount`;
 - fallback Blockbook responds;
 - escrow watch queue has no stuck jobs above threshold.
+
+Detailed monitoring thresholds, SQL checks, and operator actions are defined in
+[`docs/operations/otc-monitoring.md`](../../docs/operations/otc-monitoring.md).

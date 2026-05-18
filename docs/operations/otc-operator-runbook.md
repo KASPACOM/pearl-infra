@@ -2,6 +2,11 @@
 
 This runbook is for the human operator path while Pearl OTC is still in MVP mode. The default rule is fail closed: when a chain observation is late, stale, ambiguous, or inconsistent, do not release either escrow leg automatically.
 
+Deployment configuration must follow
+[`otc-deployment-env-contract.md`](otc-deployment-env-contract.md). Monitoring
+thresholds and alert routing are defined in
+[`otc-monitoring.md`](otc-monitoring.md).
+
 ## Normal Release Checklist
 
 Before releasing funds, confirm all of the following from the trade API, Pearl indexer, and Base escrow contract:
