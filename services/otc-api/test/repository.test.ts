@@ -103,6 +103,7 @@ const trade: OtcTrade = {
 
 const sideEffect: OtcSideEffect = {
   idempotencyKey: 'effect-1',
+  requestHash: 'sha256:effect',
   tradeId: trade.tradeId,
   effectType: 'usdc_create_trade',
   status: 'submitted',
@@ -119,17 +120,21 @@ const fixedAt = new Date('2026-05-16T12:00:00.000Z');
 
 test('PgOtcRepository saves and reads quotes/trades as JSON payloads', async () => {
   const pg = new FakePg();
+  pg.setFixture(/INSERT INTO otc_quotes/, [{}]);
+  pg.setFixture(/INSERT INTO otc_trades/, [{}]);
   pg.setFixture(/SELECT quote FROM otc_quotes WHERE quote_id/, [{ quote }]);
   pg.setFixture(/SELECT trade FROM otc_trades WHERE trade_id/, [{ trade }]);
   const repo = new PgOtcRepository(pg);
 
-  await repo.saveQuote(quote, 'quote-client-1');
-  await repo.saveTrade(trade, 'trade-client-1');
+  await repo.saveQuote(quote, 'quote-client-1', 'sha256:quote');
+  await repo.saveTrade(trade, 'trade-client-1', 'sha256:trade');
 
   assert.equal((await repo.findQuoteById(quote.quoteId))?.quoteId, quote.quoteId);
   assert.equal((await repo.findTradeById(trade.tradeId))?.tradeId, trade.tradeId);
   assert.ok(pg.calls.some((call) => /INSERT INTO otc_quotes/.test(call.text)));
   assert.ok(pg.calls.some((call) => /INSERT INTO otc_trades/.test(call.text)));
+  assert.ok(pg.calls.some((call) => call.params?.includes('sha256:quote')));
+  assert.ok(pg.calls.some((call) => call.params?.includes('sha256:trade')));
 });
 
 test('PgOtcRepository appends trade events idempotently', async () => {
@@ -158,6 +163,7 @@ test('PgOtcRepository persists side effects with idempotency keys', async () => 
   pg.setFixture(/INSERT INTO otc_side_effects/, [
     {
       idempotency_key: sideEffect.idempotencyKey,
+      request_hash: sideEffect.requestHash,
       trade_id: sideEffect.tradeId,
       effect_type: sideEffect.effectType,
       status: sideEffect.status,
@@ -179,5 +185,6 @@ test('PgOtcRepository persists side effects with idempotency keys', async () => 
 
   assert.equal(result.created, true);
   assert.equal(result.sideEffect.idempotencyKey, sideEffect.idempotencyKey);
+  assert.equal(result.sideEffect.requestHash, sideEffect.requestHash);
   assert.equal(result.sideEffect.chainId, 84532);
 });

@@ -47,6 +47,10 @@ export interface OtcApiConfig {
   baseRpcUrl?: string;
 }
 
+export interface OtcApiRuntimeConfig {
+  production: boolean;
+}
+
 export type OtcSideEffectType =
   | 'usdc_create_trade'
   | 'usdc_deposit_observed'
@@ -59,6 +63,7 @@ export type OtcSideEffectStatus = 'prepared' | 'submitted' | 'confirmed' | 'fail
 
 export interface OtcSideEffect {
   idempotencyKey: string;
+  requestHash?: string;
   tradeId: string;
   effectType: OtcSideEffectType;
   status: OtcSideEffectStatus;

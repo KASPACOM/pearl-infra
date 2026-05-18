@@ -3,14 +3,26 @@ import type { OtcQuote, OtcTrade, TradeEvent } from '@kaspacom/pearl-sdk';
 import type { PgTransactionalClient } from './postgres.js';
 import type { OtcSideEffect } from './types.js';
 
+export interface QuoteIdempotencyRecord {
+  quote: OtcQuote;
+  requestHash?: string;
+}
+
+export interface TradeIdempotencyRecord {
+  trade: OtcTrade;
+  requestHash?: string;
+}
+
 export interface OtcRepository {
-  saveQuote(quote: OtcQuote, clientRequestId: string): Promise<void>;
+  saveQuote(quote: OtcQuote, clientRequestId: string, requestHash?: string): Promise<void>;
   findQuoteById(quoteId: string): Promise<OtcQuote | undefined>;
   findQuoteByClientRequestId(clientRequestId: string): Promise<OtcQuote | undefined>;
-  saveTrade(trade: OtcTrade, clientRequestId: string): Promise<void>;
+  findQuoteIdempotencyByClientRequestId(clientRequestId: string): Promise<QuoteIdempotencyRecord | undefined>;
+  saveTrade(trade: OtcTrade, clientRequestId: string, requestHash?: string): Promise<void>;
   findTradeById(tradeId: string): Promise<OtcTrade | undefined>;
   findTradeByQuoteId(quoteId: string): Promise<OtcTrade | undefined>;
   findTradeByClientRequestId(clientRequestId: string): Promise<OtcTrade | undefined>;
+  findTradeIdempotencyByClientRequestId(clientRequestId: string): Promise<TradeIdempotencyRecord | undefined>;
   updateTrade(trade: OtcTrade): Promise<void>;
   appendEvent(event: TradeEvent): Promise<void>;
   listEvents(tradeId: string): Promise<TradeEvent[]>;
@@ -22,15 +34,18 @@ export interface OtcRepository {
 export class InMemoryOtcRepository implements OtcRepository {
   private readonly quotes = new Map<string, OtcQuote>();
   private readonly quoteClientRequests = new Map<string, string>();
+  private readonly quoteRequestHashes = new Map<string, string>();
   private readonly trades = new Map<string, OtcTrade>();
   private readonly tradeClientRequests = new Map<string, string>();
+  private readonly tradeRequestHashes = new Map<string, string>();
   private readonly tradeByQuote = new Map<string, string>();
   private readonly events = new Map<string, TradeEvent[]>();
   private readonly sideEffects = new Map<string, OtcSideEffect>();
 
-  async saveQuote(quote: OtcQuote, clientRequestId: string): Promise<void> {
+  async saveQuote(quote: OtcQuote, clientRequestId: string, requestHash?: string): Promise<void> {
     this.quotes.set(quote.quoteId, quote);
     this.quoteClientRequests.set(clientRequestId, quote.quoteId);
+    if (requestHash) this.quoteRequestHashes.set(clientRequestId, requestHash);
   }
 
   async findQuoteById(quoteId: string): Promise<OtcQuote | undefined> {
@@ -42,10 +57,20 @@ export class InMemoryOtcRepository implements OtcRepository {
     return quoteId ? this.quotes.get(quoteId) : undefined;
   }
 
-  async saveTrade(trade: OtcTrade, clientRequestId: string): Promise<void> {
+  async findQuoteIdempotencyByClientRequestId(clientRequestId: string): Promise<QuoteIdempotencyRecord | undefined> {
+    const quote = await this.findQuoteByClientRequestId(clientRequestId);
+    if (!quote) return undefined;
+    return {
+      quote,
+      ...(this.quoteRequestHashes.has(clientRequestId) ? { requestHash: this.quoteRequestHashes.get(clientRequestId) } : {}),
+    };
+  }
+
+  async saveTrade(trade: OtcTrade, clientRequestId: string, requestHash?: string): Promise<void> {
     this.trades.set(trade.tradeId, trade);
     this.tradeClientRequests.set(clientRequestId, trade.tradeId);
     this.tradeByQuote.set(trade.quoteId, trade.tradeId);
+    if (requestHash) this.tradeRequestHashes.set(clientRequestId, requestHash);
   }
 
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
@@ -60,6 +85,15 @@ export class InMemoryOtcRepository implements OtcRepository {
   async findTradeByClientRequestId(clientRequestId: string): Promise<OtcTrade | undefined> {
     const tradeId = this.tradeClientRequests.get(clientRequestId);
     return tradeId ? this.trades.get(tradeId) : undefined;
+  }
+
+  async findTradeIdempotencyByClientRequestId(clientRequestId: string): Promise<TradeIdempotencyRecord | undefined> {
+    const trade = await this.findTradeByClientRequestId(clientRequestId);
+    if (!trade) return undefined;
+    return {
+      trade,
+      ...(this.tradeRequestHashes.has(clientRequestId) ? { requestHash: this.tradeRequestHashes.get(clientRequestId) } : {}),
+    };
   }
 
   async updateTrade(trade: OtcTrade): Promise<void> {
@@ -81,6 +115,7 @@ export class InMemoryOtcRepository implements OtcRepository {
   async saveSideEffect(sideEffect: OtcSideEffect): Promise<{ sideEffect: OtcSideEffect; created: boolean }> {
     const existing = this.sideEffects.get(sideEffect.idempotencyKey);
     if (existing) {
+      assertIdempotencyHashMatch('side effect', sideEffect.idempotencyKey, existing.requestHash, sideEffect.requestHash);
       return { sideEffect: existing, created: false };
     }
     this.sideEffects.set(sideEffect.idempotencyKey, sideEffect);
@@ -100,10 +135,12 @@ export class InMemoryOtcRepository implements OtcRepository {
 
 type QuoteRow = Record<string, unknown> & {
   quote: OtcQuote;
+  request_hash?: string | null;
 }
 
 type TradeRow = Record<string, unknown> & {
   trade: OtcTrade;
+  request_hash?: string | null;
 }
 
 type EventRow = Record<string, unknown> & {
@@ -112,6 +149,7 @@ type EventRow = Record<string, unknown> & {
 
 type SideEffectRow = Record<string, unknown> & {
   idempotency_key: string;
+  request_hash?: string | null;
   trade_id: string;
   effect_type: string;
   status: string;
@@ -134,13 +172,18 @@ export class PgOtcRepository implements OtcRepository {
     this.client = client;
   }
 
-  async saveQuote(quote: OtcQuote, clientRequestId: string): Promise<void> {
-    await this.client.query(
-      `INSERT INTO otc_quotes (quote_id, client_request_id, quote)
-       VALUES ($1, $2, $3::jsonb)
+  async saveQuote(quote: OtcQuote, clientRequestId: string, requestHash?: string): Promise<void> {
+    const result = await this.client.query(
+      `INSERT INTO otc_quotes (quote_id, client_request_id, request_hash, quote)
+       VALUES ($1, $2, $3, $4::jsonb)
        ON CONFLICT (client_request_id) DO NOTHING`,
-      [quote.quoteId, clientRequestId, JSON.stringify(quote)],
+      [quote.quoteId, clientRequestId, requestHash ?? null, JSON.stringify(quote)],
     );
+    if ((result.rowCount ?? 0) === 0) {
+      const existing = await this.findQuoteIdempotencyByClientRequestId(clientRequestId);
+      if (!existing) throw new Error(`quote insert failed: ${clientRequestId}`);
+      assertIdempotencyHashMatch('quote', clientRequestId, existing.requestHash, requestHash);
+    }
   }
 
   async findQuoteById(quoteId: string): Promise<OtcQuote | undefined> {
@@ -155,13 +198,27 @@ export class PgOtcRepository implements OtcRepository {
     return result.rows[0]?.quote;
   }
 
-  async saveTrade(trade: OtcTrade, clientRequestId: string): Promise<void> {
-    await this.client.query(
-      `INSERT INTO otc_trades (trade_id, quote_id, client_request_id, state, trade)
-       VALUES ($1, $2, $3, $4, $5::jsonb)
+  async findQuoteIdempotencyByClientRequestId(clientRequestId: string): Promise<QuoteIdempotencyRecord | undefined> {
+    const result = await this.client.query<QuoteRow>('SELECT quote, request_hash FROM otc_quotes WHERE client_request_id = $1', [
+      clientRequestId,
+    ]);
+    const row = result.rows[0];
+    if (!row) return undefined;
+    return { quote: row.quote, ...(row.request_hash ? { requestHash: row.request_hash } : {}) };
+  }
+
+  async saveTrade(trade: OtcTrade, clientRequestId: string, requestHash?: string): Promise<void> {
+    const result = await this.client.query(
+      `INSERT INTO otc_trades (trade_id, quote_id, client_request_id, request_hash, state, trade)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
        ON CONFLICT (client_request_id) DO NOTHING`,
-      [trade.tradeId, trade.quoteId, clientRequestId, trade.state, JSON.stringify(trade)],
+      [trade.tradeId, trade.quoteId, clientRequestId, requestHash ?? null, trade.state, JSON.stringify(trade)],
     );
+    if ((result.rowCount ?? 0) === 0) {
+      const existing = await this.findTradeIdempotencyByClientRequestId(clientRequestId);
+      if (!existing) throw new Error(`trade insert failed: ${clientRequestId}`);
+      assertIdempotencyHashMatch('trade', clientRequestId, existing.requestHash, requestHash);
+    }
   }
 
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
@@ -179,6 +236,15 @@ export class PgOtcRepository implements OtcRepository {
       clientRequestId,
     ]);
     return result.rows[0]?.trade;
+  }
+
+  async findTradeIdempotencyByClientRequestId(clientRequestId: string): Promise<TradeIdempotencyRecord | undefined> {
+    const result = await this.client.query<TradeRow>('SELECT trade, request_hash FROM otc_trades WHERE client_request_id = $1', [
+      clientRequestId,
+    ]);
+    const row = result.rows[0];
+    if (!row) return undefined;
+    return { trade: row.trade, ...(row.request_hash ? { requestHash: row.request_hash } : {}) };
   }
 
   async updateTrade(trade: OtcTrade): Promise<void> {
@@ -213,15 +279,16 @@ export class PgOtcRepository implements OtcRepository {
   async saveSideEffect(sideEffect: OtcSideEffect): Promise<{ sideEffect: OtcSideEffect; created: boolean }> {
     const result = await this.client.query<SideEffectRow>(
       `INSERT INTO otc_side_effects (
-         idempotency_key, trade_id, effect_type, status, actor, source_event_id,
+         idempotency_key, request_hash, trade_id, effect_type, status, actor, source_event_id,
          tx_hash, outpoint, block_number, block_hash, chain_id, metadata
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
        ON CONFLICT (idempotency_key) DO NOTHING
-       RETURNING idempotency_key, trade_id, effect_type, status, actor, source_event_id,
+       RETURNING idempotency_key, request_hash, trade_id, effect_type, status, actor, source_event_id,
                  tx_hash, outpoint, block_number, block_hash, chain_id, metadata,
                  created_at, updated_at`,
       [
         sideEffect.idempotencyKey,
+        sideEffect.requestHash ?? null,
         sideEffect.tradeId,
         sideEffect.effectType,
         sideEffect.status,
@@ -242,12 +309,13 @@ export class PgOtcRepository implements OtcRepository {
     if (!existing) {
       throw new Error(`side effect insert failed: ${sideEffect.idempotencyKey}`);
     }
+    assertIdempotencyHashMatch('side effect', sideEffect.idempotencyKey, existing.requestHash, sideEffect.requestHash);
     return { sideEffect: existing, created: false };
   }
 
   async findSideEffectByIdempotencyKey(idempotencyKey: string): Promise<OtcSideEffect | undefined> {
     const result = await this.client.query<SideEffectRow>(
-      `SELECT idempotency_key, trade_id, effect_type, status, actor, source_event_id,
+      `SELECT idempotency_key, request_hash, trade_id, effect_type, status, actor, source_event_id,
               tx_hash, outpoint, block_number, block_hash, chain_id, metadata,
               created_at, updated_at
          FROM otc_side_effects
@@ -259,7 +327,7 @@ export class PgOtcRepository implements OtcRepository {
 
   async listSideEffects(tradeId: string): Promise<OtcSideEffect[]> {
     const result = await this.client.query<SideEffectRow>(
-      `SELECT idempotency_key, trade_id, effect_type, status, actor, source_event_id,
+      `SELECT idempotency_key, request_hash, trade_id, effect_type, status, actor, source_event_id,
               tx_hash, outpoint, block_number, block_hash, chain_id, metadata,
               created_at, updated_at
          FROM otc_side_effects
@@ -274,6 +342,7 @@ export class PgOtcRepository implements OtcRepository {
 function rowToSideEffect(row: SideEffectRow): OtcSideEffect {
   return {
     idempotencyKey: row.idempotency_key,
+    ...(row.request_hash ? { requestHash: row.request_hash } : {}),
     tradeId: row.trade_id,
     effectType: row.effect_type as OtcSideEffect['effectType'],
     status: row.status as OtcSideEffect['status'],
@@ -288,4 +357,10 @@ function rowToSideEffect(row: SideEffectRow): OtcSideEffect {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+function assertIdempotencyHashMatch(kind: string, key: string, existingHash?: string, requestHash?: string): void {
+  if (existingHash && requestHash && existingHash !== requestHash) {
+    throw new Error(`${kind} idempotency key reuse with different payload: ${key}`);
+  }
 }

@@ -66,6 +66,26 @@ test('creates an idempotent Base USDC quote', async () => {
   assert.equal(first.expiresAt, '2026-05-16T12:05:00.000Z');
 });
 
+test('rejects quote idempotency key reuse with a different payload', async () => {
+  const service = createService();
+  const request = {
+    side: 'buy_prl' as const,
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC' as const,
+    settlementNetwork: 'base' as const,
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-reused-key',
+  };
+
+  await service.createQuote(request);
+
+  await assert.rejects(
+    () => service.createQuote({ ...request, amountPrl: '2000.00000000' }),
+    /quote idempotency key reuse with different payload/,
+  );
+});
+
 test('accepts a quote into pearl escrow pending state', async () => {
   const service = createService();
   const quote = await service.createQuote({
@@ -100,6 +120,37 @@ test('accepts a quote into pearl escrow pending state', async () => {
     refundAvailableAt: '2026-05-16T12:15:00.000Z',
   });
   assert.match(trade.usdcEscrow.tradeKey, /^0x[0-9a-f]{64}$/);
+});
+
+test('rejects accept idempotency key reuse with a different payload', async () => {
+  const service = createService();
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-idempotent-accept',
+  });
+  const request = {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-reused-key',
+  };
+
+  await service.acceptQuote(quote.quoteId, request);
+
+  await assert.rejects(
+    () =>
+      service.acceptQuote(quote.quoteId, {
+        ...request,
+        sellerUsdcReceiveAddress: '0x5555555555555555555555555555555555555555',
+      }),
+    /trade idempotency key reuse with different payload/,
+  );
 });
 
 test('rejects expired quotes', async () => {
@@ -176,6 +227,46 @@ test('prepares createTrade intent only after quote acceptance and records side e
         actor: 'settlement-worker',
       }),
     /trade not found/,
+  );
+});
+
+test('rejects side-effect idempotency key reuse with a different payload', async () => {
+  const service = createService();
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-side-effect-idempotency',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-side-effect-idempotency',
+  });
+
+  await service.recordSideEffect(trade.tradeId, {
+    idempotencyKey: 'manual-side-effect-1',
+    effectType: 'usdc_deposit_observed',
+    status: 'submitted',
+    actor: 'operator',
+    txHash: '0xabc',
+  });
+
+  await assert.rejects(
+    () =>
+      service.recordSideEffect(trade.tradeId, {
+        idempotencyKey: 'manual-side-effect-1',
+        effectType: 'usdc_deposit_observed',
+        status: 'confirmed',
+        actor: 'operator',
+        txHash: '0xabc',
+      }),
+    /side effect idempotency key reuse with different payload/,
   );
 });
 

@@ -239,6 +239,40 @@ Current delegation queue after PR #33:
 - [x] 9.7.4 Add signer/key-handling design for Pearl Taproot/XMSS constraints, operator custody boundaries, and recovery-package storage.
 - [x] 9.7.5 Add broadcast, retry, fee, and idempotency hooks consumed by the settlement worker for PRL release/refund transactions.
 
+### 9.8 Strategy Loophole Fix Tracker
+
+- [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
+  Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
+  contract are configured.
+- [x] 9.8.2 Persist canonical request hashes for quote, accept, and side-effect
+  idempotency keys; reject key reuse with a different payload.
+- [ ] 9.8.3 Replace local/mock-only Pearl escrow defaults in deployment manifests
+  with explicit per-environment config contracts and secret names.
+- [ ] 9.8.4 Persist allocated Pearl derivation indexes with uniqueness and retry
+  on collision before enabling real-money allocation.
+- [ ] 9.8.5 Wire quote acceptance to watch registration so every real escrow
+  package is observed by the Pearl indexer before funding instructions are
+  shown.
+- [ ] 9.8.6 Derive public proof Pearl confirmations, funding outpoint, and
+  spend txids from indexed observations/spends, not stale trade JSON.
+- [ ] 9.8.7 Add Base escrow event ingestion for created/deposited/released/
+  refunded/cancelled transitions.
+- [ ] 9.8.8 Convert the settlement-worker decision core into a persistent
+  execution loop that consumes API, Pearl indexer, Base events, signer, and
+  broadcaster adapters.
+- [ ] 9.8.9 Implement the Pearl signer boundary with fee caps, template hash
+  verification, key custody controls, audit trail, and retry-safe persistence.
+- [ ] 9.8.10 Record a full simnet escrow run: quote -> accept -> PRL funding
+  detection -> Base deposit -> PRL release/refund -> Base release/refund ->
+  proof.
+- [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
+  txids before any mainnet PRL code path is enabled.
+- [ ] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
+  prove no release action is exposed to users or operators.
+- [ ] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
+  broadcasts, duplicate events, manual-review backlog, and mismatched
+  backend/on-chain terms.
+
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 
 - [x] 10.1 Define the bridge-first product track and record that OTC remains the manual safety layer.
