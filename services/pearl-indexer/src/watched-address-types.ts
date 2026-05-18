@@ -48,6 +48,11 @@ export interface AddressSpend {
   observedAt: string;
 }
 
+export interface ObservedOutpoint {
+  watch: WatchedAddress;
+  observation: AddressObservation;
+}
+
 export interface WatchedAddressWithHistory extends WatchedAddress {
   observations: AddressObservation[];
   spends: AddressSpend[];

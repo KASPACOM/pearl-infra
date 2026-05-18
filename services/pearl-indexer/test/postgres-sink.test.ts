@@ -54,6 +54,7 @@ function makeBlock(height: number, hash: string, previousHash?: string): PearlBl
     hash,
     previousHash,
     txids: [`tx-${height}`],
+    inputs: [],
     outputs: [],
     timestamp: new Date(height * 1000).toISOString(),
   };

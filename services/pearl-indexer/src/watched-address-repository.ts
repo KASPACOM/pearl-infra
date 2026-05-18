@@ -2,6 +2,7 @@ import type { PgTransactionalClient, PgTxClient } from './postgres-sink.js';
 import type {
   AddressObservation,
   AddressSpend,
+  ObservedOutpoint,
   RegisterWatchInput,
   WatchPurpose,
   WatchedAddress,
@@ -33,6 +34,15 @@ export interface RecordObservationInput {
   classification: string;
 }
 
+export interface RecordSpendInput {
+  spendTxid: string;
+  spentOutpoint: string;
+  blockHash: string;
+  height: number;
+  classification: string;
+  classificationData?: Record<string, unknown>;
+}
+
 export interface WatchedAddressRepository {
   register(input: RegisterWatchInput): Promise<{ watch: WatchedAddress; created: boolean }>;
   get(watchId: string): Promise<WatchedAddressWithHistory | null>;
@@ -40,6 +50,8 @@ export interface WatchedAddressRepository {
   listActive(purposes: WatchPurpose[]): Promise<WatchedAddress[]>;
   findActiveByAddress(network: string, address: string): Promise<WatchedAddress[]>;
   recordObservation(input: RecordObservationInput): Promise<AddressObservation>;
+  findObservedOutpoint(spentOutpoint: string): Promise<ObservedOutpoint | null>;
+  recordSpend(input: RecordSpendInput): Promise<AddressSpend>;
   advanceConfirmations(tipHeight: number): Promise<number>;
   detachObservationsForBlock(blockHash: string): Promise<number>;
 }
@@ -268,6 +280,58 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
     return rowToObservation(result.rows[0]);
   }
 
+  async findObservedOutpoint(spentOutpoint: string): Promise<ObservedOutpoint | null> {
+    const result = await this.client.query<WatchedAddressRow & AddressObservationRow>(
+      `SELECT w.watch_id, w.purpose, w.network, w.address, w.required_confirmations,
+              w.status, w.metadata, w.created_at, w.updated_at,
+              o.outpoint, o.block_hash, o.height, o.amount_grains,
+              o.confirmations, o.match_status, o.observed_at
+         FROM address_observations o
+         JOIN watched_addresses w ON w.watch_id = o.watch_id
+        WHERE o.outpoint = $1
+          AND o.match_status <> 'detached'
+        ORDER BY o.height ASC
+        LIMIT 1`,
+      [spentOutpoint],
+    );
+    if ((result.rowCount ?? 0) === 0) return null;
+    const row = result.rows[0];
+    return {
+      watch: rowToWatch(row),
+      observation: rowToObservation(row),
+    };
+  }
+
+  async recordSpend(input: RecordSpendInput): Promise<AddressSpend> {
+    return this.client.withTransaction(async (tx) => {
+      const result = await tx.query<AddressSpendRow>(
+        `INSERT INTO address_spends (
+           spend_txid, spent_outpoint, block_hash, height, classification, classification_data
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+         ON CONFLICT (spend_txid, spent_outpoint) DO UPDATE
+           SET classification = address_spends.classification
+         RETURNING spend_txid, spent_outpoint, block_hash, height, classification,
+                   classification_data, observed_at`,
+        [
+          input.spendTxid,
+          input.spentOutpoint,
+          input.blockHash,
+          input.height,
+          input.classification,
+          JSON.stringify(input.classificationData ?? {}),
+        ],
+      );
+      await tx.query(
+        `UPDATE address_observations
+            SET match_status = 'spent'
+          WHERE outpoint = $1
+            AND match_status <> 'detached'`,
+        [input.spentOutpoint],
+      );
+      return rowToSpend(result.rows[0]);
+    });
+  }
+
   async advanceConfirmations(tipHeight: number): Promise<number> {
     const result = await this.client.query(
       `UPDATE address_observations o
@@ -385,6 +449,45 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
     list.push(obs);
     this.observations.set(input.watchId, list);
     return obs;
+  }
+
+  async findObservedOutpoint(spentOutpoint: string): Promise<ObservedOutpoint | null> {
+    for (const [watchId, list] of this.observations.entries()) {
+      const observation = list.find((o) => o.outpoint === spentOutpoint && o.matchStatus !== 'detached');
+      if (!observation) continue;
+      const watch = this.watches.get(watchId);
+      if (!watch) continue;
+      return { watch, observation };
+    }
+    return null;
+  }
+
+  async recordSpend(input: RecordSpendInput): Promise<AddressSpend> {
+    const observed = await this.findObservedOutpoint(input.spentOutpoint);
+    if (!observed) {
+      throw new Error(`cannot record spend for unknown outpoint ${input.spentOutpoint}`);
+    }
+    const list = this.spends.get(observed.watch.watchId) ?? [];
+    const existing = list.find((s) => s.spendTxid === input.spendTxid && s.spentOutpoint === input.spentOutpoint);
+    if (existing) return existing;
+    const spend: AddressSpend = {
+      spendTxid: input.spendTxid,
+      spentOutpoint: input.spentOutpoint,
+      blockHash: input.blockHash,
+      height: input.height,
+      classification: input.classification,
+      classificationData: input.classificationData ?? {},
+      observedAt: new Date().toISOString(),
+    };
+    list.push(spend);
+    this.spends.set(observed.watch.watchId, list);
+
+    const observations = this.observations.get(observed.watch.watchId) ?? [];
+    this.observations.set(
+      observed.watch.watchId,
+      observations.map((o) => (o.outpoint === input.spentOutpoint ? { ...o, matchStatus: 'spent' as const } : o)),
+    );
+    return spend;
   }
 
   async advanceConfirmations(tipHeight: number): Promise<number> {

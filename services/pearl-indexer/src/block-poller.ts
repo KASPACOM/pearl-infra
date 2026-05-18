@@ -11,11 +11,19 @@ export interface PearlBlockOutput {
   };
 }
 
+export interface PearlBlockInput {
+  txid: string;
+  vin: number;
+  spentOutpoint?: string;
+  sequence?: number;
+}
+
 export interface PearlBlockSummary {
   hash: string;
   height: number;
   previousHash?: string;
   txids: string[];
+  inputs: PearlBlockInput[];
   outputs: PearlBlockOutput[];
   timestamp: string;
 }
@@ -128,6 +136,12 @@ interface PearldVerboseVout {
 
 interface PearldVerboseTx {
   txid: string;
+  vin: Array<{
+    txid?: string;
+    vout?: number;
+    sequence?: number;
+    coinbase?: string;
+  }>;
   vout: PearldVerboseVout[];
 }
 
@@ -159,9 +173,21 @@ export function createPearldBlockSource(client: PearlRpcClient): PearlBlockSourc
       // match decoded P2TR addresses without a second RPC per tx.
       const block = await client.call<PearldVerboseBlock>('getblock', [hash, 2]);
       const txids: string[] = [];
+      const inputs: PearlBlockInput[] = [];
       const outputs: PearlBlockOutput[] = [];
       for (const tx of block.tx) {
         txids.push(tx.txid);
+        for (let vin = 0; vin < tx.vin.length; vin += 1) {
+          const input = tx.vin[vin];
+          inputs.push({
+            txid: tx.txid,
+            vin,
+            ...(input.txid !== undefined && input.vout !== undefined
+              ? { spentOutpoint: `${input.txid}:${input.vout}` }
+              : {}),
+            ...(input.sequence !== undefined ? { sequence: input.sequence } : {}),
+          });
+        }
         for (const vout of tx.vout) {
           outputs.push({
             txid: tx.txid,
@@ -180,6 +206,7 @@ export function createPearldBlockSource(client: PearlRpcClient): PearlBlockSourc
         height: block.height,
         previousHash: block.previousblockhash,
         txids,
+        inputs,
         outputs,
         timestamp: new Date(block.time * 1000).toISOString(),
       };

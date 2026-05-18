@@ -231,6 +231,36 @@ test('Pg.listActive filters on status=active and given purposes', async () => {
   assert.deepEqual(call.params, [['bridge_deposit']]);
 });
 
+test('Pg.recordSpend inserts spend and marks observation spent', async () => {
+  const pg = new FakePg();
+  pg.setFixture(/INSERT INTO address_spends/s, [
+    {
+      spend_txid: 'spend1',
+      spent_outpoint: 'tx1:0',
+      block_hash: 'b2',
+      height: 110,
+      classification: 'unknown_spend',
+      classification_data: { reason: 'no_release_or_refund_template_match' },
+      observed_at: FIXED_AT,
+    },
+  ]);
+  const repo = new PgWatchedAddressRepository(pg);
+
+  const result = await repo.recordSpend({
+    spendTxid: 'spend1',
+    spentOutpoint: 'tx1:0',
+    blockHash: 'b2',
+    height: 110,
+    classification: 'unknown_spend',
+    classificationData: { reason: 'no_release_or_refund_template_match' },
+  });
+
+  assert.equal(result.classification, 'unknown_spend');
+  assert.ok(pg.calls.some((c) => c.text === 'BEGIN'));
+  assert.ok(pg.calls.some((c) => /UPDATE address_observations\s+SET match_status = 'spent'/s.test(c.text)));
+  assert.ok(pg.calls.some((c) => c.text === 'COMMIT'));
+});
+
 // ---- MemoryWatchedAddressRepository ----
 
 test('Memory.register inserts then reads back', async () => {
@@ -310,4 +340,32 @@ test('Memory.listActive empty purposes returns empty', async () => {
   await repo.register(input());
 
   assert.deepEqual(await repo.listActive([]), []);
+});
+
+test('Memory.recordSpend persists spend and marks observation spent', async () => {
+  const repo = new MemoryWatchedAddressRepository();
+  await repo.register(input());
+  await repo.recordObservation({
+    outpoint: 'funding:0',
+    watchId: 'watch-1',
+    blockHash: 'b1',
+    height: 100,
+    amountGrains: '12500000000',
+    classification: 'on_time',
+  });
+
+  const spend = await repo.recordSpend({
+    spendTxid: 'spend1',
+    spentOutpoint: 'funding:0',
+    blockHash: 'b2',
+    height: 101,
+    classification: 'release',
+    classificationData: { matchedBy: 'release_template' },
+  });
+  const fetched = await repo.get('watch-1');
+
+  assert.equal(spend.classification, 'release');
+  assert.ok(fetched);
+  assert.equal(fetched.spends.length, 1);
+  assert.equal(fetched.observations[0].matchStatus, 'spent');
 });
