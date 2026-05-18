@@ -528,7 +528,8 @@ Loophole tracker after admin FE wiring:
   - [x] 9.10.10.b Dev quote creation smoke passed over HTTPS.
   - [x] 9.10.10.c Dev quote accept smoke passed and registered a Pearl watch.
   - [x] 9.10.10.d Dev admin-auth smoke passed with the generated admin token.
-  - [ ] 9.10.10.e Dev support-alert smoke.
+  - [x] 9.10.10.e Dev support-alert smoke passed with Telegram delivery
+    confirmed in admin diagnostics.
   - [ ] 9.10.10.f Main/prod smoke after prod release path is executed.
 - [x] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
   indexer on `65.21.206.46` and smoke `PEARL_INDEXER_WATCH_URL` from the API
