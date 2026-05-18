@@ -130,9 +130,6 @@ Merged implementation checkpoints:
 
 Current delegation queue after 9.8.7/9.8.8 implementation:
 
-- Pearl signer/custody owner: 9.7.x package hooks are complete through PR #32.
-  `9.8.9` remains open for the production signer boundary, audit trail, fee
-  caps, template hash verification, and retry-safe persistence.
 - Frontend owner: page models are complete in PR #37. Actual RFQ, checkout,
   proof, and admin screens remain open under `9.4.1` through `9.4.4` and
   `9.4.6` through `9.4.8`.
@@ -261,13 +258,14 @@ Current delegation queue after 9.8.7/9.8.8 implementation:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after 9.8.8: API startup/idempotency, derivation allocation safety,
-watch registration, Pearl funding/spend detection, reorg hardening, Pearl
-proof projection, Base escrow event ingestion, and the persistent settlement
-worker iteration are implemented, with Base Sepolia native-USDC stress
-evidence now recorded. The remaining production blockers are signer boundary
-hardening, live simnet/testnet evidence, actual frontend/admin screens, and ops
-monitoring.
+Status after 9.8.9 signer-boundary implementation: API startup/idempotency,
+derivation allocation safety, watch registration, Pearl funding/spend
+detection, reorg hardening, Pearl proof projection, Base escrow event
+ingestion, the persistent settlement-worker iteration, and the Pearl signer
+boundary policy/request/audit layer are implemented, with Base Sepolia
+native-USDC stress evidence recorded. The remaining production blockers are
+explicit deployment config, live simnet/testnet evidence, actual frontend/admin
+screens, and ops monitoring.
 
 - [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
   Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
@@ -290,8 +288,16 @@ monitoring.
 - [x] 9.8.8 Convert the settlement-worker decision core into a persistent
   execution loop that consumes API, Pearl indexer, Base events, signer, and
   broadcaster adapters.
-- [ ] 9.8.9 Implement the Pearl signer boundary with fee caps, template hash
+- [x] 9.8.9 Implement the Pearl signer boundary with fee caps, template hash
   verification, key custody controls, audit trail, and retry-safe persistence.
+  - `packages/pearl-escrow` now exposes `PearlSignerBoundary`,
+    in-memory/durable request repositories, append-only JSONL audit records,
+    fee-cap enforcement, expected template hash verification, release/refund
+    output policy checks, signer key allow-list/pause controls, signed-response
+    validation, and idempotent retry handling.
+  - The signer boundary returns signed transaction material only. Live
+    broadcasting remains outside the signer path and is tracked by the separate
+    broadcast attempt ledger.
 - [ ] 9.8.10 Record a full simnet escrow run: quote -> accept -> PRL funding
   detection -> Base deposit -> PRL release/refund -> Base release/refund ->
   proof.

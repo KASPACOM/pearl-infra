@@ -8,9 +8,10 @@ Current scope:
 - builds release and refund transaction templates with expected funding amount, optional funding outpoint, signer policy, and refund eligibility;
 - validates release/refund destination addresses against the Pearl network;
 - creates signer policy requests, fee-cap checks, idempotency keys, and broadcast retry records;
+- provides a signer boundary that verifies template hashes, destination/output policy, signer key custody policy, persistent request state, append-only audit records, and retry-safe signing requests;
 - blocks mainnet package creation unless `allowMainnet` is explicitly set.
 
-This package does not hold private keys, sign transactions, or broadcast transactions. Signing happens behind the signer boundary; broadcasting uses the Pearl RPC package.
+This package does not hold private keys, sign transactions, or broadcast transactions. `PearlSignerBoundary` calls a signer client that signs only and returns signed transaction material; broadcasting stays outside the signer boundary and uses the Pearl RPC package.
 
 ## Usage
 

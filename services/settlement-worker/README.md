@@ -23,7 +23,8 @@ The Pearl escrow package exposes the settlement-worker handoff primitives:
 - `createPearlEscrowUnsignedTx()` builds release/refund unsigned tx hex from an escrow package.
 - `createPearlEscrowSignerRequest()` validates destination + fee cap and creates the signer policy package.
 - `createPearlEscrowTxTemplateHash()` and `createPearlEscrowObservedStateHash()` provide stable audit hashes.
+- `PearlSignerBoundary` persists request state before calling the signer, enforces fee caps, expected template hash, destination/output policy, allowed signer key id, pause state, and append-only audit records.
 - `createPearlEscrowBroadcastAttempt()`, `markPearlEscrowBroadcastSubmitted()`, and `markPearlEscrowBroadcastFailed()` model retry state.
 - `PearlRpcTransactionBroadcaster` wraps `sendrawtransaction` for the final broadcast call.
 
-The worker must persist the signer request idempotency key before requesting a signature and reuse the same key for retries of the same trade/action/outpoint/template.
+The worker must call the signer boundary before any Pearl broadcast. The boundary returns signed transaction material only; it does not broadcast. The worker then records broadcast attempts separately and reuses the same signer idempotency key for retries of the same trade/action/outpoint/template.
