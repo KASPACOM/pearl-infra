@@ -561,6 +561,93 @@ test('requires a Pearl proof reader for real Pearl escrow public proof', async (
   );
 });
 
+test('builds admin trade diagnostics and records support alerts', async () => {
+  const service = createService(new Date('2026-05-16T12:20:00.000Z'));
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-admin',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-admin',
+  });
+
+  const alert = await service.recordSupportAlert(trade.tradeId, {
+    idempotencyKey: 'support-alert-1',
+    actor: 'support',
+    severity: 'critical',
+    message: 'User reports deposit button failed',
+    contact: 'user@example.com',
+    source: 'user',
+    metadata: { severity: 'info' },
+  });
+  await assert.rejects(
+    () =>
+      service.recordSupportAlert(trade.tradeId, {
+        idempotencyKey: 'support-alert-invalid',
+        actor: 'support',
+        severity: 'urgent' as any,
+        message: 'Invalid severity should fail',
+      }),
+    /severity is invalid/,
+  );
+  const summaries = await service.listAdminTrades({ search: trade.buyerUsdcAddress.slice(0, 12) });
+  const detail = await service.getAdminTradeDebug(trade.tradeId);
+
+  assert.equal(alert.effectType, 'support_alert');
+  assert.equal(alert.status, 'failed');
+  assert.equal(alert.metadata.severity, 'critical');
+  assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].tradeId, trade.tradeId);
+  assert.equal(summaries[0].alertCount, 1);
+  assert.equal(summaries[0].failedSideEffectCount, 1);
+  assert.equal(summaries[0].safeActions.includes('record_support_alert'), true);
+  assert.equal(detail.sideEffects.length, 1);
+  assert.equal(detail.supportSummary.publicProofPath, `/otc/trades/${trade.tradeId}/proof`);
+  assert.equal(detail.currentBlockers.includes('failed_side_effect:support_alert'), true);
+});
+
+test('marks a trade for manual review with an audited admin note', async () => {
+  const service = createService();
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-manual-review',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-manual-review',
+  });
+
+  const detail = await service.markManualReview(trade.tradeId, {
+    idempotencyKey: 'manual-review-note-1',
+    actor: 'operator',
+    reason: 'Customer supplied screenshots; hold settlement while checking Base event',
+  });
+  const manualReviewTrades = await service.listAdminTrades({ manualReviewOnly: true });
+
+  assert.equal(detail.trade.state, 'failed_manual_review');
+  assert.equal(detail.events.some((event) => event.source === 'admin' && event.toState === 'failed_manual_review'), true);
+  assert.equal(detail.sideEffects.some((effect) => effect.effectType === 'manual_review_note'), true);
+  assert.equal(manualReviewTrades.length, 1);
+  assert.equal(manualReviewTrades[0].manualReview, true);
+});
+
 test('models edge states as manual-review paths instead of release paths', () => {
   assert.equal(canTransitionTrade('pearl_escrow_pending', 'late_prl_funding'), true);
   assert.equal(canTransitionTrade('late_prl_funding', 'release_pending'), false);

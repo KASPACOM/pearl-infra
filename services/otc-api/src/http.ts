@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
+import type { TradeState } from '@kaspacom/pearl-sdk';
+
 import type { OtcTradeService } from './trade-service.js';
 
 export interface JsonResponse {
@@ -7,9 +9,13 @@ export interface JsonResponse {
   body: unknown;
 }
 
-export function createOtcHttpServer(service: OtcTradeService): Server {
+export interface OtcHttpOptions {
+  adminToken?: string;
+}
+
+export function createOtcHttpServer(service: OtcTradeService, options: OtcHttpOptions = {}): Server {
   return createServer((request, response) => {
-    handleOtcHttpRequest(service, request)
+    handleOtcHttpRequest(service, request, options)
       .then((result) => writeJson(response, result.statusCode, result.body))
       .catch((error: unknown) => {
         const mapped = mapError(error);
@@ -18,13 +24,72 @@ export function createOtcHttpServer(service: OtcTradeService): Server {
   });
 }
 
-export async function handleOtcHttpRequest(service: OtcTradeService, request: IncomingMessage): Promise<JsonResponse> {
+export async function handleOtcHttpRequest(
+  service: OtcTradeService,
+  request: IncomingMessage,
+  options: OtcHttpOptions = {},
+): Promise<JsonResponse> {
   const method = request.method ?? 'GET';
   const path = new URL(request.url ?? '/', 'http://localhost').pathname;
   const parts = path.split('/').filter(Boolean);
 
   if (method === 'GET' && path === '/healthz') {
     return { statusCode: 200, body: { ok: true } };
+  }
+
+  if (parts[0] === 'otc' && parts[1] === 'admin') {
+    const unauthorized = authorizeAdminRequest(request, options);
+    if (unauthorized) {
+      return unauthorized;
+    }
+  }
+
+  if (method === 'GET' && parts.length === 3 && parts[0] === 'otc' && parts[1] === 'admin' && parts[2] === 'trades') {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    return {
+      statusCode: 200,
+      body: await service.listAdminTrades({
+        state: (url.searchParams.get('state') ?? undefined) as TradeState | undefined,
+        manualReviewOnly: url.searchParams.get('manual_review_only') === 'true',
+        search: url.searchParams.get('search') ?? undefined,
+      }),
+    };
+  }
+
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'admin' && parts[2] === 'trades') {
+    return { statusCode: 200, body: await service.getAdminTradeDebug(parts[3]) };
+  }
+
+  if (
+    method === 'POST' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'admin' &&
+    parts[2] === 'trades' &&
+    parts[4] === 'alerts'
+  ) {
+    return { statusCode: 201, body: await service.recordSupportAlert(parts[3], await readJsonBody(request)) };
+  }
+
+  if (
+    method === 'POST' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'admin' &&
+    parts[2] === 'trades' &&
+    parts[4] === 'manual-review'
+  ) {
+    return { statusCode: 200, body: await service.markManualReview(parts[3], await readJsonBody(request)) };
+  }
+
+  if (
+    method === 'POST' &&
+    parts.length === 4 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'support-alerts'
+  ) {
+    return { statusCode: 201, body: await service.recordSupportAlert(parts[2], await readJsonBody(request)) };
   }
 
   if (method === 'POST' && path === '/otc/quotes') {
@@ -82,6 +147,28 @@ export async function handleOtcHttpRequest(service: OtcTradeService, request: In
   };
 }
 
+function authorizeAdminRequest(request: IncomingMessage, options: OtcHttpOptions): JsonResponse | undefined {
+  if (!options.adminToken) {
+    return {
+      statusCode: 503,
+      body: {
+        error: 'admin_auth_unavailable',
+        message: 'admin API token is not configured',
+      },
+    };
+  }
+  if (request.headers.authorization !== `Bearer ${options.adminToken}`) {
+    return {
+      statusCode: 401,
+      body: {
+        error: 'unauthorized',
+        message: 'admin authorization is required',
+      },
+    };
+  }
+  return undefined;
+}
+
 async function readJsonBody(request: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -133,6 +220,9 @@ function mapError(error: unknown): JsonResponse {
     return { statusCode: 409, body: { error: 'conflict', message } };
   }
   if (message.includes('expired') || message.includes('unsupported') || message.includes('not active')) {
+    return { statusCode: 400, body: { error: 'bad_request', message } };
+  }
+  if (message.includes('is required') || message.includes('is invalid')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('deadline passed') || message.includes('terminal')) {

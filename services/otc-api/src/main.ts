@@ -36,7 +36,7 @@ const service = new OtcTradeService(
   pearlEscrowWatchRegistrar,
   pearlProofReader,
 );
-const server = createOtcHttpServer(service);
+const server = createOtcHttpServer(service, { adminToken: config.adminApiToken });
 
 server.listen(port, () => {
   console.log(
