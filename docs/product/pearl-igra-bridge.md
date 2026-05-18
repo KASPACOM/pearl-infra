@@ -83,9 +83,11 @@ function refundExit(bytes32 exitId) external;
 ```
 
 - `requestExit` burns `amountGrains` from the requester before storing the exit.
-- `processExit` is operator-only and idempotent for the same release txid.
+- `processExit` is operator-only and idempotent for the same release txid on the same exit.
 - A conflicting release txid for an already processed exit is rejected.
+- A Pearl release txid can only be recorded once globally, which catches duplicate operator bookkeeping across different exits.
 - `refundExit` is operator-only and mints the burned amount back to the requester when Pearl release cannot happen.
+- Cap reductions must keep `totalSupply + pendingExitGrains <= pilotSupplyCapGrains`, so already-minted supply and refundable exits cannot be configured above the pilot cap.
 
 Events:
 

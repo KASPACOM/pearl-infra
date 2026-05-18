@@ -202,6 +202,7 @@ contract PearlBridgeTest {
 
         VM.prank(OPERATOR);
         bridge.processExit(exitId, releaseTxid);
+        _assertEq(bridge.releaseTxidToExitId(releaseTxid), exitId);
 
         VM.prank(OPERATOR);
         bridge.processExit(exitId, releaseTxid);
@@ -209,6 +210,19 @@ contract PearlBridgeTest {
         VM.prank(OPERATOR);
         VM.expectRevert(bytes("conflicting release txid"));
         bridge.processExit(exitId, _txid("release-2"));
+    }
+
+    function testExitProcessingRejectsReleaseTxidReuseAcrossExits() external {
+        bytes32 firstExitId = _requestExitWithNewRequester(REQUESTER, 1);
+        bytes32 secondExitId = _requestExitWithNewRequester(address(0xC0FFEE), 2);
+        bytes32 releaseTxid = _txid("release-1");
+
+        VM.prank(OPERATOR);
+        bridge.processExit(firstExitId, releaseTxid);
+
+        VM.prank(OPERATOR);
+        VM.expectRevert(bytes("release txid reused"));
+        bridge.processExit(secondExitId, releaseTxid);
     }
 
     function testExitProcessingRequiresOperatorAndCanBePausedSeparately() external {
@@ -266,6 +280,35 @@ contract PearlBridgeTest {
 
         _assertEq(token.totalSupply(), 20 * ONE_PRL);
         _assertEq(bridge.pendingExitGrains(), 0);
+    }
+
+    function testSetCapsCannotLowerPilotCapBelowActiveSupply() external {
+        _claim(_txid("deposit-1"), 0, RECIPIENT, 10 * ONE_PRL);
+
+        PearlBridge.Caps memory lowered = _defaultCaps();
+        lowered.pilotSupplyCapGrains = 9 * ONE_PRL;
+        lowered.maxDepositGrains = 9 * ONE_PRL;
+        lowered.maxExitGrains = 9 * ONE_PRL;
+        lowered.rollingWindowMintCapGrains = 9 * ONE_PRL;
+
+        VM.expectRevert(bytes("pilot cap below liabilities"));
+        bridge.setCaps(lowered);
+    }
+
+    function testSetCapsCannotLowerPilotCapBelowActiveSupplyPlusPendingExits() external {
+        _claim(_txid("deposit-1"), 0, REQUESTER, 20 * ONE_PRL);
+
+        VM.prank(REQUESTER);
+        bridge.requestExit("prl1p-recipient", 10 * ONE_PRL);
+
+        PearlBridge.Caps memory lowered = _defaultCaps();
+        lowered.pilotSupplyCapGrains = 15 * ONE_PRL;
+        lowered.maxDepositGrains = 15 * ONE_PRL;
+        lowered.maxExitGrains = 15 * ONE_PRL;
+        lowered.rollingWindowMintCapGrains = 15 * ONE_PRL;
+
+        VM.expectRevert(bytes("pilot cap below liabilities"));
+        bridge.setCaps(lowered);
     }
 
     function testCapsValidationAndPermissionUpdates() external {

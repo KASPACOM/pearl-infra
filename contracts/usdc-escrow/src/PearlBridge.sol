@@ -47,6 +47,7 @@ contract PearlBridge is Ownable2Step {
     mapping(address => bool) public operators;
     mapping(bytes32 => bool) public claimedDeposits;
     mapping(bytes32 => ExitRequest) public exits;
+    mapping(bytes32 => bytes32) public releaseTxidToExitId;
 
     event DepositClaimed(
         bytes32 indexed claimId,
@@ -139,8 +140,10 @@ contract PearlBridge is Ownable2Step {
         }
 
         require(exitRequest.status == ExitStatus.Requested, "exit not processable");
+        require(releaseTxidToExitId[pearlReleaseTxid] == bytes32(0), "release txid reused");
         exitRequest.status = ExitStatus.Processed;
         exitRequest.pearlReleaseTxid = pearlReleaseTxid;
+        releaseTxidToExitId[pearlReleaseTxid] = exitId;
         pendingExitGrains -= exitRequest.amountGrains;
 
         emit ExitProcessed(exitId, pearlReleaseTxid, msg.sender);
@@ -159,6 +162,10 @@ contract PearlBridge is Ownable2Step {
 
     function setCaps(Caps calldata newCaps) external onlyOwner {
         _validateCaps(newCaps);
+        require(
+            wrappedPearl.totalSupply() + pendingExitGrains <= newCaps.pilotSupplyCapGrains,
+            "pilot cap below liabilities"
+        );
         caps = newCaps;
         emit CapsUpdated(newCaps);
     }
