@@ -45,6 +45,8 @@ export interface OtcApiConfig {
   baseNetwork: 'base' | 'base_sepolia';
   databaseUrl?: string;
   baseRpcUrl?: string;
+  pearlIndexerWatchUrl?: string;
+  pearlIndexerWatchTimeoutMs?: number;
 }
 
 export interface OtcApiRuntimeConfig {
@@ -56,6 +58,7 @@ export type OtcSideEffectType =
   | 'usdc_deposit_observed'
   | 'usdc_release'
   | 'usdc_refund'
+  | 'pearl_watch_register'
   | 'pearl_release'
   | 'pearl_refund';
 

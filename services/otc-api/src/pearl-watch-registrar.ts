@@ -1,0 +1,74 @@
+import type { OtcTrade } from '@kaspacom/pearl-sdk';
+
+import type { PearlEscrowWatchRegistrar } from './trade-service.js';
+
+export interface PearlEscrowWatchRegistration {
+  watchId: string;
+  purpose: 'otc_escrow';
+  network: OtcTrade['pearlEscrow']['network'];
+  address: string;
+  requiredConfirmations: number;
+  metadata: Record<string, unknown>;
+}
+
+export class HttpPearlEscrowWatchRegistrar implements PearlEscrowWatchRegistrar {
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+
+  constructor(baseUrl: string, timeoutMs = 5_000) {
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.timeoutMs = timeoutMs;
+  }
+
+  async registerPearlEscrowWatch(trade: OtcTrade): Promise<PearlEscrowWatchRegistration> {
+    const registration = createPearlEscrowWatchRegistration(trade);
+    const response = await fetch(`${this.baseUrl}/watches`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(toIndexerRequest(registration)),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (response.status !== 200 && response.status !== 201) {
+      throw new Error(`Pearl indexer watch registration failed: ${response.status} ${await response.text()}`);
+    }
+    return registration;
+  }
+}
+
+export function createPearlEscrowWatchRegistration(trade: OtcTrade): PearlEscrowWatchRegistration {
+  return {
+    watchId: createPearlEscrowWatchId(trade.tradeId),
+    purpose: 'otc_escrow',
+    network: trade.pearlEscrow.network,
+    address: trade.pearlEscrow.address,
+    requiredConfirmations: trade.pearlEscrow.requiredConfirmations,
+    metadata: {
+      trade_id: trade.tradeId,
+      quote_id: trade.quoteId,
+      side: trade.side,
+      expected_amount_grains: trade.pearlEscrow.expectedAmountGrains,
+      pearl_funding_deadline: trade.deadlines.pearlFundingDeadline,
+      refund_available_at: trade.deadlines.refundAvailableAt,
+      settlement_deadline: trade.deadlines.settlementDeadline,
+      ...(trade.pearlEscrow.escrowScriptType ? { escrow_script_type: trade.pearlEscrow.escrowScriptType } : {}),
+      ...(trade.pearlEscrow.taprootOutputScriptHex
+        ? { taproot_output_script_hex: trade.pearlEscrow.taprootOutputScriptHex }
+        : {}),
+    },
+  };
+}
+
+export function createPearlEscrowWatchId(tradeId: string): string {
+  return `otc:${tradeId}:pearl-escrow`;
+}
+
+function toIndexerRequest(registration: PearlEscrowWatchRegistration): Record<string, unknown> {
+  return {
+    watch_id: registration.watchId,
+    purpose: registration.purpose,
+    network: registration.network,
+    address: registration.address,
+    required_confirmations: registration.requiredConfirmations,
+    metadata: registration.metadata,
+  };
+}
