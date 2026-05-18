@@ -16,6 +16,7 @@ import {
 import { getUsdcEscrowNetworkConfig } from '@kaspacom/usdc-escrow-client';
 
 import type { OtcRepository } from './repository.js';
+import type { PearlIndexedProof, PearlProofReader } from './pearl-proof-reader.js';
 import type {
   AcceptQuoteRequest,
   CreateQuoteRequest,
@@ -72,6 +73,7 @@ export class OtcTradeService {
   private readonly pearlEscrowAllocator: PearlEscrowAllocator;
   private readonly usdcEscrowReader?: UsdcEscrowReader;
   private readonly pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar;
+  private readonly pearlProofReader?: PearlProofReader;
   private readonly now: () => Date;
 
   constructor(
@@ -81,6 +83,7 @@ export class OtcTradeService {
     usdcEscrowReaderOrNow?: UsdcEscrowReader | (() => Date),
     now: () => Date = () => new Date(),
     pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar,
+    pearlProofReader?: PearlProofReader,
   ) {
     this.repository = repository;
     this.config = config;
@@ -92,6 +95,7 @@ export class OtcTradeService {
       this.now = now;
     }
     this.pearlEscrowWatchRegistrar = pearlEscrowWatchRegistrar;
+    this.pearlProofReader = pearlProofReader;
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
@@ -279,7 +283,18 @@ export class OtcTradeService {
   async getPublicProof(tradeId: string): Promise<PublicTradeProof> {
     const trade = await this.getTrade(tradeId);
     const events = await this.repository.listEvents(tradeId);
-    return createPublicProof(trade, events, this.now());
+    const pearlIndexedProof = await this.getPearlIndexedProof(trade);
+    return createPublicProof(trade, events, this.now(), pearlIndexedProof);
+  }
+
+  private async getPearlIndexedProof(trade: OtcTrade): Promise<PearlIndexedProof | undefined> {
+    if (this.config.pearlEscrowAllocator !== 'p2tr_xpub') {
+      return undefined;
+    }
+    if (!this.pearlProofReader) {
+      throw new Error('Pearl proof reader is required when PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
+    }
+    return this.pearlProofReader.getPearlIndexedProof(trade);
   }
 
   async prepareUsdcCreateTrade(
@@ -389,7 +404,12 @@ export class OtcTradeService {
   }
 }
 
-export function createPublicProof(trade: OtcTrade, events: TradeEvent[], observedAt: Date): PublicTradeProof {
+export function createPublicProof(
+  trade: OtcTrade,
+  events: TradeEvent[],
+  observedAt: Date,
+  pearlIndexedProof?: PearlIndexedProof,
+): PublicTradeProof {
   return {
     tradeId: trade.tradeId,
     status: trade.state,
@@ -404,10 +424,10 @@ export function createPublicProof(trade: OtcTrade, events: TradeEvent[], observe
     },
     pearl: {
       escrowAddress: trade.pearlEscrow.address,
-      escrowOutpoint: trade.pearlEscrow.fundingOutpoint,
-      escrowConfirmations: 0,
-      releaseTxid: trade.pearlEscrow.releaseTxid,
-      refundTxid: trade.pearlEscrow.refundTxid,
+      escrowOutpoint: pearlIndexedProof?.escrowOutpoint ?? trade.pearlEscrow.fundingOutpoint,
+      escrowConfirmations: pearlIndexedProof?.escrowConfirmations ?? 0,
+      releaseTxid: pearlIndexedProof?.releaseTxid ?? trade.pearlEscrow.releaseTxid,
+      refundTxid: pearlIndexedProof?.refundTxid ?? trade.pearlEscrow.refundTxid,
     },
     base: {
       chainId: trade.usdcEscrow.chainId,
@@ -419,9 +439,17 @@ export function createPublicProof(trade: OtcTrade, events: TradeEvent[], observe
       refundTxHash: trade.usdcEscrow.refundTxHash,
       requiredConfirmations: trade.usdcEscrow.requiredConfirmations,
     },
-    events,
+    events: mergeProofEvents(events, pearlIndexedProof?.events ?? []),
     observedAt: observedAt.toISOString(),
   };
+}
+
+function mergeProofEvents(events: TradeEvent[], indexedEvents: TradeEvent[]): TradeEvent[] {
+  const bySourceEventId = new Map<string, TradeEvent>();
+  for (const event of [...events, ...indexedEvents]) {
+    bySourceEventId.set(event.sourceEventId, event);
+  }
+  return Array.from(bySourceEventId.values()).sort((a, b) => a.observedAt.localeCompare(b.observedAt));
 }
 
 function calculateImpliedPrice(trade: OtcTrade): string {
