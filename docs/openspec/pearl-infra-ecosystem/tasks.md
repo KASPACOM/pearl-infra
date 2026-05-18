@@ -250,7 +250,7 @@ Current delegation queue after PR #33:
   with explicit per-environment config contracts and secret names.
 - [x] 9.8.4 Persist allocated Pearl derivation indexes with uniqueness and retry
   on collision before enabling real-money allocation.
-- [ ] 9.8.5 Wire quote acceptance to watch registration so every real escrow
+- [x] 9.8.5 Wire quote acceptance to watch registration so every real escrow
   package is observed by the Pearl indexer before funding instructions are
   shown.
 - [ ] 9.8.6 Derive public proof Pearl confirmations, funding outpoint, and

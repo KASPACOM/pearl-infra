@@ -29,6 +29,16 @@ import type {
 } from './types.js';
 import type { UsdcEscrowReader } from './usdc-escrow-reader.js';
 
+export interface PearlEscrowWatchRegistrar {
+  registerPearlEscrowWatch(trade: OtcTrade): Promise<{
+    watchId: string;
+    address: string;
+    network: OtcTrade['pearlEscrow']['network'];
+    requiredConfirmations: number;
+    metadata: Record<string, unknown>;
+  }>;
+}
+
 export interface PearlEscrowAllocator {
   allocateEscrow(input: {
     tradeId: string;
@@ -61,6 +71,7 @@ export class OtcTradeService {
   private readonly config: OtcApiConfig;
   private readonly pearlEscrowAllocator: PearlEscrowAllocator;
   private readonly usdcEscrowReader?: UsdcEscrowReader;
+  private readonly pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar;
   private readonly now: () => Date;
 
   constructor(
@@ -69,6 +80,7 @@ export class OtcTradeService {
     pearlEscrowAllocator: PearlEscrowAllocator = new MockPearlEscrowAllocator(),
     usdcEscrowReaderOrNow?: UsdcEscrowReader | (() => Date),
     now: () => Date = () => new Date(),
+    pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar,
   ) {
     this.repository = repository;
     this.config = config;
@@ -79,6 +91,7 @@ export class OtcTradeService {
       this.usdcEscrowReader = usdcEscrowReaderOrNow;
       this.now = now;
     }
+    this.pearlEscrowWatchRegistrar = pearlEscrowWatchRegistrar;
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
@@ -114,6 +127,7 @@ export class OtcTradeService {
     const existing = await this.repository.findTradeIdempotencyByClientRequestId(request.clientRequestId);
     if (existing) {
       assertRequestHashMatches('trade', request.clientRequestId, existing.requestHash, requestHash);
+      await this.ensurePearlEscrowWatch(existing.trade);
       return existing.trade;
     }
 
@@ -131,6 +145,7 @@ export class OtcTradeService {
     if (await this.repository.findTradeByQuoteId(quoteId)) {
       throw new Error('quote already accepted');
     }
+    this.assertPearlEscrowWatchRegistrarConfigured();
 
     const tradeId = createStableId('trade', [quote.quoteId, request.clientRequestId]);
     const baseConfig = getUsdcEscrowNetworkConfig(this.config.baseNetwork);
@@ -181,8 +196,51 @@ export class OtcTradeService {
       sourceEventId: createStableId('event', [tradeId, 'accept']),
       observedAt: timestamp,
     });
+    await this.ensurePearlEscrowWatch(trade);
 
     return trade;
+  }
+
+  private async ensurePearlEscrowWatch(trade: OtcTrade): Promise<void> {
+    if (this.config.pearlEscrowAllocator !== 'p2tr_xpub') {
+      return;
+    }
+    this.assertPearlEscrowWatchRegistrarConfigured();
+    if (!this.pearlEscrowWatchRegistrar) return;
+    const registration = await this.pearlEscrowWatchRegistrar.registerPearlEscrowWatch(trade);
+    const timestamp = this.now().toISOString();
+    const requestHash = createPayloadHash('pearl_watch_register', {
+      tradeId: trade.tradeId,
+      watchId: registration.watchId,
+      address: registration.address,
+      network: registration.network,
+      requiredConfirmations: registration.requiredConfirmations,
+      expectedAmountGrains: trade.pearlEscrow.expectedAmountGrains,
+    });
+    await this.repository.saveSideEffect({
+      idempotencyKey: createStableId('side-effect', [trade.tradeId, 'pearl-watch-register']),
+      requestHash,
+      tradeId: trade.tradeId,
+      effectType: 'pearl_watch_register',
+      status: 'confirmed',
+      actor: 'otc-api',
+      sourceEventId: registration.watchId,
+      metadata: {
+        watch_id: registration.watchId,
+        address: registration.address,
+        network: registration.network,
+        required_confirmations: registration.requiredConfirmations,
+        ...registration.metadata,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+
+  private assertPearlEscrowWatchRegistrarConfigured(): void {
+    if (this.config.pearlEscrowAllocator === 'p2tr_xpub' && !this.pearlEscrowWatchRegistrar) {
+      throw new Error('Pearl indexer watch registrar is required when PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
+    }
   }
 
   async transitionTrade(tradeId: string, toState: TradeState, sourceEventId: string): Promise<OtcTrade> {

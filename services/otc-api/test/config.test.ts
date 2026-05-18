@@ -23,7 +23,7 @@ test('fails production startup when persistence, RPC, real Pearl escrow, or cont
 
   assert.throws(
     () => assertOtcApiStartupConfig(config, runtime),
-    /OTC_API_DATABASE_URL.*BASE_RPC_URL.*PEARL_ESCROW_ALLOCATOR=p2tr_xpub.*PEARL_ESCROW_XPUB.*BASE_USDC_ESCROW_CONTRACT/,
+    /OTC_API_DATABASE_URL.*BASE_RPC_URL.*PEARL_ESCROW_ALLOCATOR=p2tr_xpub.*PEARL_ESCROW_XPUB.*PEARL_INDEXER_WATCH_URL.*BASE_USDC_ESCROW_CONTRACT/,
   );
 });
 
@@ -34,6 +34,7 @@ test('accepts complete production startup config', () => {
     BASE_RPC_URL: 'https://base-sepolia.example',
     PEARL_ESCROW_ALLOCATOR: 'p2tr_xpub',
     PEARL_ESCROW_XPUB: 'tpubD6NzVbkrYhZ4Xfake',
+    PEARL_INDEXER_WATCH_URL: 'http://pearl-indexer:8080',
     BASE_USDC_ESCROW_CONTRACT: '0x1111111111111111111111111111111111111111',
   });
   const runtime = readOtcApiRuntimeConfig({ OTC_API_REQUIRE_PRODUCTION_CONFIG: 'true' });

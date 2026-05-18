@@ -4,7 +4,7 @@ import test from 'node:test';
 import { canTransitionTrade } from '@kaspacom/pearl-sdk';
 
 import { InMemoryOtcRepository } from '../src/repository.ts';
-import { OtcTradeService, type PearlEscrowAllocator } from '../src/trade-service.ts';
+import { OtcTradeService, type PearlEscrowAllocator, type PearlEscrowWatchRegistrar } from '../src/trade-service.ts';
 import type { OtcApiConfig } from '../src/types.ts';
 import type { UsdcEscrowReader } from '../src/usdc-escrow-reader.ts';
 
@@ -35,6 +35,24 @@ const escrowAllocator: PearlEscrowAllocator = {
     };
   },
 };
+
+class RecordingWatchRegistrar implements PearlEscrowWatchRegistrar {
+  readonly trades: string[] = [];
+
+  async registerPearlEscrowWatch(trade: Awaited<ReturnType<OtcTradeService['acceptQuote']>>) {
+    this.trades.push(trade.tradeId);
+    return {
+      watchId: `otc:${trade.tradeId}:pearl-escrow`,
+      address: trade.pearlEscrow.address,
+      network: trade.pearlEscrow.network,
+      requiredConfirmations: trade.pearlEscrow.requiredConfirmations,
+      metadata: {
+        trade_id: trade.tradeId,
+        expected_amount_grains: trade.pearlEscrow.expectedAmountGrains,
+      },
+    };
+  }
+}
 
 function createService(now = new Date('2026-05-16T12:00:00.000Z')): OtcTradeService {
   return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, () => now);
@@ -120,6 +138,72 @@ test('accepts a quote into pearl escrow pending state', async () => {
     refundAvailableAt: '2026-05-16T12:15:00.000Z',
   });
   assert.match(trade.usdcEscrow.tradeKey, /^0x[0-9a-f]{64}$/);
+});
+
+test('registers real Pearl escrows with the indexer before returning accepted trade', async () => {
+  const repository = new InMemoryOtcRepository();
+  const registrar = new RecordingWatchRegistrar();
+  const service = new OtcTradeService(
+    repository,
+    { ...config, pearlEscrowAllocator: 'p2tr_xpub' },
+    escrowAllocator,
+    undefined,
+    () => new Date('2026-05-16T12:00:00.000Z'),
+    registrar,
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-watch',
+  });
+
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-watch',
+  });
+
+  assert.deepEqual(registrar.trades, [trade.tradeId]);
+  const sideEffects = await repository.listSideEffects(trade.tradeId);
+  assert.equal(sideEffects.length, 1);
+  assert.equal(sideEffects[0].effectType, 'pearl_watch_register');
+  assert.equal(sideEffects[0].sourceEventId, `otc:${trade.tradeId}:pearl-escrow`);
+});
+
+test('requires an indexer watch registrar for real Pearl escrow allocation', async () => {
+  const service = new OtcTradeService(
+    new InMemoryOtcRepository(),
+    { ...config, pearlEscrowAllocator: 'p2tr_xpub' },
+    escrowAllocator,
+    () => new Date('2026-05-16T12:00:00.000Z'),
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-watch-required',
+  });
+
+  await assert.rejects(
+    () =>
+      service.acceptQuote(quote.quoteId, {
+        buyerPearlAddress: 'tprl1pbuyer',
+        buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+        sellerPearlRefundAddress: 'tprl1psellerrefund',
+        sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+        clientRequestId: 'accept-request-watch-required',
+      }),
+    /Pearl indexer watch registrar is required/,
+  );
 });
 
 test('rejects accept idempotency key reuse with a different payload', async () => {

@@ -5,6 +5,7 @@ import { OtcTradeService } from './trade-service.js';
 import { assertOtcApiStartupConfig, readOtcApiConfig, readOtcApiRuntimeConfig } from './config.js';
 import { createOtcHttpServer } from './http.js';
 import { createConfiguredPearlEscrowAllocator } from './pearl-escrow-allocator.js';
+import { HttpPearlEscrowWatchRegistrar } from './pearl-watch-registrar.js';
 import { pgPoolAdapter } from './postgres.js';
 import { EthersUsdcEscrowReader } from './usdc-escrow-reader.js';
 
@@ -19,7 +20,17 @@ const usdcEscrowReader = config.baseRpcUrl
   ? new EthersUsdcEscrowReader(config.baseRpcUrl, config.baseEscrowContract)
   : undefined;
 const pearlEscrowAllocator = createConfiguredPearlEscrowAllocator(config, repository);
-const service = new OtcTradeService(repository, config, pearlEscrowAllocator, usdcEscrowReader);
+const pearlEscrowWatchRegistrar = config.pearlIndexerWatchUrl
+  ? new HttpPearlEscrowWatchRegistrar(config.pearlIndexerWatchUrl, config.pearlIndexerWatchTimeoutMs)
+  : undefined;
+const service = new OtcTradeService(
+  repository,
+  config,
+  pearlEscrowAllocator,
+  usdcEscrowReader,
+  undefined,
+  pearlEscrowWatchRegistrar,
+);
 const server = createOtcHttpServer(service);
 
 server.listen(port, () => {
@@ -29,6 +40,7 @@ server.listen(port, () => {
       port,
       persistence: config.databaseUrl ? 'postgres' : 'memory',
       pearlEscrowAllocator: config.pearlEscrowAllocator,
+      pearlEscrowWatchRegistrar: config.pearlIndexerWatchUrl ? 'http' : 'disabled',
       usdcEscrowReader: config.baseRpcUrl ? 'ethers' : 'disabled',
       productionConfigRequired: runtime.production,
     }),

@@ -18,6 +18,8 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     baseNetwork: (env.BASE_USDC_ESCROW_NETWORK as OtcApiConfig['baseNetwork'] | undefined) ?? 'base_sepolia',
     databaseUrl: env.OTC_API_DATABASE_URL,
     baseRpcUrl: env.BASE_RPC_URL,
+    pearlIndexerWatchUrl: env.PEARL_INDEXER_WATCH_URL,
+    pearlIndexerWatchTimeoutMs: Number(env.PEARL_INDEXER_WATCH_TIMEOUT_MS ?? 5_000),
   };
 }
 
@@ -37,6 +39,7 @@ export function assertOtcApiStartupConfig(config: OtcApiConfig, runtime: OtcApiR
   if (!config.baseRpcUrl) missing.push('BASE_RPC_URL');
   if (config.pearlEscrowAllocator !== 'p2tr_xpub') missing.push('PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
   if (!config.pearlEscrowXpub) missing.push('PEARL_ESCROW_XPUB');
+  if (!config.pearlIndexerWatchUrl) missing.push('PEARL_INDEXER_WATCH_URL');
   if (config.baseEscrowContract === '0x0000000000000000000000000000000000000000') {
     missing.push('BASE_USDC_ESCROW_CONTRACT');
   }
