@@ -59,9 +59,9 @@ export function RfqPage() {
   return (
     <section className="rfq-page">
       <div className="om-page-title">
-        <span>Request for quote</span>
-        <h1>Price a PRL / USDC settlement</h1>
-        <p>Oysters Market keeps settlement terms locked to USDC on Base and validates the request before it reaches the desk API.</p>
+        <span>Quote builder</span>
+        <h1>Get a PRL price before you fund.</h1>
+        <p>Oysters Market locks the quote terms to Base USDC and validates the request before it reaches the trading API.</p>
       </div>
 
       <div className="rfq-page__grid">
@@ -102,7 +102,7 @@ export function RfqPage() {
           </div>
 
           <button className="om-button om-button--primary" type="button" disabled={status === 'submitting'} onClick={submit}>
-            {status === 'submitting' ? 'Requesting quote...' : 'Request quote'}
+            {status === 'submitting' ? 'Getting price...' : 'Get price'}
           </button>
           {error ? <p className="om-form-error">{error}</p> : null}
         </form>

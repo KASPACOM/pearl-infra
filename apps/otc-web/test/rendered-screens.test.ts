@@ -4,20 +4,33 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { AdminTradesPage } from '../dist/pages/AdminTradesPage.js';
 import { AcceptQuotePage } from '../dist/pages/AcceptQuotePage.js';
+import { AdminTradesPage } from '../dist/pages/AdminTradesPage.js';
+import { FaqPage } from '../dist/pages/FaqPage.js';
+import { LandingPage } from '../dist/pages/LandingPage.js';
 import { PublicProofPage } from '../dist/pages/PublicProofPage.js';
 import { RfqPage } from '../dist/pages/RfqPage.js';
 import { TradeCheckoutPage } from '../dist/pages/TradeCheckoutPage.js';
 import { getQuoteIdFromPath, getTradeIdFromPath } from '../dist/routing.js';
 
-test('renders Oysters Market RFQ screen from the real quote model', () => {
+test('renders Oysters Market quote screen from the real quote model', () => {
   const html = renderToStaticMarkup(createElement(RfqPage));
 
   assert.match(html, /Oysters Market/);
-  assert.match(html, /Request quote/);
+  assert.match(html, /Get price/);
   assert.match(html, /Settlement network/);
   assert.match(html, /base/);
+  assert.doesNotMatch(html, /RFQ|Request for quote/);
+});
+
+test('renders landing and FAQ screens for app and Pearl education', () => {
+  const landingHtml = renderToStaticMarkup(createElement(LandingPage));
+  const faqHtml = renderToStaticMarkup(createElement(FaqPage));
+
+  assert.match(landingHtml, /Private PRL trading with proof-first settlement/);
+  assert.match(landingHtml, /Pearl blockchain/);
+  assert.match(faqHtml, /Learn Oysters Market before you trade/);
+  assert.match(faqHtml, /What is Pearl/);
 });
 
 test('checkout, proof, and admin screens expose no release or refund buttons', () => {

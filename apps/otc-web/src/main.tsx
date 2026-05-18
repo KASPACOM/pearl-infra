@@ -7,6 +7,8 @@ import './components/AppShell.scss';
 import './components/Primitives.scss';
 import './pages/AcceptQuotePage.scss';
 import './pages/AdminTradesPage.scss';
+import './pages/FaqPage.scss';
+import './pages/LandingPage.scss';
 import './pages/PublicProofPage.scss';
 import './pages/RfqPage.scss';
 import './pages/TradeCheckoutPage.scss';
