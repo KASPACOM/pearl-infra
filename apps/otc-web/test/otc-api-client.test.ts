@@ -59,6 +59,49 @@ test('gets trade and proof routes', async () => {
   ]);
 });
 
+test('gets escrow verification and side-effect routes', async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const client = new OtcApiClient({
+    baseUrl: 'https://api.example.test',
+    fetcher: async (url, init) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      if (url.toString().endsWith('/create-intent')) {
+        return jsonResponse({ tradeId: 'trade_1', tradeKey: '0xabc', sideEffect: { effectType: 'usdc_create_trade' } });
+      }
+      if (url.toString().endsWith('/verification')) {
+        return jsonResponse({ tradeId: 'trade_1', verified: true, depositAllowed: true, mismatches: [] });
+      }
+      if (url.toString().endsWith('/side-effects') && init?.method === 'POST') {
+        return jsonResponse({ tradeId: 'trade_1', effectType: 'usdc_deposit_observed' }, 201);
+      }
+      return jsonResponse([{ tradeId: 'trade_1', effectType: 'usdc_deposit_observed' }]);
+    },
+  });
+
+  const intent = await client.prepareUsdcCreateTrade('trade_1', {
+    idempotencyKey: 'intent-1',
+    actor: 'otc-web',
+  });
+  const verification = await client.verifyUsdcEscrowTerms('trade_1');
+  const sideEffects = await client.listSideEffects('trade_1');
+  const recorded = await client.recordSideEffect('trade_1', {
+    idempotencyKey: 'effect-1',
+    effectType: 'usdc_deposit_observed',
+    status: 'confirmed',
+    actor: 'operator',
+  });
+
+  assert.equal(intent.tradeId, 'trade_1');
+  assert.equal(verification.depositAllowed, true);
+  assert.equal(sideEffects.length, 1);
+  assert.equal(recorded.effectType, 'usdc_deposit_observed');
+  assert.equal(calls[0].url, 'https://api.example.test/otc/trades/trade_1/usdc-escrow/create-intent');
+  assert.equal(calls[1].url, 'https://api.example.test/otc/trades/trade_1/usdc-escrow/verification');
+  assert.equal(calls[2].url, 'https://api.example.test/otc/trades/trade_1/side-effects');
+  assert.equal(calls[3].url, 'https://api.example.test/otc/trades/trade_1/side-effects');
+  assert.equal(calls[3].init.method, 'POST');
+});
+
 test('throws mapped API errors', async () => {
   const client = new OtcApiClient({
     baseUrl: 'https://api.example.test',
