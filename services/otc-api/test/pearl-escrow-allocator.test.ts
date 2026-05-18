@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import { getPearlScriptNetwork } from '@kaspacom/pearl-script';
 import { BIP32Factory } from 'bip32';
 import * as ecc from 'tiny-secp256k1';
 
-import { createConfiguredPearlEscrowAllocator } from '../src/pearl-escrow-allocator.ts';
+import { createConfiguredPearlEscrowAllocator, deriveTradeIndex } from '../src/pearl-escrow-allocator.ts';
+import { InMemoryOtcRepository } from '../src/repository.ts';
 import type { OtcApiConfig } from '../src/types.ts';
 import type { PearlEscrowAllocator } from '../src/trade-service.ts';
 
@@ -33,10 +35,11 @@ const config: OtcApiConfig = {
   baseNetwork: 'base_sepolia',
 };
 
-test('derives a deterministic P2TR Pearl escrow from configured xpub', () => {
-  const allocator = createConfiguredPearlEscrowAllocator(config);
-  const first = allocator.allocateEscrow(createAllocationInput('trade-xpub-1'));
-  const second = allocator.allocateEscrow(createAllocationInput('trade-xpub-1'));
+test('derives a deterministic P2TR Pearl escrow from configured xpub', async () => {
+  const repository = new InMemoryOtcRepository();
+  const allocator = createConfiguredPearlEscrowAllocator(config, repository);
+  const first = await allocator.allocateEscrow(createAllocationInput('trade-xpub-1'));
+  const second = await allocator.allocateEscrow(createAllocationInput('trade-xpub-1'));
 
   assert.equal(first.address, second.address);
   assert.match(first.address, /^tprl1p/);
@@ -48,6 +51,9 @@ test('derives a deterministic P2TR Pearl escrow from configured xpub', () => {
   assert.match(first.derivationPath ?? '', /^m\/0\/\d+$/);
   assert.equal(first.refundEligibleAfterUnixTime, 1778933700);
   assert.equal(first.simnetVerified, false);
+  const allocation = await repository.findPearlEscrowAllocationByTradeId('trade-xpub-1');
+  assert.equal(allocation?.derivationPath, first.derivationPath);
+  assert.equal(allocation?.escrowAddress, first.address);
 });
 
 test('requires an xpub when p2tr allocation is enabled', () => {
@@ -58,6 +64,31 @@ test('requires an xpub when p2tr allocation is enabled', () => {
         pearlEscrowXpub: undefined,
       }),
     /PEARL_ESCROW_XPUB is required/,
+  );
+});
+
+test('retries when a derived Pearl escrow index is already allocated', async () => {
+  const repository = new InMemoryOtcRepository();
+  const allocator = createConfiguredPearlEscrowAllocator(config, repository);
+  const firstIndex = deriveTradeIndex('trade-xpub-collision');
+  await repository.reservePearlEscrowAllocation({
+    tradeId: 'trade-existing',
+    allocatorKey: createTestAllocatorKey(),
+    derivationPrefix: 'm/0',
+    derivationIndex: firstIndex,
+    derivationPath: `m/0/${firstIndex}`,
+    escrowAddress: 'tprl1pexisting',
+    internalPubkeyHex: '11'.repeat(32),
+    taprootOutputScriptHex: `5120${'22'.repeat(32)}`,
+  });
+
+  const allocated = await allocator.allocateEscrow(createAllocationInput('trade-xpub-collision'));
+
+  assert.match(allocated.derivationPath ?? '', /^m\/0\/\d+$/);
+  assert.notEqual(allocated.derivationPath, `m/0/${firstIndex}`);
+  assert.equal(
+    (await repository.findPearlEscrowAllocationByTradeId('trade-xpub-collision'))?.derivationPath,
+    allocated.derivationPath,
   );
 });
 
@@ -93,4 +124,10 @@ function createAllocationInput(tradeId: string): Parameters<PearlEscrowAllocator
       refundAvailableAt: '2026-05-16T12:15:00.000Z',
     },
   };
+}
+
+function createTestAllocatorKey(): string {
+  const xpub = config.pearlEscrowXpub;
+  assert.ok(xpub);
+  return `p2tr_xpub:${config.pearlNetwork}:${createHash('sha256').update(xpub).digest('hex')}`;
 }

@@ -25,7 +25,7 @@ const config: OtcApiConfig = {
 };
 
 const escrowAllocator: PearlEscrowAllocator = {
-  allocateEscrow({ tradeId, config: allocatorConfig }) {
+  async allocateEscrow({ tradeId, config: allocatorConfig }) {
     return {
       network: allocatorConfig.pearlNetwork,
       address: `tprl1p${tradeId.slice(-12)}`,

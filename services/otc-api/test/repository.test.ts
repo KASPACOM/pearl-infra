@@ -4,7 +4,7 @@ import test from 'node:test';
 import type { OtcQuote, OtcTrade, TradeEvent } from '@kaspacom/pearl-sdk';
 
 import type { PgTransactionalClient } from '../src/postgres.ts';
-import { PgOtcRepository } from '../src/repository.ts';
+import { InMemoryOtcRepository, PearlEscrowDerivationCollisionError, PgOtcRepository } from '../src/repository.ts';
 import type { OtcSideEffect } from '../src/types.ts';
 
 interface QueryCall {
@@ -117,6 +117,16 @@ const sideEffect: OtcSideEffect = {
 };
 
 const fixedAt = new Date('2026-05-16T12:00:00.000Z');
+const pearlEscrowAllocation = {
+  tradeId: trade.tradeId,
+  allocatorKey: 'p2tr_xpub:testnet2:abc',
+  derivationPrefix: 'm/0',
+  derivationIndex: 123,
+  derivationPath: 'm/0/123',
+  escrowAddress: 'tprl1pescrowallocation',
+  internalPubkeyHex: '11'.repeat(32),
+  taprootOutputScriptHex: `5120${'22'.repeat(32)}`,
+};
 
 test('PgOtcRepository saves and reads quotes/trades as JSON payloads', async () => {
   const pg = new FakePg();
@@ -187,4 +197,49 @@ test('PgOtcRepository persists side effects with idempotency keys', async () => 
   assert.equal(result.sideEffect.idempotencyKey, sideEffect.idempotencyKey);
   assert.equal(result.sideEffect.requestHash, sideEffect.requestHash);
   assert.equal(result.sideEffect.chainId, 84532);
+});
+
+test('InMemoryOtcRepository reserves Pearl escrow allocations idempotently and rejects derivation collisions', async () => {
+  const repo = new InMemoryOtcRepository();
+
+  const first = await repo.reservePearlEscrowAllocation(pearlEscrowAllocation);
+  const second = await repo.reservePearlEscrowAllocation(pearlEscrowAllocation);
+
+  assert.equal(first.created, true);
+  assert.equal(second.created, false);
+  assert.equal(second.allocation.derivationPath, pearlEscrowAllocation.derivationPath);
+  await assert.rejects(
+    () =>
+      repo.reservePearlEscrowAllocation({
+        ...pearlEscrowAllocation,
+        tradeId: 'trade-2',
+      }),
+    PearlEscrowDerivationCollisionError,
+  );
+});
+
+test('PgOtcRepository persists Pearl escrow allocations with derivation uniqueness', async () => {
+  const pg = new FakePg();
+  pg.setFixture(/SELECT trade_id, allocator_key, derivation_prefix, derivation_index,\s+derivation_path/s, []);
+  pg.setFixture(/INSERT INTO pearl_escrow_allocations/, [
+    {
+      trade_id: pearlEscrowAllocation.tradeId,
+      allocator_key: pearlEscrowAllocation.allocatorKey,
+      derivation_prefix: pearlEscrowAllocation.derivationPrefix,
+      derivation_index: pearlEscrowAllocation.derivationIndex,
+      derivation_path: pearlEscrowAllocation.derivationPath,
+      escrow_address: pearlEscrowAllocation.escrowAddress,
+      internal_pubkey_hex: pearlEscrowAllocation.internalPubkeyHex,
+      taproot_output_script_hex: pearlEscrowAllocation.taprootOutputScriptHex,
+      created_at: fixedAt,
+    },
+  ]);
+  const repo = new PgOtcRepository(pg);
+
+  const result = await repo.reservePearlEscrowAllocation(pearlEscrowAllocation);
+
+  assert.equal(result.created, true);
+  assert.equal(result.allocation.tradeId, pearlEscrowAllocation.tradeId);
+  assert.equal(result.allocation.derivationIndex, pearlEscrowAllocation.derivationIndex);
+  assert.ok(pg.calls.some((call) => /allocator_key = \$1/.test(call.text)));
 });

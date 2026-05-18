@@ -18,7 +18,7 @@ const repository = config.databaseUrl
 const usdcEscrowReader = config.baseRpcUrl
   ? new EthersUsdcEscrowReader(config.baseRpcUrl, config.baseEscrowContract)
   : undefined;
-const pearlEscrowAllocator = createConfiguredPearlEscrowAllocator(config);
+const pearlEscrowAllocator = createConfiguredPearlEscrowAllocator(config, repository);
 const service = new OtcTradeService(repository, config, pearlEscrowAllocator, usdcEscrowReader);
 const server = createOtcHttpServer(service);
 

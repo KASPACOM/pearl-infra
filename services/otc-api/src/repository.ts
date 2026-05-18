@@ -13,6 +13,28 @@ export interface TradeIdempotencyRecord {
   requestHash?: string;
 }
 
+export interface PearlEscrowAllocationInput {
+  tradeId: string;
+  allocatorKey: string;
+  derivationPrefix: string;
+  derivationIndex: number;
+  derivationPath: string;
+  escrowAddress: string;
+  internalPubkeyHex: string;
+  taprootOutputScriptHex: string;
+}
+
+export interface PearlEscrowAllocation extends PearlEscrowAllocationInput {
+  createdAt: string;
+}
+
+export class PearlEscrowDerivationCollisionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PearlEscrowDerivationCollisionError';
+  }
+}
+
 export interface OtcRepository {
   saveQuote(quote: OtcQuote, clientRequestId: string, requestHash?: string): Promise<void>;
   findQuoteById(quoteId: string): Promise<OtcQuote | undefined>;
@@ -24,6 +46,10 @@ export interface OtcRepository {
   findTradeByClientRequestId(clientRequestId: string): Promise<OtcTrade | undefined>;
   findTradeIdempotencyByClientRequestId(clientRequestId: string): Promise<TradeIdempotencyRecord | undefined>;
   updateTrade(trade: OtcTrade): Promise<void>;
+  findPearlEscrowAllocationByTradeId(tradeId: string): Promise<PearlEscrowAllocation | undefined>;
+  reservePearlEscrowAllocation(
+    allocation: PearlEscrowAllocationInput,
+  ): Promise<{ allocation: PearlEscrowAllocation; created: boolean }>;
   appendEvent(event: TradeEvent): Promise<void>;
   listEvents(tradeId: string): Promise<TradeEvent[]>;
   saveSideEffect(sideEffect: OtcSideEffect): Promise<{ sideEffect: OtcSideEffect; created: boolean }>;
@@ -39,6 +65,8 @@ export class InMemoryOtcRepository implements OtcRepository {
   private readonly tradeClientRequests = new Map<string, string>();
   private readonly tradeRequestHashes = new Map<string, string>();
   private readonly tradeByQuote = new Map<string, string>();
+  private readonly pearlEscrowAllocations = new Map<string, PearlEscrowAllocation>();
+  private readonly pearlEscrowAllocationByDerivation = new Map<string, string>();
   private readonly events = new Map<string, TradeEvent[]>();
   private readonly sideEffects = new Map<string, OtcSideEffect>();
 
@@ -98,6 +126,33 @@ export class InMemoryOtcRepository implements OtcRepository {
 
   async updateTrade(trade: OtcTrade): Promise<void> {
     this.trades.set(trade.tradeId, trade);
+  }
+
+  async findPearlEscrowAllocationByTradeId(tradeId: string): Promise<PearlEscrowAllocation | undefined> {
+    return this.pearlEscrowAllocations.get(tradeId);
+  }
+
+  async reservePearlEscrowAllocation(
+    allocation: PearlEscrowAllocationInput,
+  ): Promise<{ allocation: PearlEscrowAllocation; created: boolean }> {
+    const existing = this.pearlEscrowAllocations.get(allocation.tradeId);
+    if (existing) {
+      return { allocation: existing, created: false };
+    }
+    const derivationKey = formatPearlEscrowDerivationKey(allocation);
+    const existingTradeId = this.pearlEscrowAllocationByDerivation.get(derivationKey);
+    if (existingTradeId && existingTradeId !== allocation.tradeId) {
+      throw new PearlEscrowDerivationCollisionError(
+        `Pearl escrow derivation already allocated: ${allocation.derivationPath}`,
+      );
+    }
+    const persisted: PearlEscrowAllocation = {
+      ...allocation,
+      createdAt: new Date().toISOString(),
+    };
+    this.pearlEscrowAllocations.set(allocation.tradeId, persisted);
+    this.pearlEscrowAllocationByDerivation.set(derivationKey, allocation.tradeId);
+    return { allocation: persisted, created: true };
   }
 
   async appendEvent(event: TradeEvent): Promise<void> {
@@ -163,6 +218,18 @@ type SideEffectRow = Record<string, unknown> & {
   metadata: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
+}
+
+type PearlEscrowAllocationRow = Record<string, unknown> & {
+  trade_id: string;
+  allocator_key: string;
+  derivation_prefix: string;
+  derivation_index: string | number;
+  derivation_path: string;
+  escrow_address: string;
+  internal_pubkey_hex: string;
+  taproot_output_script_hex: string;
+  created_at: Date | string;
 }
 
 export class PgOtcRepository implements OtcRepository {
@@ -254,6 +321,88 @@ export class PgOtcRepository implements OtcRepository {
         WHERE trade_id = $1`,
       [trade.tradeId, trade.state, JSON.stringify(trade)],
     );
+  }
+
+  async findPearlEscrowAllocationByTradeId(tradeId: string): Promise<PearlEscrowAllocation | undefined> {
+    const result = await this.client.query<PearlEscrowAllocationRow>(
+      `SELECT trade_id, allocator_key, derivation_prefix, derivation_index,
+              derivation_path, escrow_address, internal_pubkey_hex,
+              taproot_output_script_hex, created_at
+         FROM pearl_escrow_allocations
+        WHERE trade_id = $1`,
+      [tradeId],
+    );
+    return result.rows[0] ? rowToPearlEscrowAllocation(result.rows[0]) : undefined;
+  }
+
+  async reservePearlEscrowAllocation(
+    allocation: PearlEscrowAllocationInput,
+  ): Promise<{ allocation: PearlEscrowAllocation; created: boolean }> {
+    const existingTrade = await this.findPearlEscrowAllocationByTradeId(allocation.tradeId);
+    if (existingTrade) {
+      return { allocation: existingTrade, created: false };
+    }
+
+    const existingDerivation = await this.findPearlEscrowAllocationByDerivation(allocation);
+    if (existingDerivation && existingDerivation.tradeId !== allocation.tradeId) {
+      throw new PearlEscrowDerivationCollisionError(
+        `Pearl escrow derivation already allocated: ${allocation.derivationPath}`,
+      );
+    }
+
+    try {
+      const result = await this.client.query<PearlEscrowAllocationRow>(
+        `INSERT INTO pearl_escrow_allocations (
+           trade_id, allocator_key, derivation_prefix, derivation_index,
+           derivation_path, escrow_address, internal_pubkey_hex, taproot_output_script_hex
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (trade_id) DO NOTHING
+         RETURNING trade_id, allocator_key, derivation_prefix, derivation_index,
+                   derivation_path, escrow_address, internal_pubkey_hex,
+                   taproot_output_script_hex, created_at`,
+        [
+          allocation.tradeId,
+          allocation.allocatorKey,
+          allocation.derivationPrefix,
+          allocation.derivationIndex,
+          allocation.derivationPath,
+          allocation.escrowAddress,
+          allocation.internalPubkeyHex,
+          allocation.taprootOutputScriptHex,
+        ],
+      );
+      if ((result.rowCount ?? 0) > 0) {
+        return { allocation: rowToPearlEscrowAllocation(result.rows[0]), created: true };
+      }
+      const createdByConcurrentRequest = await this.findPearlEscrowAllocationByTradeId(allocation.tradeId);
+      if (createdByConcurrentRequest) {
+        return { allocation: createdByConcurrentRequest, created: false };
+      }
+      throw new Error(`Pearl escrow allocation insert failed: ${allocation.tradeId}`);
+    } catch (error) {
+      if (isPgUniqueViolation(error, 'pearl_escrow_allocations_derivation_unique')) {
+        throw new PearlEscrowDerivationCollisionError(
+          `Pearl escrow derivation already allocated: ${allocation.derivationPath}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async findPearlEscrowAllocationByDerivation(
+    allocation: PearlEscrowAllocationInput,
+  ): Promise<PearlEscrowAllocation | undefined> {
+    const result = await this.client.query<PearlEscrowAllocationRow>(
+      `SELECT trade_id, allocator_key, derivation_prefix, derivation_index,
+              derivation_path, escrow_address, internal_pubkey_hex,
+              taproot_output_script_hex, created_at
+         FROM pearl_escrow_allocations
+        WHERE allocator_key = $1
+          AND derivation_prefix = $2
+          AND derivation_index = $3`,
+      [allocation.allocatorKey, allocation.derivationPrefix, allocation.derivationIndex],
+    );
+    return result.rows[0] ? rowToPearlEscrowAllocation(result.rows[0]) : undefined;
   }
 
   async appendEvent(event: TradeEvent): Promise<void> {
@@ -357,6 +506,33 @@ function rowToSideEffect(row: SideEffectRow): OtcSideEffect {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+function rowToPearlEscrowAllocation(row: PearlEscrowAllocationRow): PearlEscrowAllocation {
+  return {
+    tradeId: row.trade_id,
+    allocatorKey: row.allocator_key,
+    derivationPrefix: row.derivation_prefix,
+    derivationIndex: Number(row.derivation_index),
+    derivationPath: row.derivation_path,
+    escrowAddress: row.escrow_address,
+    internalPubkeyHex: row.internal_pubkey_hex,
+    taprootOutputScriptHex: row.taproot_output_script_hex,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
+}
+
+function formatPearlEscrowDerivationKey(allocation: Pick<PearlEscrowAllocationInput, 'allocatorKey' | 'derivationPrefix' | 'derivationIndex'>): string {
+  return `${allocation.allocatorKey}:${allocation.derivationPrefix}:${allocation.derivationIndex}`;
+}
+
+function isPgUniqueViolation(error: unknown, constraint: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; constraint?: unknown; message?: unknown };
+  return (
+    candidate.code === '23505' &&
+    (candidate.constraint === constraint || (typeof candidate.message === 'string' && candidate.message.includes(constraint)))
+  );
 }
 
 function assertIdempotencyHashMatch(kind: string, key: string, existingHash?: string, requestHash?: string): void {

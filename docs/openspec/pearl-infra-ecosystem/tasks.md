@@ -248,7 +248,7 @@ Current delegation queue after PR #33:
   idempotency keys; reject key reuse with a different payload.
 - [ ] 9.8.3 Replace local/mock-only Pearl escrow defaults in deployment manifests
   with explicit per-environment config contracts and secret names.
-- [ ] 9.8.4 Persist allocated Pearl derivation indexes with uniqueness and retry
+- [x] 9.8.4 Persist allocated Pearl derivation indexes with uniqueness and retry
   on collision before enabling real-money allocation.
 - [ ] 9.8.5 Wire quote acceptance to watch registration so every real escrow
   package is observed by the Pearl indexer before funding instructions are
