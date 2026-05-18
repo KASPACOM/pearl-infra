@@ -119,18 +119,15 @@ Merged implementation checkpoints:
   registration before returning funding details. Closes 9.8.5.
 - PR #41 — added Pearl indexer spend detection with release/refund/unknown
   classification. Closes 9.3.7 and 9.3.7.a.
+- PR #43 — projected public Pearl proof fields from active indexer
+  observations/spends in the OTC API. Closes 9.8.6.
+- PR #44 — hardened Pearl funding classification and detach/replay reorg
+  coverage. Closes 9.3.6, 9.3.6.a, 9.3.8, and 9.3.8.a.
 
-Current delegation queue after PR #41:
+Current delegation queue after PR #44:
 
-- Indexer owner: `9.3.9`. Spend detection is merged in PR #41; funding
-  classification and detach/replay reorg coverage are complete. Testnet2
-  ingest evidence remains open.
-- Backend owner: core 9.2.x is complete. Next backend/API work is `9.8.6`
-  proof projection from indexed observations/spends and `9.8.7` Base escrow
-  event ingestion.
-- Frontend owner: page models are complete in PR #37. Actual RFQ, checkout,
-  proof, and admin screens remain open under `9.4.1` through `9.4.4` and
-  `9.4.6` through `9.4.8`.
+- Base events owner: `9.8.7`. Add Base escrow event ingestion for created,
+  deposited, released, refunded, and cancelled transitions.
 - Settlement-worker owner: 9.5.x decision core is complete in PR #33. Next
   worker work is `9.8.8`, the persistent execution loop that consumes OTC API,
   Pearl indexer observations/spends, Base events, signer, and broadcaster
@@ -138,10 +135,14 @@ Current delegation queue after PR #41:
 - Pearl signer/custody owner: 9.7.x package hooks are complete through PR #32.
   `9.8.9` remains open for the production signer boundary, audit trail, fee
   caps, template hash verification, and retry-safe persistence.
+- Frontend owner: page models are complete in PR #37. Actual RFQ, checkout,
+  proof, and admin screens remain open under `9.4.1` through `9.4.4` and
+  `9.4.6` through `9.4.8`.
 - DevOps owner: `9.6.1`, `9.6.2`, `9.6.3`, `9.6.11`, `9.8.3`, and
   `9.8.13`.
-- Evidence owner: `9.8.10` full simnet escrow run and `9.8.11` testnet2/Base
-  Sepolia run with real txids.
+- Evidence owner: `9.3.9` testnet2 ingest, `9.8.10` full simnet escrow run,
+  and `9.8.11` testnet2/Base Sepolia run with real txids. Run these after the
+  remaining service adapters are wired.
 - Base Solidity/EVM owner: `9.6.7` and `9.6.9` remain open; `9.6.5`,
   `9.6.6`, and `9.6.8` are complete.
 - Igra bridge Solidity/EVM owner: `10.6` and `10.7`.
@@ -261,9 +262,9 @@ Current delegation queue after PR #41:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after PR #41: API startup/idempotency, derivation allocation safety,
-watch registration, and Pearl spend detection are merged. The remaining
-production blockers are proof projection from indexed data, Base event
+Status after PR #44: API startup/idempotency, derivation allocation safety,
+watch registration, Pearl funding/spend detection, reorg hardening, and Pearl
+proof projection are merged. The remaining production blockers are Base event
 ingestion, persistent worker execution, signer boundary hardening, live
 simnet/testnet evidence, actual frontend/admin screens, and ops monitoring.
 
