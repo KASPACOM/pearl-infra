@@ -135,19 +135,25 @@ test('serves quote, accept, trade, and proof routes', async () => {
     assert.match(createIntent.tradeKey, /^0x[0-9a-f]{64}$/);
     assert.equal(createIntent.sideEffect.effectType, 'usdc_create_trade');
 
-    const sideEffectsResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/side-effects`);
+    const publicSideEffectsResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/side-effects`);
+    assert.equal(publicSideEffectsResponse.status, 401);
+
+    const sideEffectsResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/side-effects`, { headers: adminHeaders });
     assert.equal(sideEffectsResponse.status, 200);
     const sideEffects = (await sideEffectsResponse.json()) as unknown[];
     assert.equal(sideEffects.length, 1);
 
     const supportAlertResponse = await postJson(baseUrl, `/otc/trades/${trade.tradeId}/support-alerts`, {
       idempotencyKey: 'http-support-alert-1',
-      actor: 'support',
+      actor: 'spoofed-operator',
       severity: 'warning',
       message: 'User needs help with deposit status',
-      source: 'user',
+      source: 'operator',
     });
     assert.equal(supportAlertResponse.status, 201);
+    const supportAlert = (await supportAlertResponse.json()) as { actor: string; metadata: { source: string } };
+    assert.equal(supportAlert.actor, 'user');
+    assert.equal(supportAlert.metadata.source, 'user');
 
     const unauthorizedAdminResponse = await fetch(`${baseUrl}/otc/admin/trades?manual_review_only=false&search=${trade.tradeId}`);
     assert.equal(unauthorizedAdminResponse.status, 401);
@@ -272,5 +278,12 @@ test('returns mapped HTTP errors', async () => {
       body: '{',
     });
     assert.equal(invalid.status, 400);
+
+    const oversized = await fetch(`${baseUrl}/otc/quotes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payload: 'x'.repeat(70 * 1024) }),
+    });
+    assert.equal(oversized.status, 413);
   });
 });

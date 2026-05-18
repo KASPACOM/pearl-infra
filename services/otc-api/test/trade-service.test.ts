@@ -163,6 +163,52 @@ test('rejects quote idempotency key reuse with a different payload', async () =>
   );
 });
 
+test('rejects invalid quote inputs before persistence', async () => {
+  const service = createService();
+
+  await assert.rejects(
+    () =>
+      service.createQuote({
+        side: 'buy_prl',
+        amountPrl: '0.00000000',
+        settlementAsset: 'USDC',
+        settlementNetwork: 'base',
+        buyerPearlAddress: 'tprl1pbuyer',
+        usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+        clientRequestId: 'quote-invalid-zero',
+      }),
+    /amountPrl must be greater than zero/,
+  );
+
+  await assert.rejects(
+    () =>
+      service.createQuote({
+        side: 'buy_prl',
+        amountPrl: '1.00000000',
+        settlementAsset: 'USDC',
+        settlementNetwork: 'base',
+        buyerPearlAddress: 'not-pearl',
+        usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+        clientRequestId: 'quote-invalid-pearl',
+      }),
+    /buyerPearlAddress must be a Pearl/,
+  );
+
+  await assert.rejects(
+    () =>
+      service.createQuote({
+        side: 'buy_prl',
+        amountPrl: '1.00000000',
+        settlementAsset: 'USDC',
+        settlementNetwork: 'base',
+        buyerPearlAddress: 'tprl1pbuyer',
+        usdcRefundAddress: '0x123',
+        clientRequestId: 'quote-invalid-evm',
+      }),
+    /usdcRefundAddress must be a valid EVM address/,
+  );
+});
+
 test('accepts a quote into pearl escrow pending state', async () => {
   const service = createService();
   const quote = await service.createQuote({
@@ -293,6 +339,43 @@ test('rejects accept idempotency key reuse with a different payload', async () =
         sellerUsdcReceiveAddress: '0x5555555555555555555555555555555555555555',
       }),
     /trade idempotency key reuse with different payload/,
+  );
+});
+
+test('rejects invalid accept addresses before escrow allocation', async () => {
+  const service = createService();
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-invalid-accept',
+  });
+
+  await assert.rejects(
+    () =>
+      service.acceptQuote(quote.quoteId, {
+        buyerPearlAddress: 'tprl1pbuyer',
+        buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+        sellerPearlRefundAddress: 'not-pearl',
+        sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+        clientRequestId: 'accept-invalid-pearl',
+      }),
+    /sellerPearlRefundAddress must be a Pearl/,
+  );
+
+  await assert.rejects(
+    () =>
+      service.acceptQuote(quote.quoteId, {
+        buyerPearlAddress: 'tprl1pbuyer',
+        buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+        sellerPearlRefundAddress: 'tprl1psellerrefund',
+        sellerUsdcReceiveAddress: '0x123',
+        clientRequestId: 'accept-invalid-evm',
+      }),
+    /sellerUsdcReceiveAddress must be a valid EVM address/,
   );
 });
 

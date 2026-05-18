@@ -5,6 +5,8 @@ import type { TradeState } from '@kaspacom/pearl-sdk';
 import type { OtcTradeService } from './trade-service.js';
 import type { AdminActorContext, OtcSideEffectStatus } from './types.js';
 
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+
 export interface JsonResponse {
   statusCode: number;
   body: unknown;
@@ -62,9 +64,17 @@ export async function handleOtcHttpRequest(
   ) {
     return {
       statusCode: 201,
-      body: await service.recordSupportAlert(parts[2], await readJsonBody(request), {
-        rateLimitKey: getClientRateLimitKey(request),
-      }),
+      body: await service.recordSupportAlert(
+        parts[2],
+        {
+          ...(await readJsonBody(request)),
+          actor: 'user',
+          source: 'user',
+        },
+        {
+          rateLimitKey: getClientRateLimitKey(request),
+        },
+      ),
     };
   }
 
@@ -111,10 +121,20 @@ export async function handleOtcHttpRequest(
   }
 
   if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'trades' && parts[3] === 'side-effects') {
+    const adminAuth = authorizeAdminRequest(request, options);
+    if ('statusCode' in adminAuth) {
+      return adminAuth;
+    }
+    requireAdminRole(adminAuth, 'operator');
     return { statusCode: 201, body: await service.recordSideEffect(parts[2], await readJsonBody(request)) };
   }
 
   if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'trades' && parts[3] === 'side-effects') {
+    const adminAuth = authorizeAdminRequest(request, options);
+    if ('statusCode' in adminAuth) {
+      return adminAuth;
+    }
+    requireAdminRole(adminAuth, 'support_read');
     return { statusCode: 200, body: await service.listSideEffects(parts[2]) };
   }
 
@@ -322,9 +342,19 @@ function getClientRateLimitKey(request: IncomingMessage): string {
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<any> {
+  const declaredLength = Number(request.headers['content-length']);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
+    throw new HttpError(413, 'payload_too_large', `request body exceeds ${MAX_JSON_BODY_BYTES} bytes`);
+  }
   const chunks: Buffer[] = [];
+  let total = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.byteLength;
+    if (total > MAX_JSON_BODY_BYTES) {
+      throw new HttpError(413, 'payload_too_large', `request body exceeds ${MAX_JSON_BODY_BYTES} bytes`);
+    }
+    chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString('utf8').trim();
   if (!raw) {

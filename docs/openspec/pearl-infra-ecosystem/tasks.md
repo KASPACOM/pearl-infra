@@ -395,6 +395,16 @@ Loophole tracker after admin FE wiring:
   no release/refund/sign/broadcast actions, and admin list/detail, filters,
   note/manual-review actions, failed alert-delivery replay, and the public
   support-alert form are wired to live backend APIs.
+- [x] Public API spoofing/abuse surface — quote and accept inputs now validate
+  positive PRL amount, allowed route, Pearl-address prefix/network, EVM
+  addresses, and bounded client request IDs; JSON request bodies are capped at
+  64 KiB before parsing.
+- [x] Public support-alert actor spoofing — the unauthenticated support-alert
+  route now forces `actor=user` and `source=user` server-side, while operator
+  alerts still require admin auth.
+- [x] Public side-effect mutation/leakage — generic side-effect read/write
+  routes now require bearer admin auth (`support_read` for read, `operator`
+  for write); public users must use proof and support-alert routes only.
 - [ ] Base Sepolia ownership acceptance evidence is not recorded yet — blocks
   any Base mainnet path until `9.6.7` is completed.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
