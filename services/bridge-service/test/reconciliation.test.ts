@@ -136,6 +136,33 @@ test('blocks bridge operations on reserve deficit, stale watches, unsafe deposit
   assert.deepEqual(snapshot.deposits[0].blockers, ['deposit_below_min', 'deposit_underpaid']);
 });
 
+test('treats multiple live outputs to one bridge deposit address as unsafe', () => {
+  const snapshot = createBridgeReconciliationSnapshot({
+    depositWatches: [
+      watch({
+        watchId: 'deposit-multi',
+        purpose: 'bridge_deposit',
+        metadata: {
+          expected_amount_min_grains: '100',
+          expected_amount_max_grains: '200',
+        },
+        observations: [
+          observation({ outpoint: 'deposit:0', amountGrains: '150', confirmations: 8 }),
+          observation({ outpoint: 'deposit:1', amountGrains: '150', confirmations: 7 }),
+        ],
+      }),
+    ],
+    reserveWatches: [],
+    exits: [],
+    mintedSupplyGrains: '0',
+    now: NOW,
+  });
+
+  assert.equal(snapshot.deposits[0].status, 'unsafe');
+  assert.deepEqual(snapshot.deposits[0].blockers, ['multiple_deposit_observations']);
+  assert.deepEqual(snapshot.blockers, ['unsafe_deposit_observation']);
+});
+
 function watch(overrides: Partial<WatchedBridgeAddressWithHistory> = {}): WatchedBridgeAddressWithHistory {
   return {
     watchId: 'watch-1',

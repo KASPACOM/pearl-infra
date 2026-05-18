@@ -74,12 +74,26 @@ export function decideExitRelease(input: ExitReleaseDecisionInput): BridgeRelaye
 function getDepositBlocker(input: DepositMintDecisionInput): string | undefined {
   const observation = input.observation;
   if (!observation) return undefined;
+  if (input.watch.purpose !== 'bridge_deposit') return 'watch is not a bridge deposit watch';
+  if (observation.watchId !== input.watch.watchId) return 'deposit observation does not belong to watch';
+  if (!input.watch.observations.some((candidate) => candidate.outpoint === observation.outpoint)) {
+    return 'deposit observation is not in watch history';
+  }
+  const liveObservations = input.watch.observations.filter((candidate) => candidate.matchStatus !== 'detached');
+  if (liveObservations.length > 1) return 'multiple live deposit observations require operator review';
   if (observation.matchStatus === 'detached' || observation.classification === 'reorged') return 'deposit observation reorged';
   if (observation.classification === 'late') return 'deposit arrived after expiry';
   if (observation.classification === 'underpaid') return 'deposit is below expected minimum';
   if (observation.classification === 'duplicate') return 'duplicate deposit requires operator review';
+  if (observation.classification !== 'on_time') return `deposit classification requires operator review: ${observation.classification}`;
   if (observation.matchStatus === 'spent') return 'deposit outpoint already spent/consumed';
+  if (observation.confirmations < input.watch.requiredConfirmations) return 'deposit does not have enough confirmations';
   const amount = BigInt(observation.amountGrains);
+  const expectedMin = readString(input.watch.metadata, 'expected_amount_min_grains');
+  const expectedMax = readString(input.watch.metadata, 'expected_amount_max_grains');
+  if (!expectedMin || !expectedMax) return 'deposit watch is missing expected amount bounds';
+  if (amount < BigInt(expectedMin)) return 'deposit below expected minimum';
+  if (amount > BigInt(expectedMax)) return 'deposit above expected maximum';
   if (amount < BigInt(input.limits.minDepositGrains)) return 'deposit below pilot minimum';
   if (amount > BigInt(input.limits.maxDepositGrains)) return 'deposit above pilot maximum';
   if (BigInt(input.mintedSupplyGrains) + amount > BigInt(input.limits.pilotSupplyCapGrains)) return 'pilot supply cap would be exceeded';
@@ -92,13 +106,20 @@ function getDepositBlocker(input: DepositMintDecisionInput): string | undefined 
   return undefined;
 }
 
+function readString(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
+  const value = metadata?.[key];
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
 function decision(
   action: BridgeRelayerDecision['action'],
   reason: string,
   sourceIds: string[],
   metadata?: BridgeRelayerDecision['metadata'],
 ): BridgeRelayerDecision {
-  const idempotencyKey = ['bridge', action, sourceIds.join('+'), sha256(reason)].join(':');
+  const idempotencyKey = ['bridge', action, sourceIds.join('+'), sha256(`${reason}:${stableMetadata(metadata)}`)].join(':');
   return {
     action,
     reason,
@@ -110,4 +131,9 @@ function decision(
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 24);
+}
+
+function stableMetadata(metadata: BridgeRelayerDecision['metadata'] | undefined): string {
+  if (!metadata) return '';
+  return JSON.stringify(Object.fromEntries(Object.entries(metadata).sort(([left], [right]) => left.localeCompare(right))));
 }

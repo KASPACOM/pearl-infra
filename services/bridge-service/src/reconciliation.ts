@@ -105,11 +105,21 @@ export function createBridgeReconciliationSnapshot(input: BridgeReconciliationIn
 }
 
 function reconcileDepositWatch(watch: WatchedBridgeAddressWithHistory): BridgeDepositReconciliationRow {
+  if (watch.purpose !== 'bridge_deposit') {
+    return {
+      depositId: watch.watchId,
+      address: watch.address,
+      status: 'unsafe',
+      confirmations: 0,
+      blockers: ['unexpected_deposit_watch_purpose'],
+    };
+  }
   const live = watch.observations.filter((observation) => observation.matchStatus !== 'detached');
   const detached = watch.observations.filter((observation) => observation.matchStatus === 'detached');
-  const best = live.sort((a, b) => b.confirmations - a.confirmations)[0];
+  const best = [...live].sort((a, b) => b.confirmations - a.confirmations)[0];
   const blockers: string[] = [];
   if (detached.length > 0) blockers.push('deposit_reorged');
+  if (live.length > 1) blockers.push('multiple_deposit_observations');
   if (!best) {
     return {
       depositId: watch.watchId,
@@ -121,9 +131,9 @@ function reconcileDepositWatch(watch: WatchedBridgeAddressWithHistory): BridgeDe
   }
   const amountBlocker = validateDepositAmount(watch, best);
   if (amountBlocker) blockers.push(amountBlocker);
-  if (best.classification === 'late') blockers.push('deposit_late');
-  if (best.classification === 'underpaid') blockers.push('deposit_underpaid');
-  if (best.classification === 'duplicate') blockers.push('duplicate_deposit');
+  if (live.some((observation) => observation.classification === 'late')) blockers.push('deposit_late');
+  if (live.some((observation) => observation.classification === 'underpaid')) blockers.push('deposit_underpaid');
+  if (live.some((observation) => observation.classification === 'duplicate')) blockers.push('duplicate_deposit');
   const consumed = watch.spends.some((spend) => spend.spentOutpoint === best.outpoint && spend.classification === 'claim');
   return {
     depositId: watch.watchId,

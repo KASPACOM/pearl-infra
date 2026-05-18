@@ -19,8 +19,8 @@ const limits: BridgePilotLimits = {
 };
 
 test('prepares mint only after confirmed deposit and manual approval', () => {
-  const watch = depositWatch();
   const obs = observation({ amountGrains: '500', matchStatus: 'confirmed' });
+  const watch = depositWatch({ observations: [obs] });
 
   const waiting = decideDepositMint({
     watch,
@@ -44,9 +44,16 @@ test('prepares mint only after confirmed deposit and manual approval', () => {
 });
 
 test('routes unsafe deposits to manual review before mint', () => {
+  const obs = observation({ amountGrains: '5000', matchStatus: 'confirmed' });
   const decision = decideDepositMint({
-    watch: depositWatch(),
-    observation: observation({ amountGrains: '5000', matchStatus: 'confirmed' }),
+    watch: depositWatch({
+      metadata: {
+        expected_amount_min_grains: '100',
+        expected_amount_max_grains: '10000',
+      },
+      observations: [obs],
+    }),
+    observation: obs,
     limits,
     mintedSupplyGrains: '1000',
     manualApprovalId: 'approval-1',
@@ -54,6 +61,69 @@ test('routes unsafe deposits to manual review before mint', () => {
 
   assert.equal(decision.action, 'manual_review');
   assert.match(decision.reason, /above pilot maximum/);
+});
+
+test('routes wrong-watch, low-confirmation, and out-of-range deposit inputs to manual review', () => {
+  const lowConfirmationWatch = depositWatch({
+    observations: [observation({ confirmations: 2, matchStatus: 'confirmed' })],
+  });
+  const lowConfirmation = decideDepositMint({
+    watch: lowConfirmationWatch,
+    observation: lowConfirmationWatch.observations[0],
+    limits,
+    mintedSupplyGrains: '1000',
+    manualApprovalId: 'approval-1',
+  });
+
+  const wrongWatch = decideDepositMint({
+    watch: depositWatch(),
+    observation: observation({ watchId: 'other-watch', amountGrains: '500', matchStatus: 'confirmed' }),
+    limits,
+    mintedSupplyGrains: '1000',
+    manualApprovalId: 'approval-1',
+  });
+
+  const aboveExpectedWatch = depositWatch({
+    metadata: {
+      expected_amount_min_grains: '100',
+      expected_amount_max_grains: '400',
+    },
+    observations: [observation({ amountGrains: '500', matchStatus: 'confirmed' })],
+  });
+  const aboveExpected = decideDepositMint({
+    watch: aboveExpectedWatch,
+    observation: aboveExpectedWatch.observations[0],
+    limits,
+    mintedSupplyGrains: '1000',
+    manualApprovalId: 'approval-1',
+  });
+
+  assert.equal(lowConfirmation.action, 'manual_review');
+  assert.match(lowConfirmation.reason, /enough confirmations/);
+  assert.equal(wrongWatch.action, 'manual_review');
+  assert.match(wrongWatch.reason, /does not belong/);
+  assert.equal(aboveExpected.action, 'manual_review');
+  assert.match(aboveExpected.reason, /expected maximum/);
+});
+
+test('routes multiple live deposit observations to manual review before mint', () => {
+  const watch = depositWatch({
+    observations: [
+      observation({ outpoint: 'tx:0', amountGrains: '500', matchStatus: 'confirmed' }),
+      observation({ outpoint: 'tx:1', amountGrains: '500', matchStatus: 'confirmed' }),
+    ],
+  });
+
+  const decision = decideDepositMint({
+    watch,
+    observation: watch.observations[0],
+    limits,
+    mintedSupplyGrains: '1000',
+    manualApprovalId: 'approval-1',
+  });
+
+  assert.equal(decision.action, 'manual_review');
+  assert.match(decision.reason, /multiple live deposit/);
 });
 
 test('prepares exit release only when reconciliation is clean and approval exists', () => {
@@ -118,7 +188,7 @@ test('blocks exit release on reconciliation blockers or exit caps', () => {
   assert.match(capDecision.reason, /max exit cap/);
 });
 
-function depositWatch(): WatchedBridgeAddressWithHistory {
+function depositWatch(overrides: Partial<WatchedBridgeAddressWithHistory> = {}): WatchedBridgeAddressWithHistory {
   return {
     watchId: 'deposit-1',
     purpose: 'bridge_deposit',
@@ -126,11 +196,15 @@ function depositWatch(): WatchedBridgeAddressWithHistory {
     address: 'tprl1pdeposit',
     requiredConfirmations: 6,
     status: 'active',
-    metadata: {},
+    metadata: {
+      expected_amount_min_grains: '100',
+      expected_amount_max_grains: '1000',
+    },
     createdAt: '2026-05-18T17:59:00.000Z',
     updatedAt: '2026-05-18T17:59:00.000Z',
     observations: [],
     spends: [],
+    ...overrides,
   };
 }
 
@@ -153,7 +227,7 @@ function reserveWatch(amountGrains: string): WatchedBridgeAddressWithHistory {
 function observation(overrides: Partial<BridgeAddressObservation> = {}): BridgeAddressObservation {
   return {
     outpoint: 'tx:0',
-    watchId: 'watch-1',
+    watchId: 'deposit-1',
     blockHash: 'block',
     height: 100,
     amountGrains: '500',
