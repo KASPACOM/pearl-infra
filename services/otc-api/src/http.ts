@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { TradeState } from '@kaspacom/pearl-sdk';
 
 import type { OtcTradeService } from './trade-service.js';
+import type { AdminActorContext, OtcSideEffectStatus } from './types.js';
 
 export interface JsonResponse {
   statusCode: number;
@@ -11,6 +12,13 @@ export interface JsonResponse {
 
 export interface OtcHttpOptions {
   adminToken?: string;
+  adminCredentials?: AdminCredential[];
+}
+
+export interface AdminCredential {
+  token: string;
+  actor: string;
+  roles: string[];
 }
 
 export function createOtcHttpServer(service: OtcTradeService, options: OtcHttpOptions = {}): Server {
@@ -38,48 +46,11 @@ export async function handleOtcHttpRequest(
   }
 
   if (parts[0] === 'otc' && parts[1] === 'admin') {
-    const unauthorized = authorizeAdminRequest(request, options);
-    if (unauthorized) {
-      return unauthorized;
+    const adminAuth = authorizeAdminRequest(request, options);
+    if ('statusCode' in adminAuth) {
+      return adminAuth;
     }
-  }
-
-  if (method === 'GET' && parts.length === 3 && parts[0] === 'otc' && parts[1] === 'admin' && parts[2] === 'trades') {
-    const url = new URL(request.url ?? '/', 'http://localhost');
-    return {
-      statusCode: 200,
-      body: await service.listAdminTrades({
-        state: (url.searchParams.get('state') ?? undefined) as TradeState | undefined,
-        manualReviewOnly: url.searchParams.get('manual_review_only') === 'true',
-        search: url.searchParams.get('search') ?? undefined,
-      }),
-    };
-  }
-
-  if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'admin' && parts[2] === 'trades') {
-    return { statusCode: 200, body: await service.getAdminTradeDebug(parts[3]) };
-  }
-
-  if (
-    method === 'POST' &&
-    parts.length === 5 &&
-    parts[0] === 'otc' &&
-    parts[1] === 'admin' &&
-    parts[2] === 'trades' &&
-    parts[4] === 'alerts'
-  ) {
-    return { statusCode: 201, body: await service.recordSupportAlert(parts[3], await readJsonBody(request)) };
-  }
-
-  if (
-    method === 'POST' &&
-    parts.length === 5 &&
-    parts[0] === 'otc' &&
-    parts[1] === 'admin' &&
-    parts[2] === 'trades' &&
-    parts[4] === 'manual-review'
-  ) {
-    return { statusCode: 200, body: await service.markManualReview(parts[3], await readJsonBody(request)) };
+    return handleAdminRequest(service, request, parts, adminAuth);
   }
 
   if (
@@ -89,7 +60,12 @@ export async function handleOtcHttpRequest(
     parts[1] === 'trades' &&
     parts[3] === 'support-alerts'
   ) {
-    return { statusCode: 201, body: await service.recordSupportAlert(parts[2], await readJsonBody(request)) };
+    return {
+      statusCode: 201,
+      body: await service.recordSupportAlert(parts[2], await readJsonBody(request), {
+        rateLimitKey: getClientRateLimitKey(request),
+      }),
+    };
   }
 
   if (method === 'POST' && path === '/otc/quotes') {
@@ -151,8 +127,89 @@ export async function handleOtcHttpRequest(
   };
 }
 
-function authorizeAdminRequest(request: IncomingMessage, options: OtcHttpOptions): JsonResponse | undefined {
-  if (!options.adminToken) {
+async function handleAdminRequest(
+  service: OtcTradeService,
+  request: IncomingMessage,
+  parts: string[],
+  admin: AdminActorContext,
+): Promise<JsonResponse> {
+  const method = request.method ?? 'GET';
+  const url = new URL(request.url ?? '/', 'http://localhost');
+
+  if (method === 'GET' && parts.length === 3 && parts[2] === 'trades') {
+    requireAdminRole(admin, 'support_read');
+    return {
+      statusCode: 200,
+      body: await service.listAdminTrades({
+        state: (url.searchParams.get('state') ?? undefined) as TradeState | undefined,
+        manualReviewOnly: url.searchParams.get('manual_review_only') === 'true',
+        search: url.searchParams.get('search') ?? undefined,
+        severity: parseAlertSeverity(url.searchParams.get('severity')),
+        failedSideEffectOnly: url.searchParams.get('failed_side_effect_only') === 'true',
+        deadlineBreachedOnly: url.searchParams.get('deadline_breached_only') === 'true',
+        blocker: url.searchParams.get('blocker') ?? undefined,
+        minUpdatedAgeMs: parseOptionalInteger(url.searchParams.get('min_updated_age_ms')),
+        alertDeliveryStatus: parseSideEffectStatus(url.searchParams.get('alert_delivery_status')),
+        cursor: url.searchParams.get('cursor') ?? undefined,
+        limit: parseOptionalInteger(url.searchParams.get('limit')),
+      }),
+    };
+  }
+
+  if (method === 'GET' && parts.length === 4 && parts[2] === 'trades') {
+    requireAdminRole(admin, 'support_read');
+    return {
+      statusCode: 200,
+      body: await service.getAdminTradeDebug(parts[3], { redaction: getAdminRedaction(admin) }),
+    };
+  }
+
+  if (method === 'POST' && parts.length === 5 && parts[2] === 'trades' && parts[4] === 'alerts') {
+    requireAdminRole(admin, 'support_write');
+    return {
+      statusCode: 201,
+      body: await service.recordSupportAlert(
+        parts[3],
+        { ...(await readJsonBody(request)), actor: admin.actor, source: 'operator' },
+        { skipRateLimit: true },
+      ),
+    };
+  }
+
+  if (method === 'POST' && parts.length === 5 && parts[2] === 'trades' && parts[4] === 'manual-review') {
+    requireAdminRole(admin, 'operator');
+    return {
+      statusCode: 200,
+      body: await service.markManualReview(parts[3], await readJsonBody(request), { actor: admin.actor }),
+    };
+  }
+
+  if (
+    method === 'POST' &&
+    parts.length === 7 &&
+    parts[2] === 'trades' &&
+    parts[4] === 'alerts' &&
+    parts[6] === 'replay'
+  ) {
+    requireAdminRole(admin, 'operator');
+    return {
+      statusCode: 201,
+      body: await service.replaySupportAlertDelivery(parts[3], parts[5], await readJsonBody(request), { actor: admin.actor }),
+    };
+  }
+
+  return {
+    statusCode: 404,
+    body: {
+      error: 'not_found',
+      message: `route not found: ${method} /${parts.join('/')}`,
+    },
+  };
+}
+
+function authorizeAdminRequest(request: IncomingMessage, options: OtcHttpOptions): AdminActorContext | JsonResponse {
+  const credentials = getAdminCredentials(options);
+  if (credentials.length === 0) {
     return {
       statusCode: 503,
       body: {
@@ -161,7 +218,9 @@ function authorizeAdminRequest(request: IncomingMessage, options: OtcHttpOptions
       },
     };
   }
-  if (request.headers.authorization !== `Bearer ${options.adminToken}`) {
+  const token = getBearerToken(request.headers.authorization);
+  const credential = token ? credentials.find((candidate) => candidate.token === token) : undefined;
+  if (!credential) {
     return {
       statusCode: 401,
       body: {
@@ -170,7 +229,96 @@ function authorizeAdminRequest(request: IncomingMessage, options: OtcHttpOptions
       },
     };
   }
+  return { actor: credential.actor, roles: normalizeAdminRoles(credential.roles) };
+}
+
+function getAdminCredentials(options: OtcHttpOptions): AdminCredential[] {
+  const credentials = [...(options.adminCredentials ?? [])];
+  if (!options.adminToken) {
+    return credentials;
+  }
+  return [...credentials, { token: options.adminToken, actor: 'admin', roles: ['admin'] }];
+}
+
+export function parseAdminApiTokens(raw: string | undefined): AdminCredential[] {
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [token, actor, roles] = entry.split(':');
+      if (!token || !actor || !roles) {
+        throw new Error('OTC_ADMIN_API_TOKENS entries must use token:actor:role1,role2 format');
+      }
+      return { token, actor, roles: roles.split(',').map((role) => role.trim()).filter(Boolean) };
+    });
+}
+
+function getBearerToken(authorization: string | undefined): string | undefined {
+  const prefix = 'Bearer ';
+  return authorization?.startsWith(prefix) ? authorization.slice(prefix.length) : undefined;
+}
+
+function normalizeAdminRoles(roles: string[]): string[] {
+  const expanded = new Set(roles);
+  if (expanded.has('admin')) {
+    expanded.add('operator');
+    expanded.add('support_write');
+    expanded.add('support_read');
+  }
+  if (expanded.has('operator')) {
+    expanded.add('support_write');
+    expanded.add('support_read');
+  }
+  if (expanded.has('support_write')) {
+    expanded.add('support_read');
+  }
+  return Array.from(expanded);
+}
+
+function requireAdminRole(admin: AdminActorContext, role: string): void {
+  if (!admin.roles.includes(role)) {
+    throw new HttpError(403, 'forbidden', `admin role required: ${role}`);
+  }
+}
+
+function getAdminRedaction(admin: AdminActorContext): 'support' | 'operator' | 'admin' {
+  if (admin.roles.includes('admin')) return 'admin';
+  if (admin.roles.includes('operator')) return 'operator';
+  return 'support';
+}
+
+function parseOptionalInteger(value: string | null): number | undefined {
+  if (value == null || value.trim() === '') {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : undefined;
+}
+
+function parseAlertSeverity(value: string | null): 'info' | 'warning' | 'critical' | undefined {
+  if (value === 'info' || value === 'warning' || value === 'critical') {
+    return value;
+  }
   return undefined;
+}
+
+function parseSideEffectStatus(value: string | null): OtcSideEffectStatus | undefined {
+  if (value === 'prepared' || value === 'submitted' || value === 'confirmed' || value === 'failed') {
+    return value;
+  }
+  return undefined;
+}
+
+function getClientRateLimitKey(request: IncomingMessage): string {
+  const forwardedFor = request.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  return request.socket.remoteAddress ?? 'unknown';
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<any> {
@@ -231,6 +379,9 @@ function mapError(error: unknown): JsonResponse {
   }
   if (message.includes('deadline passed') || message.includes('terminal')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
+  }
+  if (message.includes('rate limit exceeded')) {
+    return { statusCode: 429, body: { error: 'rate_limited', message } };
   }
   if (message.includes('unavailable')) {
     return { statusCode: 503, body: { error: 'unavailable', message } };

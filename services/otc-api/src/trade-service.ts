@@ -21,14 +21,18 @@ import type { SupportAlertNotifier } from './support-alert-notifier.js';
 import type {
   AcceptQuoteRequest,
   AdminTradeDebugDetail,
+  AdminTradeDebugOptions,
+  AdminTradeListPage,
   AdminTradeQuery,
   AdminTradeSummary,
   CreateQuoteRequest,
   MarkManualReviewRequest,
+  MarkManualReviewOptions,
   OtcApiConfig,
   OtcSideEffect,
   PrepareUsdcCreateTradeRequest,
   PublicTradeProof,
+  ReplaySupportAlertRequest,
   RecordSupportAlertRequest,
   RecordSideEffectRequest,
   UsdcCreateTradeIntent,
@@ -56,6 +60,11 @@ export interface PearlEscrowAllocator {
   }): Promise<OtcTrade['pearlEscrow']>;
 }
 
+export interface SupportAlertOptions {
+  rateLimitKey?: string;
+  skipRateLimit?: boolean;
+}
+
 export class MockPearlEscrowAllocator implements PearlEscrowAllocator {
   async allocateEscrow(input: {
     tradeId: string;
@@ -81,6 +90,7 @@ export class OtcTradeService {
   private readonly pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar;
   private readonly pearlProofReader?: PearlProofReader;
   private readonly supportAlertNotifier?: SupportAlertNotifier;
+  private readonly supportAlertRateLimitBuckets = new Map<string, number[]>();
   private readonly now: () => Date;
 
   constructor(
@@ -398,36 +408,54 @@ export class OtcTradeService {
     return this.repository.listSideEffects(tradeId);
   }
 
-  async listAdminTrades(query: AdminTradeQuery = {}): Promise<AdminTradeSummary[]> {
+  async listAdminTrades(query: AdminTradeQuery = {}): Promise<AdminTradeListPage> {
     const trades = await this.repository.listTrades();
     const summaries = await Promise.all(
       trades
         .filter((trade) => tradeMatchesAdminQuery(trade, query))
         .map(async (trade) => this.createAdminTradeSummary(trade)),
     );
-    return summaries.filter((summary) => !query.manualReviewOnly || summary.manualReview);
+    const filtered = summaries.filter((summary) => summaryMatchesAdminQuery(summary, query));
+    const limit = clampAdminLimit(query.limit);
+    const offset = parseCursor(query.cursor);
+    const items = filtered.slice(offset, offset + limit);
+    const nextOffset = offset + items.length;
+    return {
+      items,
+      ...(nextOffset < filtered.length ? { nextCursor: String(nextOffset) } : {}),
+      total: filtered.length,
+      limit,
+    };
   }
 
-  async getAdminTradeDebug(tradeId: string): Promise<AdminTradeDebugDetail> {
+  async getAdminTradeDebug(tradeId: string, options: AdminTradeDebugOptions = {}): Promise<AdminTradeDebugDetail> {
     const trade = await this.getTrade(tradeId);
     const [events, sideEffects, proof] = await Promise.all([
       this.repository.listEvents(tradeId),
       this.repository.listSideEffects(tradeId),
       this.getPublicProof(tradeId),
     ]);
+    const redaction = options.redaction ?? 'admin';
+    const visibleTrade = redactTradeForAdmin(trade, redaction);
+    const visibleSideEffects = sideEffects.map((effect) => redactSideEffectForAdmin(effect, redaction));
     return {
-      trade,
+      trade: visibleTrade,
       events,
-      sideEffects,
+      sideEffects: visibleSideEffects,
       proof,
       currentBlockers: getCurrentBlockers(trade, sideEffects, this.now()),
       deadlineBreaches: getDeadlineBreaches(trade, this.now()),
       safeActions: getSafeAdminActions(trade, sideEffects),
+      redaction,
       supportSummary: createSupportSummary(trade, sideEffects, this.now()),
     };
   }
 
-  async recordSupportAlert(tradeId: string, request: RecordSupportAlertRequest): Promise<OtcSideEffect> {
+  async recordSupportAlert(
+    tradeId: string,
+    request: RecordSupportAlertRequest,
+    options: SupportAlertOptions = {},
+  ): Promise<OtcSideEffect> {
     const trade = await this.getTrade(tradeId);
     assertNonEmpty(request.idempotencyKey, 'idempotencyKey');
     assertNonEmpty(request.message, 'message');
@@ -435,6 +463,9 @@ export class OtcTradeService {
     assertOneOf(request.severity, 'severity', ['info', 'warning', 'critical']);
     if (request.source !== undefined) {
       assertOneOf(request.source, 'source', ['user', 'operator', 'system']);
+    }
+    if (!options.skipRateLimit) {
+      this.assertSupportAlertRateLimit(tradeId, request.severity, options.rateLimitKey ?? 'anonymous');
     }
     const { sideEffect, created } = await this.saveSideEffectWithCreated(tradeId, {
       idempotencyKey: request.idempotencyKey,
@@ -456,11 +487,31 @@ export class OtcTradeService {
     return sideEffect;
   }
 
-  async markManualReview(tradeId: string, request: MarkManualReviewRequest): Promise<AdminTradeDebugDetail> {
+  private assertSupportAlertRateLimit(tradeId: string, severity: string, rateLimitKey: string): void {
+    const limit = this.config.supportAlertRateLimitMax;
+    const windowMs = this.config.supportAlertRateLimitWindowMs;
+    if (limit <= 0 || windowMs <= 0) {
+      return;
+    }
+    const nowMs = this.now().getTime();
+    const bucketKey = `${tradeId}:${severity}:${rateLimitKey}`;
+    const recent = (this.supportAlertRateLimitBuckets.get(bucketKey) ?? []).filter((timestamp) => nowMs - timestamp < windowMs);
+    if (recent.length >= limit) {
+      throw new Error('support alert rate limit exceeded');
+    }
+    this.supportAlertRateLimitBuckets.set(bucketKey, [...recent, nowMs]);
+  }
+
+  async markManualReview(
+    tradeId: string,
+    request: MarkManualReviewRequest,
+    options: MarkManualReviewOptions = {},
+  ): Promise<AdminTradeDebugDetail> {
     const trade = await this.getTrade(tradeId);
     assertNonEmpty(request.idempotencyKey, 'idempotencyKey');
     assertNonEmpty(request.reason, 'reason');
-    assertNonEmpty(request.actor, 'actor');
+    const actor = options.actor ?? request.actor;
+    assertNonEmpty(actor, 'actor');
     const timestamp = this.now().toISOString();
     if (trade.state !== 'failed_manual_review') {
       assertTradeTransition(trade.state, 'failed_manual_review');
@@ -477,7 +528,7 @@ export class OtcTradeService {
         sourceEventId: createStableId('event', [tradeId, 'manual-review', request.idempotencyKey]),
         observedAt: timestamp,
         metadata: {
-          actor: request.actor,
+          actor,
           reason: request.reason,
         },
       });
@@ -486,7 +537,7 @@ export class OtcTradeService {
       idempotencyKey: request.idempotencyKey,
       effectType: 'manual_review_note',
       status: 'confirmed',
-      actor: request.actor,
+      actor,
       sourceEventId: createStableId('event', [tradeId, 'manual-review-note', request.idempotencyKey]),
       metadata: {
         ...(request.metadata ?? {}),
@@ -494,6 +545,60 @@ export class OtcTradeService {
       },
     });
     return this.getAdminTradeDebug(tradeId);
+  }
+
+  async replaySupportAlertDelivery(
+    tradeId: string,
+    supportAlertIdempotencyKey: string,
+    request: ReplaySupportAlertRequest,
+    options: MarkManualReviewOptions = {},
+  ): Promise<OtcSideEffect> {
+    const trade = await this.getTrade(tradeId);
+    assertNonEmpty(supportAlertIdempotencyKey, 'supportAlertIdempotencyKey');
+    assertNonEmpty(request.idempotencyKey, 'idempotencyKey');
+    const actor = options.actor ?? request.actor;
+    assertNonEmpty(actor, 'actor');
+    if (!this.supportAlertNotifier) {
+      throw new Error('support alert notifier unavailable');
+    }
+    const sideEffects = await this.repository.listSideEffects(tradeId);
+    const alert = sideEffects.find(
+      (effect) => effect.idempotencyKey === supportAlertIdempotencyKey && effect.effectType === 'support_alert',
+    );
+    if (!alert) {
+      throw new Error(`support alert not found: ${supportAlertIdempotencyKey}`);
+    }
+    try {
+      await this.supportAlertNotifier.notifySupportAlert({
+        trade,
+        alert,
+        supportSummary: createSupportSummary(trade, sideEffects, this.now()),
+      });
+      return this.saveSideEffect(tradeId, {
+        idempotencyKey: request.idempotencyKey,
+        effectType: 'support_alert_delivery',
+        status: 'confirmed',
+        actor,
+        sourceEventId: createStableId('event', [tradeId, 'support-alert-replay', request.idempotencyKey]),
+        metadata: {
+          supportAlertIdempotencyKey,
+          replay: true,
+        },
+      });
+    } catch (error) {
+      return this.saveSideEffect(tradeId, {
+        idempotencyKey: request.idempotencyKey,
+        effectType: 'support_alert_delivery',
+        status: 'failed',
+        actor,
+        sourceEventId: createStableId('event', [tradeId, 'support-alert-replay', request.idempotencyKey]),
+        metadata: {
+          supportAlertIdempotencyKey,
+          replay: true,
+          error: error instanceof Error ? error.message : 'unknown support alert delivery error',
+        },
+      });
+    }
   }
 
   private async saveSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
@@ -583,10 +688,69 @@ export class OtcTradeService {
       manualReview: isManualReviewTrade(trade),
       alertCount: sideEffects.filter((effect) => effect.effectType === 'support_alert').length,
       failedSideEffectCount: sideEffects.filter((effect) => effect.status === 'failed').length,
+      ...getAlertSummaryFields(sideEffects),
       safeActions: getSafeAdminActions(trade, sideEffects),
       updatedAt: trade.updatedAt,
     };
   }
+}
+
+function summaryMatchesAdminQuery(summary: AdminTradeSummary, query: AdminTradeQuery): boolean {
+  if (query.manualReviewOnly && !summary.manualReview) {
+    return false;
+  }
+  if (query.severity && summary.latestAlertSeverity !== query.severity) {
+    return false;
+  }
+  if (query.failedSideEffectOnly && summary.failedSideEffectCount === 0) {
+    return false;
+  }
+  if (query.deadlineBreachedOnly && summary.deadlineBreaches.length === 0) {
+    return false;
+  }
+  if (query.blocker && !summary.currentBlockers.includes(query.blocker)) {
+    return false;
+  }
+  if (query.minUpdatedAgeMs != null && summary.updatedAgeMs < query.minUpdatedAgeMs) {
+    return false;
+  }
+  if (query.alertDeliveryStatus && summary.alertDeliveryStatus !== query.alertDeliveryStatus) {
+    return false;
+  }
+  return true;
+}
+
+function getAlertSummaryFields(
+  sideEffects: OtcSideEffect[],
+): Pick<AdminTradeSummary, 'latestAlertSeverity' | 'alertDeliveryStatus'> {
+  const latestAlert = sideEffects
+    .filter((effect) => effect.effectType === 'support_alert')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const latestDelivery = sideEffects
+    .filter((effect) => effect.effectType === 'support_alert_delivery')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return {
+    ...(isAlertSeverity(latestAlert?.metadata.severity) ? { latestAlertSeverity: latestAlert.metadata.severity } : {}),
+    ...(latestDelivery ? { alertDeliveryStatus: latestDelivery.status } : {}),
+  };
+}
+
+function clampAdminLimit(limit: number | undefined): number {
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return 50;
+  }
+  return Math.min(100, Math.max(1, Math.floor(limit)));
+}
+
+function parseCursor(cursor: string | undefined): number {
+  if (!cursor) {
+    return 0;
+  }
+  const parsed = Number(cursor);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return 0;
+  }
+  return parsed;
 }
 
 function tradeMatchesAdminQuery(trade: OtcTrade, query: AdminTradeQuery): boolean {
@@ -615,6 +779,47 @@ function tradeMatchesAdminQuery(trade: OtcTrade, query: AdminTradeQuery): boolea
   ]
     .filter((value): value is string => Boolean(value))
     .some((value) => value.toLowerCase().includes(needle));
+}
+
+function redactTradeForAdmin(trade: OtcTrade, redaction: AdminTradeDebugOptions['redaction']): OtcTrade {
+  if (redaction !== 'support') {
+    return trade;
+  }
+  return {
+    ...trade,
+    buyerPearlAddress: redactValue(trade.buyerPearlAddress),
+    buyerUsdcAddress: redactValue(trade.buyerUsdcAddress),
+    sellerPearlRefundAddress: redactValue(trade.sellerPearlRefundAddress),
+    sellerUsdcReceiveAddress: redactValue(trade.sellerUsdcReceiveAddress),
+    pearlEscrow: {
+      ...trade.pearlEscrow,
+      address: redactValue(trade.pearlEscrow.address),
+    },
+  };
+}
+
+function redactSideEffectForAdmin(
+  sideEffect: OtcSideEffect,
+  redaction: AdminTradeDebugOptions['redaction'],
+): OtcSideEffect {
+  if (redaction !== 'support') {
+    return sideEffect;
+  }
+  const metadata = { ...sideEffect.metadata };
+  if (metadata.contact) {
+    metadata.contact = redactValue(String(metadata.contact));
+  }
+  return {
+    ...sideEffect,
+    metadata,
+  };
+}
+
+function redactValue(value: string): string {
+  if (value.length <= 10) {
+    return '[redacted]';
+  }
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 function getCurrentBlockers(trade: OtcTrade, sideEffects: OtcSideEffect[], now: Date): string[] {
@@ -726,6 +931,10 @@ function assertOneOf<T extends string>(value: unknown, field: string, allowed: r
   if (typeof value !== 'string' || !allowed.includes(value as T)) {
     throw new Error(`${field} is invalid`);
   }
+}
+
+function isAlertSeverity(value: unknown): value is 'info' | 'warning' | 'critical' {
+  return value === 'info' || value === 'warning' || value === 'critical';
 }
 
 export function createPublicProof(

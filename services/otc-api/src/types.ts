@@ -48,10 +48,13 @@ export interface OtcApiConfig {
   pearlIndexerWatchUrl?: string;
   pearlIndexerWatchTimeoutMs?: number;
   adminApiToken?: string;
+  adminApiTokens?: string;
   supportAlertWebhookUrl?: string;
   supportAlertTelegramBotToken?: string;
   supportAlertTelegramChatId?: string;
   supportAlertTelegramMessageThreadId?: string;
+  supportAlertRateLimitWindowMs: number;
+  supportAlertRateLimitMax: number;
 }
 
 export interface OtcApiRuntimeConfig {
@@ -126,6 +129,14 @@ export interface AdminTradeQuery {
   state?: OtcTrade['state'];
   manualReviewOnly?: boolean;
   search?: string;
+  severity?: 'info' | 'warning' | 'critical';
+  failedSideEffectOnly?: boolean;
+  deadlineBreachedOnly?: boolean;
+  blocker?: string;
+  minUpdatedAgeMs?: number;
+  alertDeliveryStatus?: OtcSideEffectStatus;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface AdminTradeSummary {
@@ -142,9 +153,20 @@ export interface AdminTradeSummary {
   manualReview: boolean;
   alertCount: number;
   failedSideEffectCount: number;
+  latestAlertSeverity?: 'info' | 'warning' | 'critical';
+  alertDeliveryStatus?: OtcSideEffectStatus;
   safeActions: string[];
   updatedAt: string;
 }
+
+export interface AdminTradeListPage {
+  items: AdminTradeSummary[];
+  nextCursor?: string;
+  total: number;
+  limit: number;
+}
+
+export type AdminDebugRedaction = 'support' | 'operator' | 'admin';
 
 export interface AdminTradeDebugDetail {
   trade: OtcTrade;
@@ -154,6 +176,7 @@ export interface AdminTradeDebugDetail {
   currentBlockers: string[];
   deadlineBreaches: string[];
   safeActions: string[];
+  redaction: AdminDebugRedaction;
   supportSummary: {
     headline: string;
     waitingOn: string[];
@@ -178,9 +201,27 @@ export interface RecordSupportAlertRequest {
 
 export interface MarkManualReviewRequest {
   idempotencyKey: string;
-  actor: string;
+  actor?: string;
   reason: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface ReplaySupportAlertRequest {
+  idempotencyKey: string;
+  actor?: string;
+}
+
+export interface AdminActorContext {
+  actor: string;
+  roles: string[];
+}
+
+export interface AdminTradeDebugOptions {
+  redaction?: AdminDebugRedaction;
+}
+
+export interface MarkManualReviewOptions {
+  actor?: string;
 }
 
 export interface UsdcEscrowOnChainTrade {

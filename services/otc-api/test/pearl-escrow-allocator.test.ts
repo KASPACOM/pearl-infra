@@ -33,6 +33,8 @@ const config: OtcApiConfig = {
   pearlEscrowConfirmations: 3,
   baseEscrowContract: '0x1111111111111111111111111111111111111111',
   baseNetwork: 'base_sepolia',
+  supportAlertRateLimitWindowMs: 10 * 60 * 1000,
+  supportAlertRateLimitMax: 5,
 };
 
 test('derives a deterministic P2TR Pearl escrow from configured xpub', async () => {
