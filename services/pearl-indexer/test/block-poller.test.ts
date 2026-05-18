@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   MemoryBlockSink,
   PearlBlockPoller,
+  createPearldBlockSource,
   type PearlBlockSink,
   type PearlBlockSource,
   type PearlBlockSummary,
@@ -81,4 +82,61 @@ test('stops at fork point and rewinds nextHeight when sink reports a reorg', asy
   assert.equal(result.reorgDetected, true);
   assert.equal(result.reorgDetachedFromHeight, 1);
   assert.equal(result.nextHeight, 1);
+});
+
+test('createPearldBlockSource reads full transactions from pearld rawtx verbosity', async () => {
+  const calls: Array<{ method: string; params: unknown[] }> = [];
+  const source = createPearldBlockSource({
+    async call(method: string, params: unknown[] = []) {
+      calls.push({ method, params });
+      if (method === 'getblockcount') return 10;
+      if (method === 'getblockhash') return 'hash-7';
+      if (method === 'getblock') {
+        return {
+          hash: 'hash-7',
+          height: 7,
+          previousblockhash: 'hash-6',
+          time: 1_700_000_000,
+          rawtx: [
+            {
+              txid: 'tx-7',
+              vin: [{ txid: 'prev-tx', vout: 1, sequence: 42 }],
+              vout: [
+                {
+                  value: '1.25000000',
+                  n: 0,
+                  scriptPubKey: {
+                    hex: '5120abcd',
+                    type: 'witness_v1_taproot',
+                    address: 'prl1pexample',
+                  },
+                },
+              ],
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method ${method}`);
+    },
+  });
+
+  const block = await source.getBlock('hash-7');
+
+  assert.deepEqual(calls.at(-1), { method: 'getblock', params: ['hash-7', 2] });
+  assert.deepEqual(block.txids, ['tx-7']);
+  assert.deepEqual(block.inputs, [
+    { txid: 'tx-7', vin: 0, spentOutpoint: 'prev-tx:1', sequence: 42 },
+  ]);
+  assert.deepEqual(block.outputs, [
+    {
+      txid: 'tx-7',
+      vout: 0,
+      amountGrains: '125000000',
+      scriptPubKey: {
+        hex: '5120abcd',
+        type: 'witness_v1_taproot',
+        address: 'prl1pexample',
+      },
+    },
+  ]);
 });

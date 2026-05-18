@@ -230,6 +230,10 @@ Current delegation queue after rendered OTC web screens:
 - [x] 9.3.7.a Add `unknown_spend` handling that blocks settlement and requires manual review.
 - [x] 9.3.8 Add detach/replay reorg tests.
 - [x] 9.3.8.a Add regression test: confirmed PRL funding becomes detached after a reorg and settlement worker can no longer release USDC.
+- [x] 9.3.8.b Fix live Pearl indexer reorg replay so detached historical blocks
+  can coexist with replacement canonical blocks at the same height, and startup
+  resumes from an unfinished detached fork point. Also handle pearld verbosity
+  `2` blocks returning full transactions under `rawtx`.
 - [ ] 9.3.9 Run a testnet2 integration ingest once testnet PRL/access is available.
 
 ### 9.4 Frontend Checkout
@@ -487,21 +491,51 @@ Loophole tracker after admin FE wiring:
   init-container execution.
 - [x] 9.10.3 Add CI/CD workflow that tests, builds, pushes dev/main Oyster API
   and web images, and updates ArgoCD image tags.
+  - 2026-05-18: dev workflow run `26049304569` passed on
+    `fe0873e0213dc557dd27db55ae16438f3bf3c151`, pushed dev API/web ECR
+    images, and committed dev Argo image tags.
+  - Main/prod image build has not run yet; prod ECR repos are still empty until
+    the main release path is executed.
 - [x] 9.10.4 Add ArgoCD manifests for `dev-oyster.kaspa.com`,
   `dev-api-oyster.kaspa.com`, `oyster.kaspa.com`, and
   `api-oyster.kaspa.com`.
 - [x] 9.10.5 Document required GitHub secrets, runtime ExternalSecret keys,
   and the deployment/mainnet gate in `docs/operations/oyster-deployment.md`.
-- [ ] 9.10.6 Create/populate AWS Secrets Manager keys `dev/oyster-otc-api` and
-  `prod/oyster-otc-api`.
+- [ ] 9.10.6 Create/populate AWS Secrets Manager keys.
+  - [x] 9.10.6.a Create/populate `dev/oyster-otc-api` in `eu-central-1`.
+    - 2026-05-18: secret is synced by ExternalSecrets; dev-only escrow custody
+      xprv is stored separately in `dev/oyster-otc-escrow-custody`.
+  - [ ] 9.10.6.b Create/populate `prod/oyster-otc-api` in `us-east-1`.
 - [x] 9.10.7 Confirm ECR repositories exist for Oyster API/web dev and prod.
-- [ ] 9.10.8 Merge ArgoCD manifests and confirm Argo sync creates healthy API
-  and web pods.
-- [ ] 9.10.9 Configure DNS/Cloudflare records for `dev-oyster.kaspa.com`,
-  `dev-api-oyster.kaspa.com`, `oyster.kaspa.com`, and
-  `api-oyster.kaspa.com`.
+  - 2026-05-18: dev repos contain image tag
+    `fe0873e0213dc557dd27db55ae16438f3bf3c151`; prod repos exist but have no
+    images yet.
+- [x] 9.10.8.a Merge ArgoCD manifests and dev image-tag update.
+- [x] 9.10.8.b Bootstrap the dev Argo Application CRs into the dev cluster.
+- [x] 9.10.8.c Confirm Argo sync creates healthy dev API and web pods.
+  - 2026-05-18: `oyster-otc-web` and `oyster-otc-api` are both 1/1 Running;
+    API uses Postgres persistence, Base Sepolia reader, Pearl watch registrar,
+    and Telegram alert notifier.
+- [ ] 9.10.8.d Execute the main/prod deploy path and confirm prod API and web
+  images/pods.
+- [x] 9.10.9.a Configure dev DNS/Cloudflare records and HTTPS for
+  `dev-oyster.kaspa.com` and `dev-api-oyster.kaspa.com`.
+- [ ] 9.10.9.b Configure prod DNS/Cloudflare records for `oyster.kaspa.com`
+  and `api-oyster.kaspa.com`.
 - [ ] 9.10.10 Run live `/healthz`, quote, support-alert, and admin-auth smoke
   checks against dev, then main.
+  - [x] 9.10.10.a Dev `/healthz` smoke passed over HTTPS.
+  - [x] 9.10.10.b Dev quote creation smoke passed over HTTPS.
+  - [x] 9.10.10.c Dev quote accept smoke passed and registered a Pearl watch.
+  - [x] 9.10.10.d Dev admin-auth smoke passed with the generated admin token.
+  - [x] 9.10.10.e Dev support-alert smoke passed with Telegram delivery
+    confirmed in admin diagnostics.
+  - [ ] 9.10.10.f Main/prod smoke after prod release path is executed.
+- [x] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
+  indexer on `65.21.206.46` and smoke `PEARL_INDEXER_WATCH_URL` from the API
+  runtime network.
+  - 2026-05-18: dev cluster egress `3.77.60.57` is allowlisted to
+    `65.21.206.46:8088`; in-cluster curl to `/healthz` returned `{"ok":true}`.
 
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 

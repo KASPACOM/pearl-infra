@@ -46,10 +46,13 @@ If `PEARL_INDEXER_DATABASE_URL` is unset the service still runs but **state is i
 On boot with `PEARL_INDEXER_DATABASE_URL` set:
 
 1. `PgBlockSink.loadNextHeight(configured_start_height)` reads `indexer_state` where `key = 'next_height'`.
-2. If a row exists, resume from that height; otherwise start from the configured value.
-3. Each `saveBlock` advances `next_height` to `block.height + 1` in the same transaction as the block insert — `next_height` is never ahead of what's actually indexed.
+2. If an unfinished reorg exists (a detached block has no replacement canonical block at the same height), resume from the earliest unfinished detached height.
+3. Otherwise, if a row exists, resume from that height; if not, start from the configured value.
+4. Each successful `saveBlock` advances `next_height` to `block.height + 1` in the same transaction as the block insert — `next_height` is never ahead of what's actually indexed.
 
-The advance uses `GREATEST(existing, new)` so reorg rewinds never pull persisted `next_height` backward — only the in-memory poller cursor moves back, and it catches up by re-saving the corrected blocks.
+Normal advances use `GREATEST(existing, new)`. Reorg detection is the exception:
+the sink persists the fork height before returning `kind: 'reorg'`, so a restart
+after detach but before replay resumes at the safe fork point.
 
 ## Reorg Semantics
 

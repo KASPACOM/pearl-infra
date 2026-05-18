@@ -62,6 +62,7 @@ export class PgBlockSink implements PearlBlockSink {
              WHERE height = $1 AND detached = false`,
             [block.height - 1],
           );
+          await this.setNextHeight(tx, block.height - 1);
           return {
             kind: 'reorg',
             detachedFromHeight: block.height - 1,
@@ -99,8 +100,21 @@ export class PgBlockSink implements PearlBlockSink {
       'SELECT value FROM indexer_state WHERE key = $1',
       [NEXT_HEIGHT_KEY],
     );
-    if ((result.rowCount ?? 0) === 0) return defaultValue;
-    return Number(result.rows[0].value);
+    const persisted = (result.rowCount ?? 0) === 0 ? defaultValue : Number(result.rows[0].value);
+    const replay = await this.client.query<{ height: string | number }>(
+      `SELECT MIN(detached.height) AS height
+       FROM pearl_blocks detached
+       WHERE detached.detached = true
+         AND NOT EXISTS (
+           SELECT 1
+           FROM pearl_blocks canonical
+           WHERE canonical.height = detached.height
+             AND canonical.detached = false
+         )`,
+    );
+    const replayHeight = replay.rows[0]?.height;
+    if (replayHeight === null || replayHeight === undefined) return persisted;
+    return Math.min(persisted, Number(replayHeight));
   }
 
   /**
@@ -116,6 +130,17 @@ export class PgBlockSink implements PearlBlockSink {
          SET value = GREATEST(indexer_state.value::bigint, EXCLUDED.value::bigint)::text,
              updated_at = now()`,
       [NEXT_HEIGHT_KEY, String(candidateHeight)],
+    );
+  }
+
+  private async setNextHeight(tx: PgTxClient, height: number): Promise<void> {
+    await tx.query(
+      `INSERT INTO indexer_state (key, value, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (key) DO UPDATE
+         SET value = EXCLUDED.value,
+             updated_at = now()`,
+      [NEXT_HEIGHT_KEY, String(height)],
     );
   }
 }
