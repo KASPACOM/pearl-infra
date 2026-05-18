@@ -84,6 +84,7 @@ OTC API, indexer, frontend, or general worker containers.
 | `PEARL_INDEXER_WATCH_URL` | yes | private URL for testnet2 watched-address API |
 | `PEARL_INDEXER_WATCH_TIMEOUT_MS` | yes | `5000` |
 | `OTC_ADMIN_API_TOKEN` | yes | bearer token from `pearl-otc-admin-api` |
+| `OTC_ALERT_WEBHOOK_URL` | yes | operator alert webhook from `pearl-otc-operator-alerts` |
 | `OTC_QUOTE_TTL_MS` | yes | quoted policy value |
 | `OTC_PEARL_FUNDING_TTL_MS` | yes | quoted policy value |
 | `OTC_USDC_DEPOSIT_TTL_MS` | yes | quoted policy value |
@@ -121,8 +122,8 @@ Before enabling quote acceptance in `testnet2-base-sepolia`:
 - testnet2 `pearld` RPC health returns block count and best hash;
 - indexer `/healthz` and `/watches` smoke checks pass;
 - `PEARL_INDEXER_WATCH_URL` points at the private watched-address API;
-- OTC API starts with `OTC_API_REQUIRE_PRODUCTION_CONFIG=true` and
-  `OTC_ADMIN_API_TOKEN` configured;
+- OTC API starts with `OTC_API_REQUIRE_PRODUCTION_CONFIG=true`,
+  `OTC_ADMIN_API_TOKEN`, and `OTC_ALERT_WEBHOOK_URL` configured;
 - Base Sepolia contract address matches recorded evidence;
 - signer policy is configured with fee caps and `PEARL_SIGNER_PAUSED=true`;
 - `PEARL_BROADCAST_ENABLED=false` until simnet evidence is recorded.

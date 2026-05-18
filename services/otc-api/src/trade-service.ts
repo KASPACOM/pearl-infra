@@ -17,6 +17,7 @@ import { getUsdcEscrowNetworkConfig } from '@kaspacom/usdc-escrow-client';
 
 import type { OtcRepository } from './repository.js';
 import type { PearlIndexedProof, PearlProofReader } from './pearl-proof-reader.js';
+import type { SupportAlertNotifier } from './support-alert-notifier.js';
 import type {
   AcceptQuoteRequest,
   AdminTradeDebugDetail,
@@ -79,6 +80,7 @@ export class OtcTradeService {
   private readonly usdcEscrowReader?: UsdcEscrowReader;
   private readonly pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar;
   private readonly pearlProofReader?: PearlProofReader;
+  private readonly supportAlertNotifier?: SupportAlertNotifier;
   private readonly now: () => Date;
 
   constructor(
@@ -89,6 +91,7 @@ export class OtcTradeService {
     now: () => Date = () => new Date(),
     pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar,
     pearlProofReader?: PearlProofReader,
+    supportAlertNotifier?: SupportAlertNotifier,
   ) {
     this.repository = repository;
     this.config = config;
@@ -101,6 +104,7 @@ export class OtcTradeService {
     }
     this.pearlEscrowWatchRegistrar = pearlEscrowWatchRegistrar;
     this.pearlProofReader = pearlProofReader;
+    this.supportAlertNotifier = supportAlertNotifier;
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
@@ -416,7 +420,7 @@ export class OtcTradeService {
   }
 
   async recordSupportAlert(tradeId: string, request: RecordSupportAlertRequest): Promise<OtcSideEffect> {
-    await this.getTrade(tradeId);
+    const trade = await this.getTrade(tradeId);
     assertNonEmpty(request.idempotencyKey, 'idempotencyKey');
     assertNonEmpty(request.message, 'message');
     assertNonEmpty(request.actor, 'actor');
@@ -424,7 +428,7 @@ export class OtcTradeService {
     if (request.source !== undefined) {
       assertOneOf(request.source, 'source', ['user', 'operator', 'system']);
     }
-    return this.saveSideEffect(tradeId, {
+    const { sideEffect, created } = await this.saveSideEffectWithCreated(tradeId, {
       idempotencyKey: request.idempotencyKey,
       effectType: 'support_alert',
       status: request.severity === 'critical' ? 'failed' : 'prepared',
@@ -438,6 +442,10 @@ export class OtcTradeService {
         ...(request.contact ? { contact: request.contact } : {}),
       },
     });
+    if (created) {
+      await this.deliverSupportAlert(trade, sideEffect);
+    }
+    return sideEffect;
   }
 
   async markManualReview(tradeId: string, request: MarkManualReviewRequest): Promise<AdminTradeDebugDetail> {
@@ -481,8 +489,16 @@ export class OtcTradeService {
   }
 
   private async saveSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
+    const { sideEffect } = await this.saveSideEffectWithCreated(tradeId, request);
+    return sideEffect;
+  }
+
+  private async saveSideEffectWithCreated(
+    tradeId: string,
+    request: RecordSideEffectRequest,
+  ): Promise<{ sideEffect: OtcSideEffect; created: boolean }> {
     const timestamp = this.now().toISOString();
-    const { sideEffect } = await this.repository.saveSideEffect({
+    return this.repository.saveSideEffect({
       idempotencyKey: request.idempotencyKey,
       requestHash: createPayloadHash('side_effect', { tradeId, ...request }),
       tradeId,
@@ -499,7 +515,47 @@ export class OtcTradeService {
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    return sideEffect;
+  }
+
+  private async deliverSupportAlert(trade: OtcTrade, alert: OtcSideEffect): Promise<void> {
+    if (!this.supportAlertNotifier) {
+      return;
+    }
+    const sideEffects = await this.repository.listSideEffects(trade.tradeId);
+    const deliveryIdempotencyKey = createStableId('side-effect', [
+      trade.tradeId,
+      'support-alert-delivery',
+      alert.idempotencyKey,
+    ]);
+    try {
+      await this.supportAlertNotifier.notifySupportAlert({
+        trade,
+        alert,
+        supportSummary: createSupportSummary(trade, sideEffects, this.now()),
+      });
+      await this.saveSideEffect(trade.tradeId, {
+        idempotencyKey: deliveryIdempotencyKey,
+        effectType: 'support_alert_delivery',
+        status: 'confirmed',
+        actor: 'system',
+        sourceEventId: createStableId('event', [trade.tradeId, 'support-alert-delivery', alert.idempotencyKey]),
+        metadata: {
+          supportAlertIdempotencyKey: alert.idempotencyKey,
+        },
+      });
+    } catch (error) {
+      await this.saveSideEffect(trade.tradeId, {
+        idempotencyKey: deliveryIdempotencyKey,
+        effectType: 'support_alert_delivery',
+        status: 'failed',
+        actor: 'system',
+        sourceEventId: createStableId('event', [trade.tradeId, 'support-alert-delivery', alert.idempotencyKey]),
+        metadata: {
+          supportAlertIdempotencyKey: alert.idempotencyKey,
+          error: error instanceof Error ? error.message : 'unknown support alert delivery error',
+        },
+      });
+    }
   }
 
   private async createAdminTradeSummary(trade: OtcTrade): Promise<AdminTradeSummary> {

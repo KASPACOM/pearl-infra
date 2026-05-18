@@ -8,6 +8,7 @@ import { createConfiguredPearlEscrowAllocator } from './pearl-escrow-allocator.j
 import { HttpPearlProofReader } from './pearl-proof-reader.js';
 import { HttpPearlEscrowWatchRegistrar } from './pearl-watch-registrar.js';
 import { pgPoolAdapter } from './postgres.js';
+import { WebhookSupportAlertNotifier } from './support-alert-notifier.js';
 import { EthersUsdcEscrowReader } from './usdc-escrow-reader.js';
 
 const port = Number(process.env.OTC_API_PORT ?? 8080);
@@ -27,6 +28,9 @@ const pearlEscrowWatchRegistrar = config.pearlIndexerWatchUrl
 const pearlProofReader = config.pearlIndexerWatchUrl
   ? new HttpPearlProofReader(config.pearlIndexerWatchUrl, config.pearlIndexerWatchTimeoutMs)
   : undefined;
+const supportAlertNotifier = config.supportAlertWebhookUrl
+  ? new WebhookSupportAlertNotifier(config.supportAlertWebhookUrl)
+  : undefined;
 const service = new OtcTradeService(
   repository,
   config,
@@ -35,6 +39,7 @@ const service = new OtcTradeService(
   undefined,
   pearlEscrowWatchRegistrar,
   pearlProofReader,
+  supportAlertNotifier,
 );
 const server = createOtcHttpServer(service, { adminToken: config.adminApiToken });
 
@@ -47,6 +52,7 @@ server.listen(port, () => {
       pearlEscrowAllocator: config.pearlEscrowAllocator,
       pearlEscrowWatchRegistrar: config.pearlIndexerWatchUrl ? 'http' : 'disabled',
       usdcEscrowReader: config.baseRpcUrl ? 'ethers' : 'disabled',
+      supportAlertNotifier: config.supportAlertWebhookUrl ? 'webhook' : 'disabled',
       productionConfigRequired: runtime.production,
     }),
   );

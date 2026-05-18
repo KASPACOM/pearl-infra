@@ -7,6 +7,7 @@ export * from './pearl-escrow-allocator.js';
 export * from './pearl-proof-reader.js';
 export * from './pearl-watch-registrar.js';
 export * from './repository.js';
+export * from './support-alert-notifier.js';
 export * from './trade-service.js';
 export * from './types.js';
 export * from './usdc-escrow-reader.js';
