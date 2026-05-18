@@ -104,26 +104,46 @@ Merged implementation checkpoints:
   wrapper. Closes 9.7.5.
 - PR #33 — added the settlement-worker decision core and release/refund guard
   regression tests. Closes 9.5.1 through 9.5.9.
+- PR #34 — added the OTC web frontend design brief for 9.4.x.
+- PR #35 — synced the checklist after escrow worker and broadcast merges.
+- PR #36 — rewrote the OTC web design brief to avoid pearl-otc.com mimicry
+  and added offers/my-quotes screen direction.
+- PR #37 — added OTC web RFQ, quote acceptance, checkout, proof, deadline,
+  manual-review, and side-effect page models. Closes 9.4.1.a, 9.4.2.a,
+  9.4.3.a, 9.4.4.a, 9.4.6.a, 9.4.7.a, and 9.4.8.a.
+- PR #38 — hardened OTC API production startup and canonical request-hash
+  idempotency. Closes 9.8.1 and 9.8.2.
+- PR #39 — persisted Pearl escrow derivation allocations with uniqueness and
+  retry on collision. Closes 9.8.4.
+- PR #40 — wired real Pearl escrow quote acceptance to Pearl indexer watch
+  registration before returning funding details. Closes 9.8.5.
+- PR #41 — added Pearl indexer spend detection with release/refund/unknown
+  classification. Closes 9.3.7 and 9.3.7.a.
 
-Current delegation queue after PR #33:
+Current delegation queue after PR #41:
 
 - Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.8`, `9.3.8.a`, and `9.3.9`.
-  PR #30 landed the first funding scanner slice; spend detection is covered by
-  the 9.3.7 branch. Keep the parent tasks open until full funding
-  classification, reorg replay, and integration ingest are complete.
-- Backend owner: 9.2.x complete in PR #24. Stay available for frontend/API
-  alignment on deadline and edge-state surfaces.
-- Frontend owner: `9.4.1` through `9.4.4`, then `9.4.6` through `9.4.8`.
-  Unblocked now that backend exposes deadlines (9.2.7), edge states
-  (9.2.9), and the on-chain USDC term verifier (9.2.10).
-- Settlement-worker owner: 9.5.x core decision engine complete in PR #33.
-  Next worker work is integration wiring once indexer funding/spend outputs
-  and live Base event inputs are available.
-- Base Solidity/EVM owner: `9.6.5`, `9.6.7`, `9.6.8`, and `9.6.9`.
-- Pearl escrow specialist: 9.7.x package complete through signer/broadcast
-  hooks in PR #32. Next escrow work is live signer/broadcaster integration,
-  gated by simnet/testnet run evidence.
-- DevOps owner: `9.6.1`, `9.6.2`, `9.6.3`, and `9.6.11`.
+  Spend detection is merged in PR #41; funding classification, detach/replay
+  reorg coverage, and testnet2 ingest evidence remain open.
+- Backend owner: core 9.2.x is complete. Next backend/API work is `9.8.6`
+  proof projection from indexed observations/spends and `9.8.7` Base escrow
+  event ingestion.
+- Frontend owner: page models are complete in PR #37. Actual RFQ, checkout,
+  proof, and admin screens remain open under `9.4.1` through `9.4.4` and
+  `9.4.6` through `9.4.8`.
+- Settlement-worker owner: 9.5.x decision core is complete in PR #33. Next
+  worker work is `9.8.8`, the persistent execution loop that consumes OTC API,
+  Pearl indexer observations/spends, Base events, signer, and broadcaster
+  adapters.
+- Pearl signer/custody owner: 9.7.x package hooks are complete through PR #32.
+  `9.8.9` remains open for the production signer boundary, audit trail, fee
+  caps, template hash verification, and retry-safe persistence.
+- DevOps owner: `9.6.1`, `9.6.2`, `9.6.3`, `9.6.11`, `9.8.3`, and
+  `9.8.13`.
+- Evidence owner: `9.8.10` full simnet escrow run and `9.8.11` testnet2/Base
+  Sepolia run with real txids.
+- Base Solidity/EVM owner: `9.6.7` and `9.6.9` remain open; `9.6.5`,
+  `9.6.6`, and `9.6.8` are complete.
 - Igra bridge Solidity/EVM owner: `10.6` and `10.7`.
 - Bridge service/federation owner: `10.8.4` through `10.11`, sequenced after
   bridge contract shape is fixed.
@@ -241,6 +261,12 @@ Current delegation queue after PR #33:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
+Status after PR #41: API startup/idempotency, derivation allocation safety,
+watch registration, and Pearl spend detection are merged. The remaining
+production blockers are proof projection from indexed data, Base event
+ingestion, persistent worker execution, signer boundary hardening, live
+simnet/testnet evidence, actual frontend/admin screens, and ops monitoring.
+
 - [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
   Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
   contract are configured.
@@ -255,6 +281,8 @@ Current delegation queue after PR #33:
   shown.
 - [ ] 9.8.6 Derive public proof Pearl confirmations, funding outpoint, and
   spend txids from indexed observations/spends, not stale trade JSON.
+  - Pearl spend detection source data landed in PR #41; the public proof/API
+    projection still needs to consume it.
 - [ ] 9.8.7 Add Base escrow event ingestion for created/deposited/released/
   refunded/cancelled transitions.
 - [ ] 9.8.8 Convert the settlement-worker decision core into a persistent
