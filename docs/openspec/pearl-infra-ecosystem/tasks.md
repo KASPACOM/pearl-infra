@@ -502,7 +502,9 @@ Loophole tracker after admin FE wiring:
 - [x] 9.10.5 Document required GitHub secrets, runtime ExternalSecret keys,
   and the deployment/mainnet gate in `docs/operations/oyster-deployment.md`.
 - [ ] 9.10.6 Create/populate AWS Secrets Manager keys.
-  - [ ] 9.10.6.a Create/populate `dev/oyster-otc-api` in `eu-central-1`.
+  - [x] 9.10.6.a Create/populate `dev/oyster-otc-api` in `eu-central-1`.
+    - 2026-05-18: secret is synced by ExternalSecrets; dev-only escrow custody
+      xprv is stored separately in `dev/oyster-otc-escrow-custody`.
   - [ ] 9.10.6.b Create/populate `prod/oyster-otc-api` in `us-east-1`.
 - [x] 9.10.7 Confirm ECR repositories exist for Oyster API/web dev and prod.
   - 2026-05-18: dev repos contain image tag
@@ -510,24 +512,29 @@ Loophole tracker after admin FE wiring:
     images yet.
 - [x] 9.10.8.a Merge ArgoCD manifests and dev image-tag update.
 - [x] 9.10.8.b Bootstrap the dev Argo Application CRs into the dev cluster.
-- [ ] 9.10.8.c Confirm Argo sync creates healthy dev API and web pods.
-  - 2026-05-18: `oyster-otc-web` is Synced/Healthy and 1/1 Running.
-  - 2026-05-18: `oyster-otc-api` is Synced/Degraded because
-    ExternalSecret `dev/oyster-otc-api` does not exist yet.
+- [x] 9.10.8.c Confirm Argo sync creates healthy dev API and web pods.
+  - 2026-05-18: `oyster-otc-web` and `oyster-otc-api` are both 1/1 Running;
+    API uses Postgres persistence, Base Sepolia reader, Pearl watch registrar,
+    and Telegram alert notifier.
 - [ ] 9.10.8.d Execute the main/prod deploy path and confirm prod API and web
   images/pods.
-- [x] 9.10.9.a Configure dev DNS/Cloudflare records for
+- [x] 9.10.9.a Configure dev DNS/Cloudflare records and HTTPS for
   `dev-oyster.kaspa.com` and `dev-api-oyster.kaspa.com`.
 - [ ] 9.10.9.b Configure prod DNS/Cloudflare records for `oyster.kaspa.com`
   and `api-oyster.kaspa.com`.
 - [ ] 9.10.10 Run live `/healthz`, quote, support-alert, and admin-auth smoke
   checks against dev, then main.
-  - 2026-05-18: `http://dev-oyster.kaspa.com` returns the OTC web shell.
-  - 2026-05-18: `http://dev-api-oyster.kaspa.com/healthz` returns ALB 503
-    until the API runtime secret is populated and the pod starts.
-- [ ] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
+  - [x] 9.10.10.a Dev `/healthz` smoke passed over HTTPS.
+  - [x] 9.10.10.b Dev quote creation smoke passed over HTTPS.
+  - [x] 9.10.10.c Dev quote accept smoke passed and registered a Pearl watch.
+  - [x] 9.10.10.d Dev admin-auth smoke passed with the generated admin token.
+  - [ ] 9.10.10.e Dev support-alert smoke.
+  - [ ] 9.10.10.f Main/prod smoke after prod release path is executed.
+- [x] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
   indexer on `65.21.206.46` and smoke `PEARL_INDEXER_WATCH_URL` from the API
   runtime network.
+  - 2026-05-18: dev cluster egress `3.77.60.57` is allowlisted to
+    `65.21.206.46:8088`; in-cluster curl to `/healthz` returned `{"ok":true}`.
 
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 
