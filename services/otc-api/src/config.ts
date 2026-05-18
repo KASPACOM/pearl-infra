@@ -22,6 +22,9 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     pearlIndexerWatchTimeoutMs: Number(env.PEARL_INDEXER_WATCH_TIMEOUT_MS ?? 5_000),
     adminApiToken: env.OTC_ADMIN_API_TOKEN,
     supportAlertWebhookUrl: env.OTC_ALERT_WEBHOOK_URL,
+    supportAlertTelegramBotToken: env.OTC_ALERT_TELEGRAM_BOT_TOKEN,
+    supportAlertTelegramChatId: env.OTC_ALERT_TELEGRAM_CHAT_ID,
+    supportAlertTelegramMessageThreadId: env.OTC_ALERT_TELEGRAM_MESSAGE_THREAD_ID,
   };
 }
 
@@ -43,7 +46,16 @@ export function assertOtcApiStartupConfig(config: OtcApiConfig, runtime: OtcApiR
   if (!config.pearlEscrowXpub) missing.push('PEARL_ESCROW_XPUB');
   if (!config.pearlIndexerWatchUrl) missing.push('PEARL_INDEXER_WATCH_URL');
   if (!config.adminApiToken) missing.push('OTC_ADMIN_API_TOKEN');
-  if (!config.supportAlertWebhookUrl) missing.push('OTC_ALERT_WEBHOOK_URL');
+  const hasTelegramAlerts = Boolean(config.supportAlertTelegramBotToken && config.supportAlertTelegramChatId);
+  if (!config.supportAlertWebhookUrl && !hasTelegramAlerts) {
+    missing.push('OTC_ALERT_WEBHOOK_URL or OTC_ALERT_TELEGRAM_BOT_TOKEN+OTC_ALERT_TELEGRAM_CHAT_ID');
+  }
+  if (config.supportAlertTelegramBotToken && !config.supportAlertTelegramChatId) {
+    missing.push('OTC_ALERT_TELEGRAM_CHAT_ID');
+  }
+  if (config.supportAlertTelegramChatId && !config.supportAlertTelegramBotToken) {
+    missing.push('OTC_ALERT_TELEGRAM_BOT_TOKEN');
+  }
   if (config.baseEscrowContract === '0x0000000000000000000000000000000000000000') {
     missing.push('BASE_USDC_ESCROW_CONTRACT');
   }

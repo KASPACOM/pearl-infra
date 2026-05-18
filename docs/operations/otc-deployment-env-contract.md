@@ -35,7 +35,7 @@ Non-secret environment examples live in `ops/otc/`.
 | `pearl-otc-admin-api` | OTC API admin surface | `OTC_ADMIN_API_TOKEN` |
 | `pearl-otc-signer-policy` | settlement worker / signer boundary | `PEARL_SIGNER_KEY_ID`, `PEARL_SIGNER_ALLOWED_KEY_IDS`, `PEARL_SIGNER_RELEASE_FEE_CAP_GRAINS`, `PEARL_SIGNER_REFUND_FEE_CAP_GRAINS` |
 | `pearl-otc-signer-store` | signer boundary | `PEARL_SIGNER_REQUEST_STORE_PATH`, `PEARL_SIGNER_AUDIT_LOG_PATH` |
-| `pearl-otc-operator-alerts` | alerting | `OTC_ALERT_WEBHOOK_URL` or pager integration secret |
+| `pearl-otc-operator-alerts` | alerting | `OTC_ALERT_WEBHOOK_URL` and/or `OTC_ALERT_TELEGRAM_BOT_TOKEN`, `OTC_ALERT_TELEGRAM_CHAT_ID`, optional `OTC_ALERT_TELEGRAM_MESSAGE_THREAD_ID` |
 
 Signer private material is not part of this repo-level contract. It must live
 inside the signer host/KMS/offline signer boundary and must not be exposed to
@@ -84,7 +84,10 @@ OTC API, indexer, frontend, or general worker containers.
 | `PEARL_INDEXER_WATCH_URL` | yes | private URL for testnet2 watched-address API |
 | `PEARL_INDEXER_WATCH_TIMEOUT_MS` | yes | `5000` |
 | `OTC_ADMIN_API_TOKEN` | yes | bearer token from `pearl-otc-admin-api` |
-| `OTC_ALERT_WEBHOOK_URL` | yes | operator alert webhook from `pearl-otc-operator-alerts` |
+| `OTC_ALERT_WEBHOOK_URL` | webhook alert sink | operator alert webhook from `pearl-otc-operator-alerts` |
+| `OTC_ALERT_TELEGRAM_BOT_TOKEN` | Telegram alert sink | Telegram bot token from `pearl-otc-operator-alerts` |
+| `OTC_ALERT_TELEGRAM_CHAT_ID` | Telegram alert sink | target chat ID from `pearl-otc-operator-alerts` |
+| `OTC_ALERT_TELEGRAM_MESSAGE_THREAD_ID` | Telegram forum topics | optional target topic/thread ID |
 | `OTC_QUOTE_TTL_MS` | yes | quoted policy value |
 | `OTC_PEARL_FUNDING_TTL_MS` | yes | quoted policy value |
 | `OTC_USDC_DEPOSIT_TTL_MS` | yes | quoted policy value |
@@ -123,7 +126,8 @@ Before enabling quote acceptance in `testnet2-base-sepolia`:
 - indexer `/healthz` and `/watches` smoke checks pass;
 - `PEARL_INDEXER_WATCH_URL` points at the private watched-address API;
 - OTC API starts with `OTC_API_REQUIRE_PRODUCTION_CONFIG=true`,
-  `OTC_ADMIN_API_TOKEN`, and `OTC_ALERT_WEBHOOK_URL` configured;
+  `OTC_ADMIN_API_TOKEN`, and at least one operator alert sink configured
+  (`OTC_ALERT_WEBHOOK_URL` or Telegram bot token plus chat ID);
 - Base Sepolia contract address matches recorded evidence;
 - signer policy is configured with fee caps and `PEARL_SIGNER_PAUSED=true`;
 - `PEARL_BROADCAST_ENABLED=false` until simnet evidence is recorded.

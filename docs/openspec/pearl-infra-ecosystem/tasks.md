@@ -244,7 +244,8 @@ Current delegation queue after ops deployment/monitoring implementation:
     routes needed by the operator manual-review shell.
   - [x] 9.4.4.b Add backend admin diagnostics endpoints for trade list, trade
     debug detail, user support/error alerts, support summary, bearer-gated
-    admin routes, webhook alert delivery, and audited manual-review notes.
+    admin routes, webhook/Telegram alert delivery, and audited manual-review
+    notes.
   - [ ] 9.4.4.c Build the admin trade list UI with state/manual-review/search
     filters and alert/backlog indicators.
   - [ ] 9.4.4.d Build the admin trade debug detail UI showing trade state,
@@ -401,8 +402,9 @@ Loophole tracker after PR #51:
   prove no release action is exposed to users or operators.
   - Admin backend contracts now expose read/debug/support/manual-review
     endpoints without arbitrary release, signing, or term-edit actions; admin
-    routes require `OTC_ADMIN_API_TOKEN`, and support/error alerts require
-    `OTC_ALERT_WEBHOOK_URL`, in production-like deployments.
+    routes require `OTC_ADMIN_API_TOKEN`, and support/error alerts require at
+    least one configured sink (`OTC_ALERT_WEBHOOK_URL` or Telegram bot token
+    plus chat ID), in production-like deployments.
 - [x] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
   broadcasts, duplicate events, manual-review backlog, and mismatched
   backend/on-chain terms.
