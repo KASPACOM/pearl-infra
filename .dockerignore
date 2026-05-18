@@ -1,8 +1,12 @@
 node_modules
+**/node_modules
 **/dist
-**/*.tsbuildinfo
 .git
+.github
 .env
 .env.*
+**/*.tsbuildinfo
+**/web-dist
 coverage
 .cache
+npm-debug.log
