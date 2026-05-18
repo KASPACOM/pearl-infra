@@ -480,6 +480,30 @@ Loophole tracker after PR #51:
   wrong token, insufficient role, actor spoof attempts, redaction behavior, and
   public support-alert abuse limits.
 
+### 9.10 Oyster App Deployment
+
+- [x] 9.10.1 Add Docker image contracts for `services/otc-api` and
+  `apps/otc-web`.
+- [x] 9.10.2 Add OTC API database migration entrypoint for Kubernetes
+  init-container execution.
+- [x] 9.10.3 Add CI/CD workflow that tests, builds, pushes dev/main Oyster API
+  and web images, and updates ArgoCD image tags.
+- [x] 9.10.4 Add ArgoCD manifests for `dev-oyster.kaspa.com`,
+  `dev-api-oyster.kaspa.com`, `oyster.kaspa.com`, and
+  `api-oyster.kaspa.com`.
+- [x] 9.10.5 Document required GitHub secrets, runtime ExternalSecret keys,
+  and the deployment/mainnet gate in `docs/operations/oyster-deployment.md`.
+- [ ] 9.10.6 Create/populate AWS Secrets Manager keys `dev/oyster-otc-api` and
+  `prod/oyster-otc-api`.
+- [x] 9.10.7 Confirm ECR repositories exist for Oyster API/web dev and prod.
+- [ ] 9.10.8 Merge ArgoCD manifests and confirm Argo sync creates healthy API
+  and web pods.
+- [ ] 9.10.9 Configure DNS/Cloudflare records for `dev-oyster.kaspa.com`,
+  `dev-api-oyster.kaspa.com`, `oyster.kaspa.com`, and
+  `api-oyster.kaspa.com`.
+- [ ] 9.10.10 Run live `/healthz`, quote, support-alert, and admin-auth smoke
+  checks against dev, then main.
+
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 
 - [x] 10.1 Define the bridge-first product track and record that OTC remains the manual safety layer.
