@@ -125,8 +125,8 @@ USDC, funds multiple ephemeral buyer/operator wallets, and exercises:
 
 It writes JSON evidence under
 `deployments/base-sepolia-native-stress-*.json` with wallet addresses, tx hashes,
-expected reverts, checks, and final balances. The script never writes private
-keys.
+expected revert selectors/reasons, checks, and final balances. The script never
+writes private keys or raw RPC URLs.
 
 ## Mainnet Gate
 

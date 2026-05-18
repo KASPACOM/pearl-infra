@@ -2,7 +2,6 @@
   "runId": "20260518114919",
   "network": "base_sepolia",
   "chainId": 84532,
-  "rpcUrl": "https://base-sepolia-rpc.publicnode.com",
   "nativeUsdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   "feeRecipient": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
   "deployer": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
@@ -376,38 +375,68 @@
   "expectedReverts": [
     {
       "label": "stranger cannot deposit release trade",
+      "expected": [
+        "not buyer"
+      ],
       "reason": "execution reverted: \"not buyer\""
     },
     {
       "label": "stranger cannot release deposited trade",
+      "expected": [
+        "OwnableUnauthorizedAccount",
+        "0x118cdaa7"
+      ],
       "reason": "execution reverted (unknown custom error)"
     },
     {
       "label": "buyer cannot refund before expiry",
+      "expected": [
+        "not authorized"
+      ],
       "reason": "execution reverted: \"not authorized\""
     },
     {
       "label": "stranger cannot refund before expiry",
+      "expected": [
+        "not authorized"
+      ],
       "reason": "execution reverted: \"not authorized\""
     },
     {
       "label": "owner cannot create while paused",
+      "expected": [
+        "EnforcedPause",
+        "0xd93c0665"
+      ],
       "reason": "execution reverted (unknown custom error)"
     },
     {
       "label": "buyer cannot deposit while paused",
+      "expected": [
+        "EnforcedPause",
+        "0xd93c0665"
+      ],
       "reason": "execution reverted (unknown custom error)"
     },
     {
       "label": "cannot reuse released trade id",
+      "expected": [
+        "trade exists"
+      ],
       "reason": "execution reverted: \"trade exists\""
     },
     {
       "label": "cannot reuse refunded trade id",
+      "expected": [
+        "trade exists"
+      ],
       "reason": "execution reverted: \"trade exists\""
     },
     {
       "label": "cannot reuse cancelled trade id",
+      "expected": [
+        "trade exists"
+      ],
       "reason": "execution reverted: \"trade exists\""
     }
   ],
@@ -503,5 +532,6 @@
     "expectedRevertCount": 9,
     "checkCount": 9,
     "failedChecks": 0
-  }
+  },
+  "rpcUrlRedacted": "https://base-sepolia-rpc.publicnode.com"
 }

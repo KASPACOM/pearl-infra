@@ -21,6 +21,8 @@ const BASE_SEPOLIA_USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 const DEFAULT_RPC_URL = 'https://sepolia.base.org';
 const DEFAULT_FEE_RECIPIENT = '0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978';
 const CONFIRMATIONS = Number(process.env.USDC_ESCROW_STRESS_CONFIRMATIONS ?? '1');
+const OWNABLE_UNAUTHORIZED_SELECTOR = id('OwnableUnauthorizedAccount(address)').slice(0, 10);
+const ENFORCED_PAUSE_SELECTOR = id('EnforcedPause()').slice(0, 10);
 
 const erc20Abi = [
   'function approve(address spender, uint256 amount) returns (bool)',
@@ -68,6 +70,35 @@ function compactError(error) {
   return String(message).split('\n')[0].slice(0, 240);
 }
 
+function redactedRpcUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return url.origin;
+  } catch {
+    return 'unparseable';
+  }
+}
+
+function errorData(error) {
+  const seen = new Set();
+  const queue = [error];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    seen.add(current);
+    if (typeof current.data === 'string' && current.data.startsWith('0x')) return current.data;
+    if (typeof current.info?.error?.data === 'string' && current.info.error.data.startsWith('0x')) {
+      return current.info.error.data;
+    }
+    queue.push(current.error, current.cause, current.info?.error);
+  }
+  return undefined;
+}
+
+function expectedFragmentsMatch(reason, data, expectedFragments) {
+  return expectedFragments.some((fragment) => reason.includes(fragment) || (data && data.startsWith(fragment)));
+}
+
 async function latestTimestamp(provider) {
   const block = await provider.getBlock('latest');
   if (!block) throw new Error('missing latest block');
@@ -107,7 +138,7 @@ async function sendTx(label, promise, evidence) {
   return waitReceipt(tx, label, evidence);
 }
 
-async function expectRevert(label, action, evidence) {
+async function expectRevert(label, expectedFragments, action, evidence) {
   try {
     const tx = await action();
     await tx.wait(CONFIRMATIONS);
@@ -115,7 +146,12 @@ async function expectRevert(label, action, evidence) {
   } catch (error) {
     const reason = compactError(error);
     if (reason === 'unexpected success') throw error;
-    evidence.expectedReverts.push({ label, reason });
+    const expected = Array.isArray(expectedFragments) ? expectedFragments : [expectedFragments];
+    const data = errorData(error);
+    if (!expectedFragmentsMatch(reason, data, expected)) {
+      throw new Error(`${label}: expected revert containing one of ${expected.join(', ')}; got ${reason}`);
+    }
+    evidence.expectedReverts.push({ label, expected, reason, ...(data ? { data } : {}) });
   }
 }
 
@@ -153,7 +189,7 @@ async function main() {
     runId,
     network: 'base_sepolia',
     chainId: Number(network.chainId),
-    rpcUrl,
+    rpcUrlRedacted: redactedRpcUrl(rpcUrl),
     nativeUsdc: BASE_SEPOLIA_USDC,
     feeRecipient,
     deployer: deployer.address,
@@ -251,16 +287,16 @@ async function main() {
 
   const releaseTrade = asTradeId(runId, 'release');
   await createTrade('create release trade', releaseTrade, roles.releaseBuyer, roles.sellerA, usdc(1), usdc(0.05));
-  await expectRevert('stranger cannot deposit release trade', () => escrow.connect(roles.stranger).deposit(releaseTrade), evidence);
+  await expectRevert('stranger cannot deposit release trade', 'not buyer', () => escrow.connect(roles.stranger).deposit(releaseTrade), evidence);
   await approveAndDeposit('release trade', releaseTrade, roles.releaseBuyer, usdc(1.05));
-  await expectRevert('stranger cannot release deposited trade', () => escrow.connect(roles.stranger).release(releaseTrade), evidence);
+  await expectRevert('stranger cannot release deposited trade', ['OwnableUnauthorizedAccount', OWNABLE_UNAUTHORIZED_SELECTOR], () => escrow.connect(roles.stranger).release(releaseTrade), evidence);
   await sendTx('owner releases release trade', escrowAsOwner.release(releaseTrade), evidence);
   await assertTradeStatus('release trade status', releaseTrade, 3);
 
   const buyerRefundTrade = asTradeId(runId, 'buyer-refund');
   const buyerRefundExpiry = await createTrade('create buyer refund trade', buyerRefundTrade, roles.buyerRefundBuyer, roles.sellerB, usdc(1.1), usdc(0.05), 20);
   await approveAndDeposit('buyer refund trade', buyerRefundTrade, roles.buyerRefundBuyer, usdc(1.15));
-  await expectRevert('buyer cannot refund before expiry', () => escrow.connect(roles.buyerRefundBuyer).refund(buyerRefundTrade), evidence);
+  await expectRevert('buyer cannot refund before expiry', 'not authorized', () => escrow.connect(roles.buyerRefundBuyer).refund(buyerRefundTrade), evidence);
   await waitUntilPast(provider, buyerRefundExpiry, evidence, 'buyer refund trade');
   const buyerBalanceBeforeRefund = await usdcToken.balanceOf(roles.buyerRefundBuyer.address);
   await sendTx('buyer refunds after expiry', escrow.connect(roles.buyerRefundBuyer).refund(buyerRefundTrade), evidence);
@@ -271,18 +307,18 @@ async function main() {
   const ownerRefundTrade = asTradeId(runId, 'owner-refund');
   await createTrade('create owner refund trade', ownerRefundTrade, roles.ownerRefundBuyer, roles.sellerC, usdc(0.8), usdc(0.02));
   await approveAndDeposit('owner refund trade', ownerRefundTrade, roles.ownerRefundBuyer, usdc(0.82));
-  await expectRevert('stranger cannot refund before expiry', () => escrow.connect(roles.stranger).refund(ownerRefundTrade), evidence);
+  await expectRevert('stranger cannot refund before expiry', 'not authorized', () => escrow.connect(roles.stranger).refund(ownerRefundTrade), evidence);
   await sendTx('owner refunds before expiry', escrowAsOwner.refund(ownerRefundTrade), evidence);
   await assertTradeStatus('owner refund trade status', ownerRefundTrade, 4);
 
   await sendTx('pause escrow', escrowAsOwner.pause(), evidence);
-  await expectRevert('owner cannot create while paused', () => escrowAsOwner.createTrade(asTradeId(runId, 'paused-create'), roles.pauseBuyer.address, roles.sellerA.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
+  await expectRevert('owner cannot create while paused', ['EnforcedPause', ENFORCED_PAUSE_SELECTOR], () => escrowAsOwner.createTrade(asTradeId(runId, 'paused-create'), roles.pauseBuyer.address, roles.sellerA.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
   await sendTx('unpause escrow', escrowAsOwner.unpause(), evidence);
 
   const pauseTrade = asTradeId(runId, 'pause-deposit');
   await createTrade('create pause deposit trade', pauseTrade, roles.pauseBuyer, roles.sellerA, usdc(0.5), usdc(0.01));
   await sendTx('pause before deposit', escrowAsOwner.pause(), evidence);
-  await expectRevert('buyer cannot deposit while paused', () => escrow.connect(roles.pauseBuyer).deposit(pauseTrade), evidence);
+  await expectRevert('buyer cannot deposit while paused', ['EnforcedPause', ENFORCED_PAUSE_SELECTOR], () => escrow.connect(roles.pauseBuyer).deposit(pauseTrade), evidence);
   await sendTx('unpause before deposit', escrowAsOwner.unpause(), evidence);
   await approveAndDeposit('pause trade after unpause', pauseTrade, roles.pauseBuyer, usdc(0.51));
   await sendTx('owner refunds pause trade cleanup', escrowAsOwner.refund(pauseTrade), evidence);
@@ -294,9 +330,9 @@ async function main() {
   await sendTx('stranger cancels expired created trade', escrow.connect(roles.stranger).cancelExpired(cancelTrade), evidence);
   await assertTradeStatus('cancel trade status', cancelTrade, 5);
 
-  await expectRevert('cannot reuse released trade id', () => escrowAsOwner.createTrade(releaseTrade, roles.releaseBuyer.address, roles.sellerA.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
-  await expectRevert('cannot reuse refunded trade id', () => escrowAsOwner.createTrade(ownerRefundTrade, roles.ownerRefundBuyer.address, roles.sellerC.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
-  await expectRevert('cannot reuse cancelled trade id', () => escrowAsOwner.createTrade(cancelTrade, roles.parallelBuyerA.address, roles.sellerA.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
+  await expectRevert('cannot reuse released trade id', 'trade exists', () => escrowAsOwner.createTrade(releaseTrade, roles.releaseBuyer.address, roles.sellerA.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
+  await expectRevert('cannot reuse refunded trade id', 'trade exists', () => escrowAsOwner.createTrade(ownerRefundTrade, roles.ownerRefundBuyer.address, roles.sellerC.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
+  await expectRevert('cannot reuse cancelled trade id', 'trade exists', () => escrowAsOwner.createTrade(cancelTrade, roles.parallelBuyerA.address, roles.sellerA.address, usdc(0.1), 0, (Math.floor(Date.now() / 1000) + 3600)), evidence);
 
   const parallelReleaseTrade = asTradeId(runId, 'parallel-release');
   const parallelRefundTrade = asTradeId(runId, 'parallel-refund');
