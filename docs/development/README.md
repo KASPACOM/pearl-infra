@@ -12,6 +12,8 @@ Start here if you are new to Pearl or this repo.
 5. [`public-endpoints.md`](public-endpoints.md) — what public Pearl endpoints exist, when public Blockbook is enough, and when KaspaCom needs its own node/indexer.
 6. [`covenants-on-pearl.md`](covenants-on-pearl.md) — what OP_CAT unlocks (vaults, recovery wallets, amount-caps) and what it is NOT needed for (escrow/multisig).
 7. [`pearl-escrow-signer-custody.md`](pearl-escrow-signer-custody.md) — MVP OTC signer boundary, custody model, XMSS policy, and recovery-package rules.
+8. [`../operations/otc-deployment-env-contract.md`](../operations/otc-deployment-env-contract.md) — canonical OTC deployment environments, env vars, and secret names.
+9. [`../operations/otc-monitoring.md`](../operations/otc-monitoring.md) — required OTC monitoring checks, thresholds, and fail-closed operator actions.
 
 ## Golden Rules
 

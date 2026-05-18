@@ -135,16 +135,14 @@ Merged implementation checkpoints:
   controls, persistent request records, append-only audit records, retry-safe
   state, and no live broadcast from the signer path. Closes 9.8.9.
 
-Current delegation queue after PR #49:
+Current delegation queue after ops deployment/monitoring implementation:
 
 - Frontend owner: page models are complete in PR #37. Actual RFQ, checkout,
   proof, and admin screens remain open under `9.4.1` through `9.4.4` and
   `9.4.6` through `9.4.8`.
-- DevOps owner: `9.6.1`, `9.6.2`, `9.6.3`, `9.6.11`, `9.8.3`, and
-  `9.8.13`.
-- Evidence owner: `9.3.9` testnet2 ingest, `9.8.10` full simnet escrow run,
-  and `9.8.11` testnet2/Base Sepolia run with real txids. Run these after the
-  remaining service adapters are wired.
+- Evidence owner: `9.6.4`, `9.8.10` full simnet escrow run, `9.3.9`
+  testnet2 ingest, and `9.8.11` testnet2/Base Sepolia run with real txids.
+  Run these after the deployment config is applied and services are reachable.
 - Base Solidity/EVM owner: `9.6.7` and `9.6.9` remain open; `9.6.5`,
   `9.6.6`, and `9.6.8` are complete, with PR #45 stress evidence recorded.
 - Igra bridge Solidity/EVM owner: `10.6` and `10.7`.
@@ -239,9 +237,12 @@ Current delegation queue after PR #49:
 
 ### 9.6 Ops And Release Gates
 
-- [ ] 9.6.1 Add testnet2 node deployment checklist.
-- [ ] 9.6.2 Add indexer environment contract and secrets checklist.
-- [ ] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
+- [x] 9.6.1 Add testnet2 node deployment checklist.
+  - See `ops/pearl-node/README.md` and `docs/operations/otc-deployment-env-contract.md`.
+- [x] 9.6.2 Add indexer environment contract and secrets checklist.
+  - See `docs/operations/otc-deployment-env-contract.md`.
+- [x] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
+  - See `docs/operations/otc-monitoring.md`.
 - [ ] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
 - [x] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
   - Native Base Sepolia USDC lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`.
@@ -253,7 +254,8 @@ Current delegation queue after PR #49:
 - [x] 9.6.8 Keep Base mainnet deployment blocked until contract review, Base Sepolia evidence, multisig ownership plan, and explicit Sione approval are all recorded.
 - [ ] 9.6.9 If Base mainnet is approved later, record mainnet contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link before enabling production settlement.
 - [x] 9.6.10 Add operator runbook for late PRL funding, refunded USDC, failed PRL release, unknown Pearl spend, stale indexer, and emergency pause.
-- [ ] 9.6.11 Add monitoring checks for trades past deadline, deposits close to expiry, manual-review backlog, duplicate events, and mismatched on-chain/backend terms.
+- [x] 9.6.11 Add monitoring checks for trades past deadline, deposits close to expiry, manual-review backlog, duplicate events, and mismatched on-chain/backend terms.
+  - See `docs/operations/otc-monitoring.md`.
 
 ### 9.7 Pearl P2TR Escrow Package
 
@@ -265,25 +267,27 @@ Current delegation queue after PR #49:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after 9.8.9 signer-boundary implementation: API startup/idempotency,
-derivation allocation safety, watch registration, Pearl funding/spend
-detection, reorg hardening, Pearl proof projection, Base escrow event
-ingestion, the persistent settlement-worker iteration, and the Pearl signer
-boundary policy/request/audit layer are implemented, with Base Sepolia
+Status after ops deployment/monitoring implementation: API
+startup/idempotency, derivation allocation safety, watch registration, Pearl
+funding/spend detection, reorg hardening, Pearl proof projection, Base escrow
+event ingestion, the persistent settlement-worker iteration, the Pearl signer
+boundary policy/request/audit layer, explicit deployment environment/secret
+contracts, and monitoring contracts are implemented, with Base Sepolia
 native-USDC stress evidence recorded. The remaining production blockers are
-explicit deployment config, live simnet/testnet evidence, actual frontend/admin
-screens, and ops monitoring.
+live simnet/testnet evidence, actual frontend/admin screens, and Base ownership
+acceptance evidence.
 
-Open 9.8 items after PR #49: `9.8.3`, `9.8.10`, `9.8.11`, `9.8.12`, and
-`9.8.13`.
+Open 9.8 items after ops deployment/monitoring implementation: `9.8.10`,
+`9.8.11`, and `9.8.12`.
 
 - [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
   Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
   contract are configured.
 - [x] 9.8.2 Persist canonical request hashes for quote, accept, and side-effect
   idempotency keys; reject key reuse with a different payload.
-- [ ] 9.8.3 Replace local/mock-only Pearl escrow defaults in deployment manifests
+- [x] 9.8.3 Replace local/mock-only Pearl escrow defaults in deployment manifests
   with explicit per-environment config contracts and secret names.
+  - See `docs/operations/otc-deployment-env-contract.md`.
 - [x] 9.8.4 Persist allocated Pearl derivation indexes with uniqueness and retry
   on collision before enabling real-money allocation.
 - [x] 9.8.5 Wire quote acceptance to watch registration so every real escrow
@@ -315,9 +319,10 @@ Open 9.8 items after PR #49: `9.8.3`, `9.8.10`, `9.8.11`, `9.8.12`, and
   txids before any mainnet PRL code path is enabled.
 - [ ] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
   prove no release action is exposed to users or operators.
-- [ ] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
+- [x] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
   broadcasts, duplicate events, manual-review backlog, and mismatched
   backend/on-chain terms.
+  - See `docs/operations/otc-monitoring.md`.
 
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 
