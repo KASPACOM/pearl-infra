@@ -316,7 +316,11 @@ Current delegation queue after rendered OTC web screens:
   - See `docs/operations/otc-deployment-env-contract.md`.
 - [x] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
   - See `docs/operations/otc-monitoring.md`.
-- [ ] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
+- [x] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
+  - PRL-side simnet evidence is recorded in
+    `docs/operations/pearl-simnet-escrow-evidence-20260518.md`, covering real
+    simnet funding detection plus signed release and refund transactions mined
+    by `pearld` and classified by the indexer.
 - [x] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
   - Native Base Sepolia USDC lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`.
   - Mock-token lifecycle evidence remains recorded in `contracts/usdc-escrow/deployments/base-sepolia-mock-run.json` as secondary isolated proof.
@@ -391,8 +395,9 @@ Loophole tracker after admin FE wiring:
   storage in the worker runtime, and no live broadcast from the signer path.
 - [x] Implicit deployment config and weak ops alerts — canonical env contracts,
   secret names, deployment gates, and monitoring thresholds are documented.
-- [ ] No full simnet escrow evidence yet — blocks mainnet PRL paths until
-  `9.6.4` and `9.8.10` are recorded.
+- [ ] No full OTC simnet escrow evidence yet — PRL-side simnet release/refund
+  evidence is recorded for `9.6.4`, but mainnet PRL paths remain blocked until
+  `9.8.10` records quote, Base, worker, and proof coverage.
 - [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
   production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
