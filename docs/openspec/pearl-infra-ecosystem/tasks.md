@@ -107,10 +107,10 @@ Merged implementation checkpoints:
 
 Current delegation queue after PR #33:
 
-- Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.7`, `9.3.7.a`, `9.3.8`,
-  `9.3.8.a`, and `9.3.9`. PR #30 landed the first funding scanner slice;
-  keep the parent tasks open until full classification, spend detection,
-  reorg replay, and integration ingest are complete.
+- Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.8`, `9.3.8.a`, and `9.3.9`.
+  PR #30 landed the first funding scanner slice; spend detection is covered by
+  the 9.3.7 branch. Keep the parent tasks open until full funding
+  classification, reorg replay, and integration ingest are complete.
 - Backend owner: 9.2.x complete in PR #24. Stay available for frontend/API
   alignment on deadline and edge-state surfaces.
 - Frontend owner: `9.4.1` through `9.4.4`, then `9.4.6` through `9.4.8`.
@@ -169,8 +169,8 @@ Current delegation queue after PR #33:
   - [x] 9.3.5.f Integration smoke: register → close → read round-trip against postgres on the Hetzner box.
 - [ ] 9.3.6 Add funding output detection for watched P2TR escrow addresses.
 - [ ] 9.3.6.a Classify PRL funding as on-time, late, underpaid, overpaid, duplicate, or reorged using the trade/deposit deadlines supplied in watch metadata.
-- [ ] 9.3.7 Add spend detection using resolved prevouts, with release/refund/unknown classification.
-- [ ] 9.3.7.a Add `unknown_spend` handling that blocks settlement and requires manual review.
+- [x] 9.3.7 Add spend detection using resolved prevouts, with release/refund/unknown classification.
+- [x] 9.3.7.a Add `unknown_spend` handling that blocks settlement and requires manual review.
 - [ ] 9.3.8 Add detach/replay reorg tests.
 - [ ] 9.3.8.a Add regression test: confirmed PRL funding becomes detached after a reorg and settlement worker can no longer release USDC.
 - [ ] 9.3.9 Run a testnet2 integration ingest once testnet PRL/access is available.

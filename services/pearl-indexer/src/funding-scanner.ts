@@ -21,6 +21,15 @@ export interface FundingMatch {
   classification: FundingClassification;
 }
 
+export type OtcEscrowSpendClassification = 'release' | 'refund' | 'unknown_spend';
+
+export interface SpendMatch {
+  watchId: string;
+  spentOutpoint: string;
+  spendTxid: string;
+  classification: string;
+}
+
 export interface FundingScannerLog {
   msg: string;
   [key: string]: unknown;
@@ -93,19 +102,53 @@ export class FundingScannerSink implements PearlBlockSink {
       }
     }
 
+    const spendMatches = await this.scanSpends(block);
     const advanced = await this.repo.advanceConfirmations(block.height);
 
-    if (matches.length > 0 || advanced > 0) {
+    if (matches.length > 0 || spendMatches.length > 0 || advanced > 0) {
       this.logger({
         msg: 'funding-scanner block scan complete',
         network: this.network,
         height: block.height,
         matches,
+        spendMatches,
         confirmationsAdvanced: advanced,
       });
     }
 
     return result;
+  }
+
+  private async scanSpends(block: PearlBlockSummary): Promise<SpendMatch[]> {
+    const matches: SpendMatch[] = [];
+    for (const input of block.inputs) {
+      if (!input.spentOutpoint) continue;
+      const observed = await this.repo.findObservedOutpoint(input.spentOutpoint);
+      if (!observed) continue;
+
+      const spendingOutputs = block.outputs.filter((output) => output.txid === input.txid);
+      const classified = classifySpend({
+        watch: observed.watch,
+        spendTxid: input.txid,
+        spentOutpoint: input.spentOutpoint,
+        spendingOutputs,
+      });
+      const spend = await this.repo.recordSpend({
+        spendTxid: input.txid,
+        spentOutpoint: input.spentOutpoint,
+        blockHash: block.hash,
+        height: block.height,
+        classification: classified.classification,
+        classificationData: classified.classificationData,
+      });
+      matches.push({
+        watchId: observed.watch.watchId,
+        spentOutpoint: input.spentOutpoint,
+        spendTxid: input.txid,
+        classification: spend.classification,
+      });
+    }
+    return matches;
   }
 }
 
@@ -139,6 +182,61 @@ export function classifyFunding(
   return 'on_time';
 }
 
+export function classifySpend(input: {
+  watch: WatchedAddress;
+  spendTxid: string;
+  spentOutpoint: string;
+  spendingOutputs: PearlBlockOutput[];
+}): { classification: OtcEscrowSpendClassification; classificationData: Record<string, unknown> } {
+  if (input.watch.purpose !== 'otc_escrow') {
+    return {
+      classification: 'unknown_spend',
+      classificationData: {
+        reason: 'unsupported_watch_purpose',
+        purpose: input.watch.purpose,
+      },
+    };
+  }
+
+  const txidMatch = classifyByExpectedTxid(input.watch, input.spendTxid);
+  if (txidMatch) {
+    return {
+      classification: txidMatch,
+      classificationData: { matchedBy: `${txidMatch}_txid`, spendTxid: input.spendTxid },
+    };
+  }
+
+  const releaseMatch = outputMatchesExpected(input.watch, 'release', input.spendingOutputs);
+  const refundMatch = outputMatchesExpected(input.watch, 'refund', input.spendingOutputs);
+  if (releaseMatch.matched && !refundMatch.matched) {
+    return {
+      classification: 'release',
+      classificationData: {
+        matchedBy: releaseMatch.matchedBy,
+        output: releaseMatch.output,
+      },
+    };
+  }
+  if (refundMatch.matched && !releaseMatch.matched) {
+    return {
+      classification: 'refund',
+      classificationData: {
+        matchedBy: refundMatch.matchedBy,
+        output: refundMatch.output,
+      },
+    };
+  }
+
+  return {
+    classification: 'unknown_spend',
+    classificationData: {
+      reason: releaseMatch.matched && refundMatch.matched ? 'ambiguous_template_match' : 'no_release_or_refund_template_match',
+      spentOutpoint: input.spentOutpoint,
+      spendTxid: input.spendTxid,
+    },
+  };
+}
+
 function isPastDeadline(
   block: PearlBlockSummary,
   deadlineHeight: number | undefined,
@@ -165,6 +263,83 @@ function readNumberMetadata(watch: WatchedAddress, key: string): number | undefi
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string' && /^\d+$/.test(v)) return Number(v);
   return undefined;
+}
+
+function classifyByExpectedTxid(
+  watch: WatchedAddress,
+  spendTxid: string,
+): OtcEscrowSpendClassification | undefined {
+  if (readStringMetadata(watch, 'release_txid') === spendTxid) return 'release';
+  if (readStringMetadata(watch, 'pearl_release_txid') === spendTxid) return 'release';
+  if (readStringMetadata(watch, 'refund_txid') === spendTxid) return 'refund';
+  if (readStringMetadata(watch, 'pearl_refund_txid') === spendTxid) return 'refund';
+  return undefined;
+}
+
+function outputMatchesExpected(
+  watch: WatchedAddress,
+  kind: 'release' | 'refund',
+  outputs: PearlBlockOutput[],
+): { matched: boolean; matchedBy?: string; output?: Record<string, unknown> } {
+  const expected = readExpectedOutputs(watch, kind);
+  for (const candidate of expected) {
+    const match = outputs.find((output) => {
+      const addressMatches = candidate.address === undefined || output.scriptPubKey.address === candidate.address;
+      const amountMatches = candidate.amountGrains === undefined || output.amountGrains === candidate.amountGrains;
+      return addressMatches && amountMatches;
+    });
+    if (match) {
+      return {
+        matched: true,
+        matchedBy: candidate.source,
+        output: {
+          txid: match.txid,
+          vout: match.vout,
+          address: match.scriptPubKey.address,
+          amountGrains: match.amountGrains,
+        },
+      };
+    }
+  }
+  return { matched: false };
+}
+
+function readExpectedOutputs(
+  watch: WatchedAddress,
+  kind: 'release' | 'refund',
+): Array<{ source: string; address?: string; amountGrains?: string }> {
+  const directKeys = kind === 'release'
+    ? ['release_address', 'release_destination_address', 'buyer_pearl_address', 'buyerPearlAddress']
+    : ['refund_address', 'refund_destination_address', 'seller_pearl_refund_address', 'sellerPearlRefundAddress'];
+  const direct = directKeys
+    .map((key) => readStringMetadata(watch, key))
+    .filter((address): address is string => Boolean(address))
+    .map((address) => ({ source: `${kind}_address`, address }));
+
+  const templateKeys = kind === 'release'
+    ? ['release_template', 'releaseTemplate']
+    : ['refund_template', 'refundTemplate'];
+  const templateOutputs = templateKeys.flatMap((key) => readTemplateOutputs(watch.metadata?.[key], `${kind}_template`));
+  return [...direct, ...templateOutputs];
+}
+
+function readTemplateOutputs(value: unknown, source: string): Array<{ source: string; address?: string; amountGrains?: string }> {
+  if (!value || typeof value !== 'object') return [];
+  const outputs = (value as { outputs?: unknown }).outputs;
+  if (!Array.isArray(outputs)) return [];
+  return outputs.flatMap((output) => {
+    if (!output || typeof output !== 'object') return [];
+    const raw = output as Record<string, unknown>;
+    const address = typeof raw.address === 'string' && raw.address.length > 0 ? raw.address : undefined;
+    const amountRaw = raw.amountGrains ?? raw.amount_grains;
+    const amountGrains = typeof amountRaw === 'string' && amountRaw.length > 0
+      ? amountRaw
+      : typeof amountRaw === 'number'
+        ? String(amountRaw)
+        : undefined;
+    if (!address && !amountGrains) return [];
+    return [{ source, ...(address ? { address } : {}), ...(amountGrains ? { amountGrains } : {}) }];
+  });
 }
 
 function defaultLogger(entry: FundingScannerLog): void {
