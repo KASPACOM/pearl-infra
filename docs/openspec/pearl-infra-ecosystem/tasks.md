@@ -564,8 +564,10 @@ Loophole tracker after admin FE wiring:
 - [x] 10.3 Define entry flow: Pearl PRL deposit, indexer confirmation, relayer/federation verification, Igra `wPRL` mint.
 - [x] 10.4 Define exit flow: Igra `wPRL` burn/lock, exit request, operator review, Pearl PRL release, proof record.
 - [x] 10.5 Define `wPRL` token decimals, symbol/name, conversion rules, mint authority, and owner/multisig controls.
-- [ ] 10.6 Design Igra bridge contract interface and events for deposit claims, minting, exit requests, processing, refunds, pause, caps, and replay protection.
-- [ ] 10.7 Build Igra bridge contract tests for mint replay protection, exit burn/lock, min/max limits, rolling caps, pause, and processed-exit idempotency.
+- [x] 10.6 Design Igra bridge contract interface and events for deposit claims, minting, exit requests, processing, refunds, pause, caps, and replay protection.
+  - 2026-05-18: Added `WrappedPearl` and `PearlBridge` under `contracts/usdc-escrow/src`. The bridge is federated/custodial by design: relayers submit Pearl outpoint claims, the contract enforces replay protection and caps, and operators record Pearl release txids for exits.
+- [x] 10.7 Build Igra bridge contract tests for mint replay protection, exit burn/lock, min/max limits, rolling caps, pause, and processed-exit idempotency.
+  - 2026-05-18: Added `PearlBridge.t.sol` covering bridge-only minting, deposit replay rejection, min/max/pilot/rolling caps, separate entry/exit pauses, burn-and-record exit requests, operator-only processing, idempotent processed exits, conflicting release txid rejection, refunds, and two-step ownership.
 - [ ] 10.8 Extend Pearl indexer support for bridge deposit watches, reserve addresses, confirmed deposits, reserve spends, pending exits, and reconciliation gaps.
 - [x] 10.8.1 Add shared watched-addresses migration for bridge deposit/reserve watches and address observations.
 - [x] 10.8.2 Add `bridge_exit_requests` table for mirrored Igra burn/lock events.
