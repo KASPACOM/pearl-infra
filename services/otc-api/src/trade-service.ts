@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { isAddress } from 'ethers';
+
 import {
   assertTradeTransition,
   formatGrainsToPrl,
@@ -118,6 +120,7 @@ export class OtcTradeService {
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
+    validateCreateQuoteRequest(request, this.config.pearlNetwork);
     const requestHash = createPayloadHash('create_quote', request);
     const existing = await this.repository.findQuoteIdempotencyByClientRequestId(request.clientRequestId);
     if (existing) {
@@ -154,6 +157,7 @@ export class OtcTradeService {
   }
 
   async acceptQuote(quoteId: string, request: AcceptQuoteRequest): Promise<OtcTrade> {
+    validateAcceptQuoteRequest(request, this.config.pearlNetwork);
     const requestHash = createPayloadHash('accept_quote', { quoteId, ...request });
     const existing = await this.repository.findTradeIdempotencyByClientRequestId(request.clientRequestId);
     if (existing) {
@@ -935,6 +939,66 @@ function assertOneOf<T extends string>(value: unknown, field: string, allowed: r
 
 function isAlertSeverity(value: unknown): value is 'info' | 'warning' | 'critical' {
   return value === 'info' || value === 'warning' || value === 'critical';
+}
+
+function validateCreateQuoteRequest(request: CreateQuoteRequest, pearlNetwork: OtcApiConfig['pearlNetwork']): void {
+  assertOneOf(request.side, 'side', ['buy_prl', 'sell_prl']);
+  assertOneOf(request.settlementAsset, 'settlementAsset', ['USDC']);
+  assertOneOf(request.settlementNetwork, 'settlementNetwork', ['base']);
+  assertNonEmptyBounded(request.clientRequestId, 'clientRequestId', 128);
+  assertPositiveAmount(request.amountPrl, 'amountPrl', parsePrlToGrains);
+  assertLikelyPearlAddress(request.buyerPearlAddress, 'buyerPearlAddress', pearlNetwork);
+  assertEvmAddress(request.usdcRefundAddress, 'usdcRefundAddress');
+}
+
+function validateAcceptQuoteRequest(request: AcceptQuoteRequest, pearlNetwork: OtcApiConfig['pearlNetwork']): void {
+  assertNonEmptyBounded(request.clientRequestId, 'clientRequestId', 128);
+  assertLikelyPearlAddress(request.buyerPearlAddress, 'buyerPearlAddress', pearlNetwork);
+  assertLikelyPearlAddress(request.sellerPearlRefundAddress, 'sellerPearlRefundAddress', pearlNetwork);
+  assertEvmAddress(request.buyerUsdcAddress, 'buyerUsdcAddress');
+  assertEvmAddress(request.sellerUsdcReceiveAddress, 'sellerUsdcReceiveAddress');
+}
+
+function assertPositiveAmount(
+  value: unknown,
+  field: string,
+  parse: (value: string) => bigint,
+): void {
+  assertNonEmptyBounded(value, field, 80);
+  const parsed = parse(value);
+  if (parsed <= 0n) {
+    throw new Error(`${field} must be greater than zero`);
+  }
+}
+
+function assertNonEmptyBounded(value: unknown, field: string, maxLength: number): asserts value is string {
+  assertNonEmpty(value, field);
+  if (value.length > maxLength) {
+    throw new Error(`${field} exceeds ${maxLength} characters`);
+  }
+}
+
+function assertEvmAddress(value: unknown, field: string): asserts value is string {
+  assertNonEmptyBounded(value, field, 128);
+  if (!isAddress(value)) {
+    throw new Error(`${field} must be a valid EVM address`);
+  }
+}
+
+function assertLikelyPearlAddress(
+  value: unknown,
+  field: string,
+  network?: OtcApiConfig['pearlNetwork'],
+): asserts value is string {
+  assertNonEmptyBounded(value, field, 160);
+  const prefixes = network === 'mainnet'
+    ? ['prl1']
+    : network === 'regtest' || network === 'simnet'
+      ? ['rprl1']
+      : ['tprl1'];
+  if (!prefixes.some((prefix) => value.toLowerCase().startsWith(prefix))) {
+    throw new Error(`${field} must be a Pearl ${network ?? 'testnet'} address`);
+  }
 }
 
 export function createPublicProof(
