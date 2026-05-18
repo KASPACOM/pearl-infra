@@ -21,10 +21,13 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     pearlIndexerWatchUrl: env.PEARL_INDEXER_WATCH_URL,
     pearlIndexerWatchTimeoutMs: Number(env.PEARL_INDEXER_WATCH_TIMEOUT_MS ?? 5_000),
     adminApiToken: env.OTC_ADMIN_API_TOKEN,
+    adminApiTokens: env.OTC_ADMIN_API_TOKENS,
     supportAlertWebhookUrl: env.OTC_ALERT_WEBHOOK_URL,
     supportAlertTelegramBotToken: env.OTC_ALERT_TELEGRAM_BOT_TOKEN,
     supportAlertTelegramChatId: env.OTC_ALERT_TELEGRAM_CHAT_ID,
     supportAlertTelegramMessageThreadId: env.OTC_ALERT_TELEGRAM_MESSAGE_THREAD_ID,
+    supportAlertRateLimitWindowMs: Number(env.OTC_SUPPORT_ALERT_RATE_LIMIT_WINDOW_MS ?? 10 * 60 * 1000),
+    supportAlertRateLimitMax: Number(env.OTC_SUPPORT_ALERT_RATE_LIMIT_MAX ?? 5),
   };
 }
 
@@ -45,7 +48,7 @@ export function assertOtcApiStartupConfig(config: OtcApiConfig, runtime: OtcApiR
   if (config.pearlEscrowAllocator !== 'p2tr_xpub') missing.push('PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
   if (!config.pearlEscrowXpub) missing.push('PEARL_ESCROW_XPUB');
   if (!config.pearlIndexerWatchUrl) missing.push('PEARL_INDEXER_WATCH_URL');
-  if (!config.adminApiToken) missing.push('OTC_ADMIN_API_TOKEN');
+  if (!config.adminApiToken && !config.adminApiTokens) missing.push('OTC_ADMIN_API_TOKEN or OTC_ADMIN_API_TOKENS');
   const hasTelegramAlerts = Boolean(config.supportAlertTelegramBotToken && config.supportAlertTelegramChatId);
   if (!config.supportAlertWebhookUrl && !hasTelegramAlerts) {
     missing.push('OTC_ALERT_WEBHOOK_URL or OTC_ALERT_TELEGRAM_BOT_TOKEN+OTC_ALERT_TELEGRAM_CHAT_ID');

@@ -456,24 +456,27 @@ Loophole tracker after PR #51:
 
 - [ ] 9.9.1 Add real operator identity and RBAC for admin APIs instead of a
   single shared bearer token.
-  - [ ] 9.9.1.a Define roles for support read-only, support note writer,
+  - Added a multi-token RBAC compatibility layer via `OTC_ADMIN_API_TOKENS`;
+    a real identity provider/session layer is still required before broader
+    support rollout.
+  - [x] 9.9.1.a Define roles for support read-only, support note writer,
     operator/manual-review, and admin maintainer.
-  - [ ] 9.9.1.b Bind the authenticated operator identity to audit records.
-- [ ] 9.9.2 Add rate limits and abuse controls for the public
+  - [x] 9.9.1.b Bind the authenticated operator identity to audit records.
+- [x] 9.9.2 Add rate limits and abuse controls for the public
   `POST /otc/trades/:tradeId/support-alerts` endpoint.
-  - [ ] 9.9.2.a Rate-limit by trade ID, IP/client fingerprint, and severity.
-  - [ ] 9.9.2.b Reject alert spam without blocking the original trade state.
-- [ ] 9.9.3 Add pagination and cursor/limit controls to
+  - [x] 9.9.2.a Rate-limit by trade ID, IP/client fingerprint, and severity.
+  - [x] 9.9.2.b Reject alert spam without blocking the original trade state.
+- [x] 9.9.3 Add pagination and cursor/limit controls to
   `GET /otc/admin/trades`.
-- [ ] 9.9.4 Expand admin query filters for severity, failed side effects,
+- [x] 9.9.4 Expand admin query filters for severity, failed side effects,
   deadline breaches, blocker type, updated age, and alert-delivery status.
-- [ ] 9.9.5 Move admin audit actor source from request body to authenticated
+- [x] 9.9.5 Move admin audit actor source from request body to authenticated
   auth context.
-- [ ] 9.9.6 Define and enforce redaction tiers for admin debug output before
+- [x] 9.9.6 Define and enforce redaction tiers for admin debug output before
   exposing it to broader support roles.
-- [ ] 9.9.7 Add alert retry/replay tooling for failed
+- [x] 9.9.7 Add alert retry/replay tooling for failed
   `support_alert_delivery` side effects.
-- [ ] 9.9.8 Add structured admin API tests for auth edge cases: missing token,
+- [x] 9.9.8 Add structured admin API tests for auth edge cases: missing token,
   wrong token, insufficient role, actor spoof attempts, redaction behavior, and
   public support-alert abuse limits.
 

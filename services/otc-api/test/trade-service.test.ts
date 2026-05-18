@@ -24,6 +24,8 @@ const config: OtcApiConfig = {
   pearlEscrowConfirmations: 3,
   baseEscrowContract: '0x1111111111111111111111111111111111111111',
   baseNetwork: 'base_sepolia',
+  supportAlertRateLimitWindowMs: 10 * 60 * 1000,
+  supportAlertRateLimitMax: 5,
 };
 
 const escrowAllocator: PearlEscrowAllocator = {
@@ -629,14 +631,74 @@ test('builds admin trade diagnostics and records support alerts', async () => {
   assert.equal(alert.effectType, 'support_alert');
   assert.equal(alert.status, 'failed');
   assert.equal(alert.metadata.severity, 'critical');
-  assert.equal(summaries.length, 1);
-  assert.equal(summaries[0].tradeId, trade.tradeId);
-  assert.equal(summaries[0].alertCount, 1);
-  assert.equal(summaries[0].failedSideEffectCount, 1);
-  assert.equal(summaries[0].safeActions.includes('record_support_alert'), true);
+  assert.equal(summaries.total, 1);
+  assert.equal(summaries.items[0].tradeId, trade.tradeId);
+  assert.equal(summaries.items[0].alertCount, 1);
+  assert.equal(summaries.items[0].failedSideEffectCount, 1);
+  assert.equal(summaries.items[0].latestAlertSeverity, 'critical');
+  assert.equal(summaries.items[0].safeActions.includes('record_support_alert'), true);
   assert.equal(detail.sideEffects.length, 1);
   assert.equal(detail.supportSummary.publicProofPath, `/otc/trades/${trade.tradeId}/proof`);
   assert.equal(detail.currentBlockers.includes('failed_side_effect:support_alert'), true);
+});
+
+test('filters and paginates admin trade summaries', async () => {
+  let now = new Date('2026-05-16T12:00:00.000Z');
+  const service = new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, undefined, () => now);
+  const firstQuote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-admin-filter-1',
+  });
+  const firstTrade = await service.acceptQuote(firstQuote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-admin-filter-1',
+  });
+  const secondQuote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '2000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1psecond',
+    usdcRefundAddress: '0x5555555555555555555555555555555555555555',
+    clientRequestId: 'quote-request-admin-filter-2',
+  });
+  await service.acceptQuote(secondQuote.quoteId, {
+    buyerPearlAddress: 'tprl1psecond',
+    buyerUsdcAddress: '0x6666666666666666666666666666666666666666',
+    sellerPearlRefundAddress: 'tprl1psellerrefund2',
+    sellerUsdcReceiveAddress: '0x7777777777777777777777777777777777777777',
+    clientRequestId: 'accept-request-admin-filter-2',
+  });
+  await service.recordSupportAlert(firstTrade.tradeId, {
+    idempotencyKey: 'support-alert-filter-1',
+    actor: 'support',
+    severity: 'warning',
+    message: 'Filter me',
+    source: 'user',
+  });
+  now = new Date('2026-05-16T12:20:00.000Z');
+
+  const page = await service.listAdminTrades({ limit: 1 });
+  const secondPage = await service.listAdminTrades({ limit: 1, cursor: page.nextCursor });
+  const warning = await service.listAdminTrades({ severity: 'warning' });
+  const failedOnly = await service.listAdminTrades({ failedSideEffectOnly: true });
+  const deadlineBreached = await service.listAdminTrades({ deadlineBreachedOnly: true });
+
+  assert.equal(page.items.length, 1);
+  assert.equal(typeof page.nextCursor, 'string');
+  assert.equal(secondPage.items.length, 1);
+  assert.equal(warning.total, 1);
+  assert.equal(warning.items[0].tradeId, firstTrade.tradeId);
+  assert.equal(failedOnly.total, 0);
+  assert.equal(deadlineBreached.total, 2);
 });
 
 test('delivers support alerts to the operator notifier and audits delivery result', async () => {
@@ -713,6 +775,47 @@ test('audits failed support alert delivery without losing the user alert', async
   assert.equal(sideEffects.some((effect) => effect.effectType === 'support_alert_delivery' && effect.status === 'failed'), true);
 });
 
+test('replays support alert delivery with an audited operator actor', async () => {
+  const notifier = new RecordingSupportAlertNotifier();
+  const service = createServiceWithSupportAlertNotifier(notifier);
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-alert-replay',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-alert-replay',
+  });
+  await service.recordSupportAlert(trade.tradeId, {
+    idempotencyKey: 'support-alert-replay-source',
+    actor: 'support',
+    severity: 'warning',
+    message: 'Replay me',
+    source: 'user',
+  });
+
+  const replay = await service.replaySupportAlertDelivery(
+    trade.tradeId,
+    'support-alert-replay-source',
+    { idempotencyKey: 'support-alert-replay-1' },
+    { actor: 'operator-user' },
+  );
+
+  assert.equal(notifier.notifications.length, 2);
+  assert.equal(replay.effectType, 'support_alert_delivery');
+  assert.equal(replay.status, 'confirmed');
+  assert.equal(replay.actor, 'operator-user');
+  assert.equal(replay.metadata.replay, true);
+});
+
 test('marks a trade for manual review with an audited admin note', async () => {
   const service = createService();
   const quote = await service.createQuote({
@@ -742,8 +845,8 @@ test('marks a trade for manual review with an audited admin note', async () => {
   assert.equal(detail.trade.state, 'failed_manual_review');
   assert.equal(detail.events.some((event) => event.source === 'admin' && event.toState === 'failed_manual_review'), true);
   assert.equal(detail.sideEffects.some((effect) => effect.effectType === 'manual_review_note'), true);
-  assert.equal(manualReviewTrades.length, 1);
-  assert.equal(manualReviewTrades[0].manualReview, true);
+  assert.equal(manualReviewTrades.total, 1);
+  assert.equal(manualReviewTrades.items[0].manualReview, true);
 });
 
 test('models edge states as manual-review paths instead of release paths', () => {

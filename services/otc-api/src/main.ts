@@ -3,7 +3,7 @@ import pg from 'pg';
 import { InMemoryOtcRepository, PgOtcRepository } from './repository.js';
 import { OtcTradeService } from './trade-service.js';
 import { assertOtcApiStartupConfig, readOtcApiConfig, readOtcApiRuntimeConfig } from './config.js';
-import { createOtcHttpServer } from './http.js';
+import { createOtcHttpServer, parseAdminApiTokens } from './http.js';
 import { createConfiguredPearlEscrowAllocator } from './pearl-escrow-allocator.js';
 import { HttpPearlProofReader } from './pearl-proof-reader.js';
 import { HttpPearlEscrowWatchRegistrar } from './pearl-watch-registrar.js';
@@ -39,7 +39,10 @@ const service = new OtcTradeService(
   pearlProofReader,
   supportAlertNotifier,
 );
-const server = createOtcHttpServer(service, { adminToken: config.adminApiToken });
+const server = createOtcHttpServer(service, {
+  adminToken: config.adminApiToken,
+  adminCredentials: parseAdminApiTokens(config.adminApiTokens),
+});
 
 server.listen(port, () => {
   console.log(

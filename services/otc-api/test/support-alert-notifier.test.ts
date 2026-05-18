@@ -188,6 +188,8 @@ test('creates configured notifier for Telegram alerts without requiring webhook'
     pearlEscrowConfirmations: 1,
     baseEscrowContract: '0x1111111111111111111111111111111111111111',
     baseNetwork: 'base_sepolia',
+    supportAlertRateLimitWindowMs: 10 * 60 * 1000,
+    supportAlertRateLimitMax: 5,
     supportAlertTelegramBotToken: 'test-bot-token',
     supportAlertTelegramChatId: '-1001234567890',
   });
