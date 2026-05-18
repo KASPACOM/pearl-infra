@@ -36,17 +36,17 @@ export interface PearlEscrowAllocator {
     request: AcceptQuoteRequest;
     config: OtcApiConfig;
     deadlines: OtcTradeDeadlines;
-  }): OtcTrade['pearlEscrow'];
+  }): Promise<OtcTrade['pearlEscrow']>;
 }
 
 export class MockPearlEscrowAllocator implements PearlEscrowAllocator {
-  allocateEscrow(input: {
+  async allocateEscrow(input: {
     tradeId: string;
     quote: OtcQuote;
     request: AcceptQuoteRequest;
     config: OtcApiConfig;
     deadlines: OtcTradeDeadlines;
-  }): OtcTrade['pearlEscrow'] {
+  }): Promise<OtcTrade['pearlEscrow']> {
     return {
       network: input.config.pearlNetwork,
       address: `mock:${input.tradeId}`,
@@ -136,7 +136,7 @@ export class OtcTradeService {
     const baseConfig = getUsdcEscrowNetworkConfig(this.config.baseNetwork);
     const timestamp = acceptedAt.toISOString();
     const deadlines = createTradeDeadlines(quote, acceptedAt, this.config);
-    const pearlEscrow = this.pearlEscrowAllocator.allocateEscrow({
+    const pearlEscrow = await this.pearlEscrowAllocator.allocateEscrow({
       tradeId,
       quote,
       request,
