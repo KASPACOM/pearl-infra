@@ -76,6 +76,7 @@ type AddressObservationRow = Record<string, unknown> & {
   amount_grains: string;
   confirmations: number;
   match_status: string;
+  classification: string | null;
   observed_at: Date;
 }
 
@@ -112,6 +113,7 @@ function rowToObservation(row: AddressObservationRow): AddressObservation {
     amountGrains: row.amount_grains,
     confirmations: row.confirmations,
     matchStatus: row.match_status as AddressObservation['matchStatus'],
+    classification: row.classification ?? 'unknown_funding',
     observedAt: row.observed_at.toISOString(),
   };
 }
@@ -186,8 +188,8 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
 
     const [observations, spends] = await Promise.all([
       this.client.query<AddressObservationRow>(
-        `SELECT outpoint, watch_id, block_hash, height, amount_grains, confirmations,
-                match_status, observed_at
+        `SELECT outpoint, watch_id, block_hash, height, amount_grains,
+                confirmations, match_status, classification, observed_at
            FROM address_observations
            WHERE watch_id = $1
            ORDER BY height ASC, outpoint ASC`,
@@ -256,9 +258,18 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
          outpoint, watch_id, block_hash, height, amount_grains,
          confirmations, match_status, classification
        ) VALUES ($1, $2, $3, $4, $5, 1, 'pending', $6)
-       ON CONFLICT (outpoint) DO NOTHING
+       ON CONFLICT (outpoint) DO UPDATE
+         SET watch_id = EXCLUDED.watch_id,
+             block_hash = EXCLUDED.block_hash,
+             height = EXCLUDED.height,
+             amount_grains = EXCLUDED.amount_grains,
+             confirmations = 1,
+             match_status = 'pending',
+             classification = EXCLUDED.classification,
+             observed_at = now()
+         WHERE address_observations.match_status = 'detached'
        RETURNING outpoint, watch_id, block_hash, height, amount_grains,
-                 confirmations, match_status, observed_at`,
+                 confirmations, match_status, classification, observed_at`,
       [
         input.outpoint,
         input.watchId,
@@ -271,7 +282,7 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
     if ((result.rowCount ?? 0) === 0) {
       const existing = await this.client.query<AddressObservationRow>(
         `SELECT outpoint, watch_id, block_hash, height, amount_grains,
-                confirmations, match_status, observed_at
+                confirmations, match_status, classification, observed_at
            FROM address_observations WHERE outpoint = $1`,
         [input.outpoint],
       );
@@ -285,7 +296,7 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
       `SELECT w.watch_id, w.purpose, w.network, w.address, w.required_confirmations,
               w.status, w.metadata, w.created_at, w.updated_at,
               o.outpoint, o.block_hash, o.height, o.amount_grains,
-              o.confirmations, o.match_status, o.observed_at
+              o.confirmations, o.match_status, o.classification, o.observed_at
          FROM address_observations o
          JOIN watched_addresses w ON w.watch_id = o.watch_id
         WHERE o.outpoint = $1
@@ -343,7 +354,13 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
          FROM watched_addresses w
         WHERE o.watch_id = w.watch_id
           AND o.match_status IN ('pending', 'confirmed')
-          AND o.confirmations <> ($1 - o.height + 1)`,
+          AND (
+            o.confirmations <> ($1 - o.height + 1)
+            OR o.match_status <> CASE
+              WHEN ($1 - o.height + 1) >= w.required_confirmations THEN 'confirmed'
+              ELSE 'pending'
+            END
+          )`,
       [tipHeight],
     );
     return result.rowCount ?? 0;
@@ -352,7 +369,8 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
   async detachObservationsForBlock(blockHash: string): Promise<number> {
     const result = await this.client.query(
       `UPDATE address_observations
-          SET match_status = 'detached'
+          SET match_status = 'detached',
+              classification = 'reorged'
         WHERE block_hash = $1 AND match_status <> 'detached'`,
       [blockHash],
     );
@@ -435,7 +453,7 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
   async recordObservation(input: RecordObservationInput): Promise<AddressObservation> {
     const list = this.observations.get(input.watchId) ?? [];
     const existing = list.find((o) => o.outpoint === input.outpoint);
-    if (existing) return existing;
+    if (existing && existing.matchStatus !== 'detached') return existing;
     const obs: AddressObservation = {
       outpoint: input.outpoint,
       watchId: input.watchId,
@@ -444,8 +462,14 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
       amountGrains: input.amountGrains,
       confirmations: 1,
       matchStatus: 'pending',
+      classification: input.classification,
       observedAt: new Date().toISOString(),
     };
+    if (existing?.matchStatus === 'detached') {
+      const updated = list.map((o) => (o.outpoint === input.outpoint ? obs : o));
+      this.observations.set(input.watchId, updated);
+      return obs;
+    }
     list.push(obs);
     this.observations.set(input.watchId, list);
     return obs;
@@ -498,11 +522,12 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
         const o = list[i];
         if (o.matchStatus !== 'pending' && o.matchStatus !== 'confirmed') continue;
         const newConfirms = tipHeight - o.height + 1;
-        if (newConfirms === o.confirmations) continue;
+        const newStatus = newConfirms >= watch.requiredConfirmations ? 'confirmed' : 'pending';
+        if (newConfirms === o.confirmations && o.matchStatus === newStatus) continue;
         list[i] = {
           ...o,
           confirmations: newConfirms,
-          matchStatus: newConfirms >= watch.requiredConfirmations ? 'confirmed' : 'pending',
+          matchStatus: newStatus,
         };
         advanced += 1;
       }
@@ -518,7 +543,7 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
         if (o.blockHash === blockHash && o.matchStatus !== 'detached') {
           changed = true;
           detached += 1;
-          return { ...o, matchStatus: 'detached' as const };
+          return { ...o, matchStatus: 'detached' as const, classification: 'reorged' };
         }
         return o;
       });

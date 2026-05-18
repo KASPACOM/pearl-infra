@@ -91,6 +91,15 @@ test('fails closed to manual review on stale, reorged, or inconsistent observati
     }),
     NOW,
   );
+  const reorgedPearlFunding = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'usdc_escrow_confirmed' }),
+      pearl: pearlProof({ status: 'reorged', confirmations: 0 }),
+      base: baseEvent({ status: 'deposited' }),
+      now: NOW,
+    }),
+    NOW,
+  );
   const baseReleasedFirst = createSettlementDecisionRecord(
     createSettlementSnapshot({
       trade: tradeFixture({ state: 'usdc_escrow_confirmed' }),
@@ -104,6 +113,8 @@ test('fails closed to manual review on stale, reorged, or inconsistent observati
   assert.equal(staleBase.action, 'manual_review');
   assert.equal(staleBase.toState, 'failed_manual_review');
   assert.equal(unknownPearlSpend.action, 'manual_review');
+  assert.equal(reorgedPearlFunding.action, 'manual_review');
+  assert.notEqual(reorgedPearlFunding.action, 'prepare_prl_release');
   assert.equal(baseReleasedFirst.action, 'manual_review');
   assert.match(baseReleasedFirst.reason, /Base USDC was released before PRL release confirmation/);
 });

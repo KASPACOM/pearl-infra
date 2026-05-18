@@ -122,9 +122,9 @@ Merged implementation checkpoints:
 
 Current delegation queue after PR #41:
 
-- Indexer owner: `9.3.6`, `9.3.6.a`, `9.3.8`, `9.3.8.a`, and `9.3.9`.
-  Spend detection is merged in PR #41; funding classification, detach/replay
-  reorg coverage, and testnet2 ingest evidence remain open.
+- Indexer owner: `9.3.9`. Spend detection is merged in PR #41; funding
+  classification and detach/replay reorg coverage are complete. Testnet2
+  ingest evidence remains open.
 - Backend owner: core 9.2.x is complete. Next backend/API work is `9.8.6`
   proof projection from indexed observations/spends and `9.8.7` Base escrow
   event ingestion.
@@ -187,12 +187,12 @@ Current delegation queue after PR #41:
   - [x] 9.3.5.d HTTP handler (POST `/watches`, GET `/watches/:id`, POST `/watches/:id/close`) + server boot wiring into `main.ts`. Completed in PR #12.
   - [x] 9.3.5.e Unit tests (repository + handler).
   - [x] 9.3.5.f Integration smoke: register → close → read round-trip against postgres on the Hetzner box.
-- [ ] 9.3.6 Add funding output detection for watched P2TR escrow addresses.
-- [ ] 9.3.6.a Classify PRL funding as on-time, late, underpaid, overpaid, duplicate, or reorged using the trade/deposit deadlines supplied in watch metadata.
+- [x] 9.3.6 Add funding output detection for watched P2TR escrow addresses.
+- [x] 9.3.6.a Classify PRL funding as on-time, late, underpaid, overpaid, duplicate, or reorged using the trade/deposit deadlines supplied in watch metadata.
 - [x] 9.3.7 Add spend detection using resolved prevouts, with release/refund/unknown classification.
 - [x] 9.3.7.a Add `unknown_spend` handling that blocks settlement and requires manual review.
-- [ ] 9.3.8 Add detach/replay reorg tests.
-- [ ] 9.3.8.a Add regression test: confirmed PRL funding becomes detached after a reorg and settlement worker can no longer release USDC.
+- [x] 9.3.8 Add detach/replay reorg tests.
+- [x] 9.3.8.a Add regression test: confirmed PRL funding becomes detached after a reorg and settlement worker can no longer release USDC.
 - [ ] 9.3.9 Run a testnet2 integration ingest once testnet PRL/access is available.
 
 ### 9.4 Frontend Checkout
