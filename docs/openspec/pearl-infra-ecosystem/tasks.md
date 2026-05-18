@@ -155,7 +155,9 @@ Current Pearl OTC code/workflow status:
 - Settlement workflow is implemented through persistent decision records,
   fail-closed manual-review decisions, PRL release/refund preparation, USDC
   release preparation after confirmed PRL release, and duplicate-safe worker
-  iterations.
+  iterations. The worker-to-PRL bridge now has JSON-backed decision storage,
+  signer-boundary adapters, durable broadcast-attempt storage, simnet-shaped
+  release/refund transaction tests, and an opt-in live `pearld` RPC smoke test.
 - Signer workflow is implemented through fee caps, expected template hashes,
   output-policy checks, signer key allow-list/pause controls, persistent
   request state, append-only audit records, retry-safe requests, and no
@@ -380,11 +382,13 @@ Loophole tracker after admin FE wiring:
   tested.
 - [x] Missing Base event truth — Base escrow events are normalized and stored
   for created, deposited, released, refunded, and cancelled transitions.
-- [x] Non-persistent settlement execution — worker iterations persist decisions
-  and prepare signer/broadcaster actions idempotently.
+- [x] Non-persistent settlement execution — worker iterations persist decisions,
+  call the Pearl signer boundary through worker adapters, and prepare
+  signer/broadcaster actions idempotently.
 - [x] Unsafe or unauditable signer path — signer boundary enforces fee caps,
   template hash verification, output policy, custody allow-list/pause controls,
-  persistent requests, append-only audit records, and no live broadcast.
+  persistent requests, append-only audit records, durable broadcast-attempt
+  storage in the worker runtime, and no live broadcast from the signer path.
 - [x] Implicit deployment config and weak ops alerts — canonical env contracts,
   secret names, deployment gates, and monitoring thresholds are documented.
 - [ ] No full simnet escrow evidence yet — blocks mainnet PRL paths until
@@ -422,6 +426,9 @@ Loophole tracker after admin FE wiring:
 - [x] 9.8.8 Convert the settlement-worker decision core into a persistent
   execution loop that consumes API, Pearl indexer, Base events, signer, and
   broadcaster adapters.
+  - Worker runtime now includes JSON-backed settlement decision persistence,
+    a `PearlSignerBoundary` adapter for PRL release/refund construction, and
+    durable broadcast-attempt storage.
 - [x] 9.8.9 Implement the Pearl signer boundary with fee caps, template hash
   verification, key custody controls, audit trail, and retry-safe persistence.
   - `packages/pearl-escrow` now exposes `PearlSignerBoundary`,
@@ -432,6 +439,9 @@ Loophole tracker after admin FE wiring:
   - The signer boundary returns signed transaction material only. Live
     broadcasting remains outside the signer path and is tracked by the separate
     broadcast attempt ledger.
+  - Settlement-worker tests cover the simnet-shaped funding -> release/refund
+    construction -> signer boundary -> broadcaster wrapper path; live `pearld`
+    smoke coverage is present but remains opt-in by env.
 - [ ] 9.8.10 Record a full simnet escrow run: quote -> accept -> PRL funding
   detection -> Base deposit -> PRL release/refund -> Base release/refund ->
   proof.
