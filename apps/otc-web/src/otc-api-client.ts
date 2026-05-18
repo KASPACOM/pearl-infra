@@ -32,6 +32,7 @@ export type OtcSideEffectStatus = 'prepared' | 'submitted' | 'confirmed' | 'fail
 
 export interface OtcSideEffect {
   idempotencyKey: string;
+  requestHash?: string;
   tradeId: string;
   effectType: OtcSideEffectType;
   status: OtcSideEffectStatus;

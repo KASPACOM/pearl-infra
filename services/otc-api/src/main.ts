@@ -2,7 +2,7 @@ import pg from 'pg';
 
 import { InMemoryOtcRepository, PgOtcRepository } from './repository.js';
 import { OtcTradeService } from './trade-service.js';
-import { readOtcApiConfig } from './config.js';
+import { assertOtcApiStartupConfig, readOtcApiConfig, readOtcApiRuntimeConfig } from './config.js';
 import { createOtcHttpServer } from './http.js';
 import { createConfiguredPearlEscrowAllocator } from './pearl-escrow-allocator.js';
 import { pgPoolAdapter } from './postgres.js';
@@ -10,6 +10,8 @@ import { EthersUsdcEscrowReader } from './usdc-escrow-reader.js';
 
 const port = Number(process.env.OTC_API_PORT ?? 8080);
 const config = readOtcApiConfig();
+const runtime = readOtcApiRuntimeConfig();
+assertOtcApiStartupConfig(config, runtime);
 const repository = config.databaseUrl
   ? new PgOtcRepository(pgPoolAdapter(new pg.Pool({ connectionString: config.databaseUrl })))
   : new InMemoryOtcRepository();
@@ -28,6 +30,7 @@ server.listen(port, () => {
       persistence: config.databaseUrl ? 'postgres' : 'memory',
       pearlEscrowAllocator: config.pearlEscrowAllocator,
       usdcEscrowReader: config.baseRpcUrl ? 'ethers' : 'disabled',
+      productionConfigRequired: runtime.production,
     }),
   );
 });

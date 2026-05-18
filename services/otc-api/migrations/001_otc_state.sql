@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS otc_quotes (
   quote_id           TEXT        PRIMARY KEY,
   client_request_id  TEXT        NOT NULL UNIQUE,
+  request_hash       TEXT,
   quote              JSONB       NOT NULL,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -10,6 +11,7 @@ CREATE TABLE IF NOT EXISTS otc_trades (
   trade_id           TEXT        PRIMARY KEY,
   quote_id           TEXT        NOT NULL UNIQUE REFERENCES otc_quotes(quote_id),
   client_request_id  TEXT        NOT NULL UNIQUE,
+  request_hash       TEXT,
   state              TEXT        NOT NULL,
   trade              JSONB       NOT NULL,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -32,6 +34,7 @@ CREATE INDEX IF NOT EXISTS otc_trade_events_trade_idx ON otc_trade_events (trade
 
 CREATE TABLE IF NOT EXISTS otc_side_effects (
   idempotency_key  TEXT        PRIMARY KEY,
+  request_hash     TEXT,
   trade_id         TEXT        NOT NULL REFERENCES otc_trades(trade_id) ON DELETE CASCADE,
   effect_type      TEXT        NOT NULL,
   status           TEXT        NOT NULL,

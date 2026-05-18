@@ -82,9 +82,11 @@ export class OtcTradeService {
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
-    const existing = await this.repository.findQuoteByClientRequestId(request.clientRequestId);
+    const requestHash = createPayloadHash('create_quote', request);
+    const existing = await this.repository.findQuoteIdempotencyByClientRequestId(request.clientRequestId);
     if (existing) {
-      return existing;
+      assertRequestHashMatches('quote', request.clientRequestId, existing.requestHash, requestHash);
+      return existing.quote;
     }
 
     if (request.settlementAsset !== 'USDC' || request.settlementNetwork !== 'base') {
@@ -103,14 +105,16 @@ export class OtcTradeService {
       status: 'active',
     };
 
-    await this.repository.saveQuote(quote, request.clientRequestId);
+    await this.repository.saveQuote(quote, request.clientRequestId, requestHash);
     return quote;
   }
 
   async acceptQuote(quoteId: string, request: AcceptQuoteRequest): Promise<OtcTrade> {
-    const existing = await this.repository.findTradeByClientRequestId(request.clientRequestId);
+    const requestHash = createPayloadHash('accept_quote', { quoteId, ...request });
+    const existing = await this.repository.findTradeIdempotencyByClientRequestId(request.clientRequestId);
     if (existing) {
-      return existing;
+      assertRequestHashMatches('trade', request.clientRequestId, existing.requestHash, requestHash);
+      return existing.trade;
     }
 
     const quote = await this.repository.findQuoteById(quoteId);
@@ -168,7 +172,7 @@ export class OtcTradeService {
       updatedAt: timestamp,
     };
 
-    await this.repository.saveTrade(trade, request.clientRequestId);
+    await this.repository.saveTrade(trade, request.clientRequestId, requestHash);
     await this.repository.appendEvent({
       tradeId,
       fromState: 'quoted',
@@ -308,6 +312,7 @@ export class OtcTradeService {
     const timestamp = this.now().toISOString();
     const { sideEffect } = await this.repository.saveSideEffect({
       idempotencyKey: request.idempotencyKey,
+      requestHash: createPayloadHash('side_effect', { tradeId, ...request }),
       tradeId,
       effectType: request.effectType,
       status: request.status,
@@ -373,6 +378,30 @@ function calculateImpliedPrice(trade: OtcTrade): string {
 function createStableId(prefix: string, parts: readonly string[]): string {
   const hash = createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 24);
   return `${prefix}_${hash}`;
+}
+
+function createPayloadHash(kind: string, payload: unknown): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify({ kind, payload: canonicalize(payload) })).digest('hex')}`;
+}
+
+function assertRequestHashMatches(kind: string, key: string, existingHash: string | undefined, requestHash: string): void {
+  if (existingHash && existingHash !== requestHash) {
+    throw new Error(`${kind} idempotency key reuse with different payload: ${key}`);
+  }
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, canonicalize(nested)]),
+    );
+  }
+  return value;
 }
 
 function createTradeKey(tradeId: string): string {

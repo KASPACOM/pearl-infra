@@ -1,4 +1,4 @@
-import type { OtcApiConfig } from './types.js';
+import type { OtcApiConfig, OtcApiRuntimeConfig } from './types.js';
 
 export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiConfig {
   return {
@@ -19,4 +19,29 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     databaseUrl: env.OTC_API_DATABASE_URL,
     baseRpcUrl: env.BASE_RPC_URL,
   };
+}
+
+export function readOtcApiRuntimeConfig(env: NodeJS.ProcessEnv = process.env): OtcApiRuntimeConfig {
+  return {
+    production: env.OTC_API_REQUIRE_PRODUCTION_CONFIG === 'true' || env.NODE_ENV === 'production',
+  };
+}
+
+export function assertOtcApiStartupConfig(config: OtcApiConfig, runtime: OtcApiRuntimeConfig): void {
+  if (!runtime.production) {
+    return;
+  }
+
+  const missing: string[] = [];
+  if (!config.databaseUrl) missing.push('OTC_API_DATABASE_URL');
+  if (!config.baseRpcUrl) missing.push('BASE_RPC_URL');
+  if (config.pearlEscrowAllocator !== 'p2tr_xpub') missing.push('PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
+  if (!config.pearlEscrowXpub) missing.push('PEARL_ESCROW_XPUB');
+  if (config.baseEscrowContract === '0x0000000000000000000000000000000000000000') {
+    missing.push('BASE_USDC_ESCROW_CONTRACT');
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`OTC API production config is incomplete: ${missing.join(', ')}`);
+  }
 }

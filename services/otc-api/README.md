@@ -38,3 +38,17 @@ npm start --workspace @kaspacom/otc-api
 ```
 
 If `OTC_API_DATABASE_URL` is unset, the service starts with in-memory state and logs that persistence is disabled. If `BASE_RPC_URL` is unset, USDC term verification returns unavailable and the frontend must not offer buyer deposit.
+
+For production-like runs, set `OTC_API_REQUIRE_PRODUCTION_CONFIG=true` or
+`NODE_ENV=production`. Startup then fails unless all settlement-critical
+dependencies are configured:
+
+- `OTC_API_DATABASE_URL`
+- `BASE_RPC_URL`
+- `BASE_USDC_ESCROW_CONTRACT`
+- `PEARL_ESCROW_ALLOCATOR=p2tr_xpub`
+- `PEARL_ESCROW_XPUB`
+
+Quote creation, quote acceptance, and side-effect writes store canonical
+request hashes. Reusing the same idempotency key with a different payload is a
+hard error instead of returning the original object.
