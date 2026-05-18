@@ -178,13 +178,29 @@ Current delegation queue after PR #33:
 ### 9.4 Frontend Checkout
 
 - [ ] 9.4.1 Add RFQ buy/sell PRL page in `apps/otc-web`.
+  - [x] 9.4.1.a Add RFQ page model with buy/sell tabs, PRL amount validation,
+    Pearl/Base address validation, and locked USDC-on-Base request shaping.
 - [ ] 9.4.2 Add checkout status page using mocked API responses.
+  - [x] 9.4.2.a Add quote-acceptance and trade-checkout page models for mocked
+    API responses, role-based seller fields, state badges, leg cards, and
+    timeline facts.
 - [ ] 9.4.3 Add public proof page for Pearl and Base settlement legs.
+  - [x] 9.4.3.a Add public proof page model for quote terms, deadlines, Pearl
+    facts, Base facts, timeline events, and read-only action gating.
 - [ ] 9.4.4 Add admin/manual-review shell for stuck trades.
+  - [x] 9.4.4.a Extend the OTC web API client with side-effect list/record
+    routes needed by the operator manual-review shell.
 - [x] 9.4.5 Add typed OTC API client and Base USDC escrow ethers call builders using the shared ABI/config.
 - [ ] 9.4.6 Show all relevant deadlines and disable USDC deposit when the deposit cutoff has passed or when on-chain trade terms do not match backend terms.
+  - [x] 9.4.6.a Add shared deadline models and deposit-action gating for wallet
+    connection, chain mismatch, expired USDC deposit windows, and failed
+    on-chain term verification.
 - [ ] 9.4.7 Display late funding, refunded, reorged, stale indexer, and manual-review states without offering release actions to users.
+  - [x] 9.4.7.a Add shared state families and failure banners for all manual
+    review states, with checkout/proof models explicitly hiding release actions.
 - [ ] 9.4.8 For proof pages, show quote terms, deadlines, PRL funding/release/refund txids, USDC deposit/release/refund txids, confirmations, and manual-review reason.
+  - [x] 9.4.8.a Add proof-page model coverage for deadlines, PRL/Base tx facts,
+    confirmations, timeline entries, and manual-review banner copy.
 
 ### 9.5 Settlement Worker
 

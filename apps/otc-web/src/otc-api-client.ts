@@ -20,6 +20,72 @@ export interface AcceptQuoteRequest {
 
 export type { PublicTradeProof };
 
+export type OtcSideEffectType =
+  | 'usdc_create_trade'
+  | 'usdc_deposit_observed'
+  | 'usdc_release'
+  | 'usdc_refund'
+  | 'pearl_release'
+  | 'pearl_refund';
+
+export type OtcSideEffectStatus = 'prepared' | 'submitted' | 'confirmed' | 'failed';
+
+export interface OtcSideEffect {
+  idempotencyKey: string;
+  tradeId: string;
+  effectType: OtcSideEffectType;
+  status: OtcSideEffectStatus;
+  actor: string;
+  sourceEventId?: string;
+  txHash?: string;
+  outpoint?: string;
+  blockNumber?: number;
+  blockHash?: string;
+  chainId?: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrepareUsdcCreateTradeRequest {
+  idempotencyKey: string;
+  actor: string;
+}
+
+export interface UsdcCreateTradeIntent {
+  tradeId: string;
+  contract: string;
+  chainId: number;
+  tradeKey: string;
+  buyer: string;
+  seller: string;
+  amountMicros: string;
+  feeMicros: string;
+  expiryUnixSeconds: number;
+  sideEffect: OtcSideEffect;
+}
+
+export interface UsdcEscrowVerification {
+  tradeId: string;
+  verified: boolean;
+  depositAllowed: boolean;
+  mismatches: string[];
+}
+
+export interface RecordSideEffectRequest {
+  idempotencyKey: string;
+  effectType: OtcSideEffectType;
+  status: OtcSideEffectStatus;
+  actor: string;
+  sourceEventId?: string;
+  txHash?: string;
+  outpoint?: string;
+  blockNumber?: number;
+  blockHash?: string;
+  chainId?: number;
+  metadata?: Record<string, unknown>;
+}
+
 export interface OtcApiClientOptions {
   baseUrl: string;
   fetcher?: typeof fetch;
@@ -48,6 +114,22 @@ export class OtcApiClient {
 
   getProof(tradeId: string): Promise<PublicTradeProof> {
     return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/proof`);
+  }
+
+  prepareUsdcCreateTrade(tradeId: string, request: PrepareUsdcCreateTradeRequest): Promise<UsdcCreateTradeIntent> {
+    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/usdc-escrow/create-intent`, request);
+  }
+
+  verifyUsdcEscrowTerms(tradeId: string): Promise<UsdcEscrowVerification> {
+    return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/usdc-escrow/verification`);
+  }
+
+  listSideEffects(tradeId: string): Promise<OtcSideEffect[]> {
+    return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/side-effects`);
+  }
+
+  recordSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
+    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/side-effects`, request);
   }
 
   private async get<T>(path: string): Promise<T> {
