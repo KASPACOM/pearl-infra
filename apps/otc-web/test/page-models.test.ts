@@ -13,7 +13,7 @@ import {
 
 const NOW = new Date('2026-05-18T12:00:00.000Z');
 
-test('builds RFQ request model with locked USDC on Base and validation errors', () => {
+test('builds quote request model with locked USDC on Base and validation errors', () => {
   const invalid = buildQuotePageModel({
     side: 'buy_prl',
     amountPrl: '10.123456789',

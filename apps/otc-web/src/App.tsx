@@ -4,6 +4,8 @@ import { AcceptQuotePage } from './pages/AcceptQuotePage.js';
 import { AdminTradesPage } from './pages/AdminTradesPage.js';
 import { AppShell, type AppSection } from './components/AppShell.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { FaqPage } from './pages/FaqPage.js';
+import { LandingPage } from './pages/LandingPage.js';
 import { PublicProofPage } from './pages/PublicProofPage.js';
 import { RfqPage } from './pages/RfqPage.js';
 import { getBrowserPathname } from './routing.js';
@@ -22,6 +24,12 @@ export function App() {
 }
 
 function resolveRoute(pathname: string): { active: AppSection; Page: ComponentType } {
+  if (pathname === '/' || pathname === '') {
+    return { active: 'home', Page: LandingPage };
+  }
+  if (pathname.startsWith('/faq')) {
+    return { active: 'faq', Page: FaqPage };
+  }
   if (pathname.startsWith('/admin')) {
     return { active: 'admin', Page: AdminTradesPage };
   }
@@ -34,5 +42,5 @@ function resolveRoute(pathname: string): { active: AppSection; Page: ComponentTy
   if (pathname.startsWith('/trades')) {
     return { active: 'trade', Page: TradeCheckoutPage };
   }
-  return { active: 'rfq', Page: RfqPage };
+  return { active: 'quote', Page: RfqPage };
 }

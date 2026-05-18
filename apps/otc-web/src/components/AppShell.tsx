@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 
-export type AppSection = 'rfq' | 'accept' | 'trade' | 'proof' | 'admin';
+export type AppSection = 'home' | 'quote' | 'accept' | 'trade' | 'proof' | 'faq' | 'admin';
 
 const NAV_ITEMS: Array<{ section: AppSection; label: string; href: string }> = [
-  { section: 'rfq', label: 'RFQ', href: '/quote' },
+  { section: 'home', label: 'Home', href: '/' },
+  { section: 'quote', label: 'Quote', href: '/quote' },
   { section: 'accept', label: 'Accept', href: '/quote/demo/accept' },
   { section: 'trade', label: 'Checkout', href: '/trades/demo' },
   { section: 'proof', label: 'Proof', href: '/trades/demo/proof' },
+  { section: 'faq', label: 'FAQ', href: '/faq' },
   { section: 'admin', label: 'Admin', href: '/admin/trades' },
 ];
 
@@ -22,11 +24,11 @@ export function AppShell({
   return (
     <div className="om-shell">
       <header className="om-topbar">
-        <a className="om-brand" href="/quote" aria-label="Oysters Market home">
+        <a className="om-brand" href="/" aria-label="Oysters Market home">
           <span className="om-brand__mark">O</span>
           <span>
             <strong>Oysters Market</strong>
-            <small>PRL / USDC settlement</small>
+            <small>Private market access</small>
           </span>
         </a>
         <span className="om-env">{environment}</span>
@@ -37,7 +39,7 @@ export function AppShell({
             </a>
           ))}
         </nav>
-        <div className="om-operator">desk@kaspa.com</div>
+        <div className="om-operator">Support desk</div>
       </header>
       <main className="om-main">{children}</main>
     </div>

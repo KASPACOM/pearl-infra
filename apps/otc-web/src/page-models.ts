@@ -326,7 +326,7 @@ export function buildFailureBanner(state: TradeState, tradeId: string): FailureB
   if (!banner) {
     return undefined;
   }
-  const subject = encodeURIComponent(`Pearl OTC trade ${tradeId} needs review`);
+  const subject = encodeURIComponent(`Oysters Market trade ${tradeId} needs review`);
   const body = encodeURIComponent(`Trade: ${tradeId}\nState: ${state}`);
   return {
     state,

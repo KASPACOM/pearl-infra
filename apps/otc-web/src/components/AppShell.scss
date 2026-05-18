@@ -14,7 +14,7 @@
   min-height: 60px;
   padding: 0 28px;
   border-bottom: 1px solid var(--om-line);
-  background: rgba(251, 252, 249, 0.94);
+  background: rgba(8, 10, 18, 0.88);
   backdrop-filter: blur(14px);
 }
 
@@ -51,8 +51,8 @@
   height: 30px;
   place-items: center;
   border-radius: 8px;
-  background: var(--om-ink);
-  color: var(--om-bg);
+  background: var(--om-accent);
+  color: #12091f;
   font-weight: 800;
 }
 
@@ -80,7 +80,7 @@
     text-decoration: none;
 
     &.is-active {
-      background: var(--om-surface-2);
+      background: var(--om-accent-soft);
       color: var(--om-ink);
       font-weight: 700;
     }
