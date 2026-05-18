@@ -13,6 +13,7 @@ export type FundingClassification =
   | 'underpaid'
   | 'overpaid'
   | 'duplicate'
+  | 'reorged'
   | 'unknown_funding';
 
 export interface FundingMatch {
@@ -82,6 +83,9 @@ export class FundingScannerSink implements PearlBlockSink {
       }
       return result;
     }
+    if (result.kind === 'duplicate') {
+      return result;
+    }
 
     const matches: FundingMatch[] = [];
     for (const output of block.outputs) {
@@ -89,9 +93,11 @@ export class FundingScannerSink implements PearlBlockSink {
       if (!address) continue;
       const watches = await this.repo.findActiveByAddress(this.network, address);
       for (const watch of watches) {
-        const classification = classifyFunding(output, block, watch);
+        const outpoint = `${output.txid}:${output.vout}`;
+        const hasPriorLiveObservation = await this.hasPriorLiveObservation(watch, outpoint);
+        const classification = hasPriorLiveObservation ? 'duplicate' : classifyFunding(output, block, watch);
         const obs = await this.repo.recordObservation({
-          outpoint: `${output.txid}:${output.vout}`,
+          outpoint,
           watchId: watch.watchId,
           blockHash: block.hash,
           height: block.height,
@@ -117,6 +123,13 @@ export class FundingScannerSink implements PearlBlockSink {
     }
 
     return result;
+  }
+
+  private async hasPriorLiveObservation(watch: WatchedAddress, outpoint: string): Promise<boolean> {
+    const history = await this.repo.get(watch.watchId);
+    return Boolean(history?.observations.some((observation) => (
+      observation.outpoint !== outpoint && observation.matchStatus !== 'detached'
+    )));
   }
 
   private async scanSpends(block: PearlBlockSummary): Promise<SpendMatch[]> {
@@ -164,8 +177,13 @@ export function classifyFunding(
   watch: WatchedAddress,
 ): FundingClassification {
   const expectedRaw = readStringMetadata(watch, 'expected_amount_grains');
-  const deadlineHeight = readNumberMetadata(watch, 'pearl_funding_deadline_height');
-  const deadlineTs = readStringMetadata(watch, 'pearl_funding_deadline_ts');
+  const deadlineHeight =
+    readNumberMetadata(watch, 'pearl_funding_deadline_height') ??
+    readNumberMetadata(watch, 'expiry_height');
+  const deadlineTs =
+    readStringMetadata(watch, 'pearl_funding_deadline_ts') ??
+    readStringMetadata(watch, 'pearl_funding_deadline') ??
+    readStringMetadata(watch, 'expiry_ts');
 
   const hasAmount = expectedRaw !== undefined;
   const hasDeadline = deadlineHeight !== undefined || deadlineTs !== undefined;

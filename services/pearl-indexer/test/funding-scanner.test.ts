@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { MemoryBlockSink, type PearlBlockSummary } from '../src/block-poller.ts';
-import { FundingScannerSink, classifySpend } from '../src/funding-scanner.ts';
+import { MemoryBlockSink, type PearlBlockSink, type PearlBlockSummary, type SaveBlockResult } from '../src/block-poller.ts';
+import { FundingScannerSink, classifyFunding, classifySpend } from '../src/funding-scanner.ts';
 import { MemoryWatchedAddressRepository } from '../src/watched-address-repository.ts';
 import type { WatchedAddress } from '../src/watched-address-types.ts';
 
@@ -32,6 +32,49 @@ function block(overrides: Partial<PearlBlockSummary>): PearlBlockSummary {
     ...overrides,
   };
 }
+
+function fundingOutput(amountGrains = '100000000', txid = 'funding1') {
+  return {
+    txid,
+    vout: 0,
+    amountGrains,
+    scriptPubKey: { hex: '51', address: 'tprl1pescrow' },
+  };
+}
+
+test('classifyFunding uses OTC watch metadata for on-time and amount verdicts', () => {
+  const baseWatch = watch({
+    expected_amount_grains: '100000000',
+    pearl_funding_deadline: '2026-05-18T00:02:00.000Z',
+  });
+  const currentBlock = block({
+    height: 101,
+    timestamp: '2026-05-18T00:01:00.000Z',
+  });
+
+  assert.equal(classifyFunding(fundingOutput('100000000'), currentBlock, baseWatch), 'on_time');
+  assert.equal(classifyFunding(fundingOutput('99999999'), currentBlock, baseWatch), 'underpaid');
+  assert.equal(classifyFunding(fundingOutput('100000001'), currentBlock, baseWatch), 'overpaid');
+  assert.equal(
+    classifyFunding(
+      fundingOutput('100000000'),
+      block({ timestamp: '2026-05-18T00:03:00.000Z' }),
+      baseWatch,
+    ),
+    'late',
+  );
+  assert.equal(classifyFunding(fundingOutput('100000000'), currentBlock, watch({})), 'unknown_funding');
+});
+
+test('classifyFunding supports height deadlines from watch metadata', () => {
+  const heightWatch = watch({
+    expected_amount_grains: '100000000',
+    pearl_funding_deadline_height: 100,
+  });
+
+  assert.equal(classifyFunding(fundingOutput(), block({ height: 100 }), heightWatch), 'on_time');
+  assert.equal(classifyFunding(fundingOutput(), block({ height: 101 }), heightWatch), 'late');
+});
 
 test('classifySpend marks release when the spend matches the release template output', () => {
   const result = classifySpend({
@@ -187,3 +230,119 @@ test('FundingScannerSink catches same-block funding and spend', async () => {
   assert.equal(history.observations[0].matchStatus, 'spent');
   assert.equal(history.spends[0].classification, 'refund');
 });
+
+test('FundingScannerSink classifies second live funding output for one escrow as duplicate', async () => {
+  const repo = new MemoryWatchedAddressRepository();
+  await repo.register({
+    watchId: 'trade_1',
+    purpose: 'otc_escrow',
+    network: 'testnet2',
+    address: 'tprl1pescrow',
+    requiredConfirmations: 1,
+    metadata: {
+      expected_amount_grains: '100000000',
+      pearl_funding_deadline: '2026-05-18T00:10:00.000Z',
+    },
+  });
+  const sink = new FundingScannerSink({
+    inner: new MemoryBlockSink(),
+    repo,
+    network: 'testnet2',
+    logger: () => undefined,
+  });
+
+  await sink.saveBlock(block({
+    hash: 'b1',
+    height: 100,
+    txids: ['funding1'],
+    outputs: [fundingOutput('100000000', 'funding1')],
+  }));
+  await sink.saveBlock(block({
+    hash: 'b2',
+    height: 101,
+    previousHash: 'b1',
+    txids: ['funding2'],
+    outputs: [fundingOutput('100000000', 'funding2')],
+  }));
+  const history = await repo.get('trade_1');
+
+  assert.ok(history);
+  assert.deepEqual(
+    history.observations.map((observation) => observation.classification),
+    ['on_time', 'duplicate'],
+  );
+});
+
+test('FundingScannerSink detaches stale funding and replays replacement funding after reorg', async () => {
+  const repo = new MemoryWatchedAddressRepository();
+  await repo.register({
+    watchId: 'trade_1',
+    purpose: 'otc_escrow',
+    network: 'testnet2',
+    address: 'tprl1pescrow',
+    requiredConfirmations: 1,
+    metadata: {
+      expected_amount_grains: '100000000',
+      pearl_funding_deadline_height: 200,
+    },
+  });
+  const sink = new FundingScannerSink({
+    inner: new ScriptedSink([
+      { kind: 'saved' },
+      { kind: 'reorg', detachedFromHeight: 100, indexedHash: 'stale-100', newPreviousHash: 'canonical-99' },
+      { kind: 'saved' },
+    ]),
+    repo,
+    network: 'testnet2',
+    logger: () => undefined,
+  });
+
+  await sink.saveBlock(block({
+    hash: 'stale-100',
+    height: 100,
+    previousHash: 'stale-99',
+    txids: ['stale-funding'],
+    outputs: [fundingOutput('100000000', 'stale-funding')],
+  }));
+  const reorgResult = await sink.saveBlock(block({
+    hash: 'canonical-101',
+    height: 101,
+    previousHash: 'canonical-100',
+  }));
+  await sink.saveBlock(block({
+    hash: 'canonical-100',
+    height: 100,
+    previousHash: 'canonical-99',
+    txids: ['replacement-funding'],
+    outputs: [fundingOutput('100000000', 'replacement-funding')],
+  }));
+  const history = await repo.get('trade_1');
+
+  assert.equal(reorgResult.kind, 'reorg');
+  assert.ok(history);
+  assert.deepEqual(
+    history.observations.map((observation) => ({
+      outpoint: observation.outpoint,
+      matchStatus: observation.matchStatus,
+      classification: observation.classification,
+    })),
+    [
+      { outpoint: 'stale-funding:0', matchStatus: 'detached', classification: 'reorged' },
+      { outpoint: 'replacement-funding:0', matchStatus: 'confirmed', classification: 'on_time' },
+    ],
+  );
+});
+
+class ScriptedSink implements PearlBlockSink {
+  private readonly results: SaveBlockResult[];
+
+  constructor(results: SaveBlockResult[]) {
+    this.results = results;
+  }
+
+  async saveBlock(): Promise<SaveBlockResult> {
+    const result = this.results.shift();
+    if (!result) throw new Error('no scripted sink result');
+    return result;
+  }
+}

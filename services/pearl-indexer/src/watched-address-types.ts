@@ -35,6 +35,7 @@ export interface AddressObservation {
   amountGrains: string;
   confirmations: number;
   matchStatus: ObservationMatchStatus;
+  classification: string;
   observedAt: string;
 }
 

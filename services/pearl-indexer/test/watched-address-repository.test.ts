@@ -163,6 +163,7 @@ test('Pg.get joins observations and spends', async () => {
       amount_grains: '12500000000',
       confirmations: 6,
       match_status: 'confirmed',
+      classification: 'on_time',
       observed_at: FIXED_AT,
     },
   ]);
@@ -184,6 +185,7 @@ test('Pg.get joins observations and spends', async () => {
   assert.ok(result);
   assert.equal(result.observations.length, 1);
   assert.equal(result.observations[0].matchStatus, 'confirmed');
+  assert.equal(result.observations[0].classification, 'on_time');
   assert.equal(result.spends.length, 1);
   assert.equal(result.spends[0].classification, 'release');
 });
@@ -368,4 +370,59 @@ test('Memory.recordSpend persists spend and marks observation spent', async () =
   assert.ok(fetched);
   assert.equal(fetched.spends.length, 1);
   assert.equal(fetched.observations[0].matchStatus, 'spent');
+  assert.equal(fetched.observations[0].classification, 'on_time');
+});
+
+test('Memory.advanceConfirmations marks one-confirmation observations confirmed', async () => {
+  const repo = new MemoryWatchedAddressRepository();
+  await repo.register(input({ requiredConfirmations: 1 }));
+  await repo.recordObservation({
+    outpoint: 'funding:0',
+    watchId: 'watch-1',
+    blockHash: 'b1',
+    height: 100,
+    amountGrains: '12500000000',
+    classification: 'on_time',
+  });
+
+  const advanced = await repo.advanceConfirmations(100);
+  const fetched = await repo.get('watch-1');
+
+  assert.equal(advanced, 1);
+  assert.ok(fetched);
+  assert.equal(fetched.observations[0].matchStatus, 'confirmed');
+});
+
+test('Memory.detachObservationsForBlock marks observations reorged and recordObservation can replay', async () => {
+  const repo = new MemoryWatchedAddressRepository();
+  await repo.register(input({ requiredConfirmations: 1 }));
+  await repo.recordObservation({
+    outpoint: 'funding:0',
+    watchId: 'watch-1',
+    blockHash: 'stale',
+    height: 100,
+    amountGrains: '12500000000',
+    classification: 'on_time',
+  });
+
+  await repo.detachObservationsForBlock('stale');
+  const detached = await repo.get('watch-1');
+  assert.ok(detached);
+  assert.equal(detached.observations[0].matchStatus, 'detached');
+  assert.equal(detached.observations[0].classification, 'reorged');
+
+  await repo.recordObservation({
+    outpoint: 'funding:0',
+    watchId: 'watch-1',
+    blockHash: 'canonical',
+    height: 101,
+    amountGrains: '12500000000',
+    classification: 'on_time',
+  });
+  const replayed = await repo.get('watch-1');
+
+  assert.ok(replayed);
+  assert.equal(replayed.observations[0].blockHash, 'canonical');
+  assert.equal(replayed.observations[0].matchStatus, 'pending');
+  assert.equal(replayed.observations[0].classification, 'on_time');
 });
