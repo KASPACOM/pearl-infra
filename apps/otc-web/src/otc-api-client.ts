@@ -1,4 +1,4 @@
-import type { OtcQuote, OtcTrade, PublicTradeProof } from '@kaspacom/pearl-sdk';
+import type { OtcQuote, OtcTrade, PublicTradeProof, TradeEvent, TradeState } from '@kaspacom/pearl-sdk';
 
 export interface CreateQuoteRequest {
   side: 'buy_prl' | 'sell_prl';
@@ -25,10 +25,16 @@ export type OtcSideEffectType =
   | 'usdc_deposit_observed'
   | 'usdc_release'
   | 'usdc_refund'
+  | 'pearl_watch_register'
   | 'pearl_release'
-  | 'pearl_refund';
+  | 'pearl_refund'
+  | 'support_alert'
+  | 'support_alert_delivery'
+  | 'manual_review_note';
 
 export type OtcSideEffectStatus = 'prepared' | 'submitted' | 'confirmed' | 'failed';
+export type SupportAlertSeverity = 'info' | 'warning' | 'critical';
+export type AdminDebugRedaction = 'support' | 'operator' | 'admin';
 
 export interface OtcSideEffect {
   idempotencyKey: string;
@@ -73,6 +79,96 @@ export interface UsdcEscrowVerification {
   mismatches: string[];
 }
 
+export interface AdminTradeQuery {
+  state?: TradeState;
+  manualReviewOnly?: boolean;
+  search?: string;
+  severity?: SupportAlertSeverity;
+  failedSideEffectOnly?: boolean;
+  deadlineBreachedOnly?: boolean;
+  blocker?: string;
+  minUpdatedAgeMs?: number;
+  alertDeliveryStatus?: OtcSideEffectStatus;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface AdminTradeSummary {
+  tradeId: string;
+  quoteId: string;
+  state: TradeState;
+  side: OtcTrade['side'];
+  amountPrl: string;
+  amountUsdc: string;
+  ageMs: number;
+  updatedAgeMs: number;
+  currentBlockers: string[];
+  deadlineBreaches: string[];
+  manualReview: boolean;
+  alertCount: number;
+  latestAlertSeverity?: SupportAlertSeverity;
+  alertDeliveryStatus?: OtcSideEffectStatus;
+  failedSideEffectCount: number;
+  safeActions: string[];
+  updatedAt: string;
+}
+
+export interface AdminTradeListPage {
+  items: AdminTradeSummary[];
+  nextCursor?: string;
+  total: number;
+  limit: number;
+}
+
+export interface AdminTradeDebugDetail {
+  trade: OtcTrade;
+  events: TradeEvent[];
+  sideEffects: OtcSideEffect[];
+  proof: PublicTradeProof;
+  currentBlockers: string[];
+  deadlineBreaches: string[];
+  safeActions: string[];
+  redaction: AdminDebugRedaction;
+  supportSummary: {
+    headline: string;
+    waitingOn: string[];
+    nextDeadline?: {
+      name: string;
+      at: string;
+      msRemaining: number;
+    };
+    publicProofPath: string;
+  };
+}
+
+export interface AdminSupportAlertRequest {
+  idempotencyKey: string;
+  severity: SupportAlertSeverity;
+  message: string;
+  contact?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MarkManualReviewRequest {
+  idempotencyKey: string;
+  reason: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ReplaySupportAlertDeliveryRequest {
+  idempotencyKey: string;
+}
+
+export interface PublicSupportAlertRequest {
+  idempotencyKey: string;
+  actor: 'user';
+  severity: SupportAlertSeverity;
+  message: string;
+  source: 'user';
+  contact?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface RecordSideEffectRequest {
   idempotencyKey: string;
   effectType: OtcSideEffectType;
@@ -90,6 +186,18 @@ export interface RecordSideEffectRequest {
 export interface OtcApiClientOptions {
   baseUrl: string;
   fetcher?: typeof fetch;
+}
+
+export class OtcApiError extends Error {
+  readonly status: number;
+  readonly payload: unknown;
+
+  constructor(message: string, status: number, payload: unknown) {
+    super(message);
+    this.name = 'OtcApiError';
+    this.status = status;
+    this.payload = payload;
+  }
 }
 
 export class OtcApiClient {
@@ -137,24 +245,92 @@ export class OtcApiClient {
     return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/side-effects`, request);
   }
 
-  private async get<T>(path: string): Promise<T> {
-    return this.request<T>(path, { method: 'GET' });
+  recordPublicSupportAlert(tradeId: string, request: PublicSupportAlertRequest): Promise<OtcSideEffect> {
+    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/support-alerts`, request);
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  listAdminTrades(query: AdminTradeQuery, adminToken: string): Promise<AdminTradeListPage> {
+    const params = new URLSearchParams();
+    if (query.state) {
+      params.set('state', query.state);
+    }
+    if (query.manualReviewOnly) {
+      params.set('manual_review_only', 'true');
+    }
+    if (query.search?.trim()) {
+      params.set('search', query.search.trim());
+    }
+    if (query.severity) {
+      params.set('severity', query.severity);
+    }
+    if (query.failedSideEffectOnly) {
+      params.set('failed_side_effect_only', 'true');
+    }
+    if (query.deadlineBreachedOnly) {
+      params.set('deadline_breached_only', 'true');
+    }
+    if (query.blocker?.trim()) {
+      params.set('blocker', query.blocker.trim());
+    }
+    if (typeof query.minUpdatedAgeMs === 'number' && Number.isFinite(query.minUpdatedAgeMs)) {
+      params.set('min_updated_age_ms', String(Math.max(0, Math.floor(query.minUpdatedAgeMs))));
+    }
+    if (query.alertDeliveryStatus) {
+      params.set('alert_delivery_status', query.alertDeliveryStatus);
+    }
+    if (query.cursor?.trim()) {
+      params.set('cursor', query.cursor.trim());
+    }
+    if (typeof query.limit === 'number' && Number.isFinite(query.limit)) {
+      params.set('limit', String(Math.max(1, Math.floor(query.limit))));
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return this.get(`/otc/admin/trades${suffix}`, adminToken);
+  }
+
+  getAdminTradeDebug(tradeId: string, adminToken: string): Promise<AdminTradeDebugDetail> {
+    return this.get(`/otc/admin/trades/${encodeURIComponent(tradeId)}`, adminToken);
+  }
+
+  recordAdminSupportAlert(tradeId: string, request: AdminSupportAlertRequest, adminToken: string): Promise<OtcSideEffect> {
+    return this.post(`/otc/admin/trades/${encodeURIComponent(tradeId)}/alerts`, request, adminToken);
+  }
+
+  markAdminManualReview(tradeId: string, request: MarkManualReviewRequest, adminToken: string): Promise<OtcSideEffect> {
+    return this.post(`/otc/admin/trades/${encodeURIComponent(tradeId)}/manual-review`, request, adminToken);
+  }
+
+  replayAdminSupportAlertDelivery(
+    tradeId: string,
+    alertId: string,
+    request: ReplaySupportAlertDeliveryRequest,
+    adminToken: string,
+  ): Promise<OtcSideEffect> {
+    return this.post(`/otc/admin/trades/${encodeURIComponent(tradeId)}/alerts/${encodeURIComponent(alertId)}/replay`, request, adminToken);
+  }
+
+  private async get<T>(path: string, adminToken?: string): Promise<T> {
+    return this.request<T>(path, { method: 'GET' }, adminToken);
+  }
+
+  private async post<T>(path: string, body: unknown, adminToken?: string): Promise<T> {
     return this.request<T>(path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
-    });
+    }, adminToken);
   }
 
-  private async request<T>(path: string, init: RequestInit): Promise<T> {
-    const response = await this.fetcher(`${this.baseUrl}${path}`, init);
+  private async request<T>(path: string, init: RequestInit, adminToken?: string): Promise<T> {
+    const headers = new Headers(init.headers);
+    if (adminToken) {
+      headers.set('authorization', `Bearer ${adminToken}`);
+    }
+    const response = await this.fetcher(`${this.baseUrl}${path}`, { ...init, headers });
     const payload = await readJson(response);
     if (!response.ok) {
       const message = getErrorMessage(payload) ?? `OTC API request failed with ${response.status}`;
-      throw new Error(message);
+      throw new OtcApiError(message, response.status, payload);
     }
     return payload as T;
   }

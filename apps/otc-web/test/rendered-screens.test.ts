@@ -28,8 +28,10 @@ test('checkout, proof, and admin screens expose no release or refund buttons', (
   ].join('\n');
 
   assert.doesNotMatch(html, /<button[^>]*>\s*(?:Release|Refund)/i);
-  assert.match(html, /No release or refund actions are available/);
+  assert.doesNotMatch(html, /<button[^>]*>\s*(?:Sign|Broadcast)/i);
+  assert.match(html, /Settlement controls are intentionally absent/);
   assert.match(html, /manual review/i);
+  assert.match(html, /Severity filter/);
 });
 
 test('real trade routes do not render demo proof or checkout data before API data loads', () => {

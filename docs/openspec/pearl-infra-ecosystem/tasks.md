@@ -165,9 +165,10 @@ Current Pearl OTC code/workflow status:
   monitoring contracts.
 - Frontend workflow is implemented through rendered RFQ, quote accept,
   checkout, public proof, and admin/manual-review screens built from the
-  existing typed clients and page models. The admin screen is still a rendered
-  shell: backend-driven list/detail wiring, admin note actions, and the user
-  support/error form remain open under `9.4.4.c` through `9.4.4.e`.
+  existing typed clients and page models. The admin UI is wired to the backend
+  diagnostics API for list/detail, expanded filters, pagination, support
+  notes, manual-review notes, failed alert-delivery replay, and the public
+  support/error alert form, while settlement execution controls stay absent.
 
 Current delegation queue after rendered OTC web screens:
 
@@ -250,31 +251,31 @@ Current delegation queue after rendered OTC web screens:
     debug detail, user support/error alerts, support summary, bearer-gated
     admin routes, webhook/Telegram alert delivery, and audited manual-review
     notes.
-  - [ ] 9.4.4.c Build the admin trade list UI with state/manual-review/search
+  - [x] 9.4.4.c Build the admin trade list UI with state/manual-review/search
     filters and alert/backlog indicators.
-    - [ ] 9.4.4.c.1 Wire the admin list to `GET /otc/admin/trades` instead of
+    - [x] 9.4.4.c.1 Wire the admin list to `GET /otc/admin/trades` instead of
       demo data.
-    - [ ] 9.4.4.c.2 Implement live state filter, manual-review-only toggle, and
+    - [x] 9.4.4.c.2 Implement live state filter, manual-review-only toggle, and
       search query controls.
-    - [ ] 9.4.4.c.3 Show alert count, failed side-effect count, deadline breach,
+    - [x] 9.4.4.c.3 Show alert count, failed side-effect count, deadline breach,
       blocker, and backlog indicators in the list.
-  - [ ] 9.4.4.d Build the admin trade debug detail UI showing trade state,
+  - [x] 9.4.4.d Build the admin trade debug detail UI showing trade state,
     Pearl watch/proof history, Base events, side effects, audit notes,
     deadlines, blockers, and safe actions.
-    - [ ] 9.4.4.d.1 Add a real admin detail route backed by
+    - [x] 9.4.4.d.1 Add a real admin detail route backed by
       `GET /otc/admin/trades/:tradeId`.
-    - [ ] 9.4.4.d.2 Render trade state, support summary, current blockers,
+    - [x] 9.4.4.d.2 Render trade state, support summary, current blockers,
       deadline breaches, safe actions, public proof path, events, and side
       effects from the backend debug payload.
-    - [ ] 9.4.4.d.3 Keep release, refund, signing, and trade-term editing
+    - [x] 9.4.4.d.3 Keep release, refund, signing, and trade-term editing
       controls absent from the operator UI.
-  - [ ] 9.4.4.e Add the user support/error alert form and copyable support
+  - [x] 9.4.4.e Add the user support/error alert form and copyable support
     summary so support can escalate stuck trades quickly.
-    - [ ] 9.4.4.e.1 Wire the user support/error alert form to
+    - [x] 9.4.4.e.1 Wire the user support/error alert form to
       `POST /otc/trades/:tradeId/support-alerts`.
-    - [ ] 9.4.4.e.2 Wire the admin "Add note" action to the audited
+    - [x] 9.4.4.e.2 Wire the admin "Add note" action to the audited
       manual-review endpoint without exposing arbitrary state edits.
-    - [ ] 9.4.4.e.3 Display alert delivery status, including failed
+    - [x] 9.4.4.e.3 Display alert delivery status, including failed
       `support_alert_delivery` records, so operators know when Telegram/webhook
       escalation failed.
 - [x] 9.4.5 Add typed OTC API client and Base USDC escrow ethers call builders using the shared ABI/config.
@@ -342,21 +343,19 @@ Current delegation queue after rendered OTC web screens:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after rendered OTC web screens: API startup/idempotency, derivation
+Status after admin FE wiring: API startup/idempotency, derivation
 allocation safety, watch registration, Pearl funding/spend detection, reorg
 hardening, Pearl proof projection, Base escrow event ingestion, the persistent
 settlement-worker iteration, the Pearl signer boundary policy/request/audit
 layer, explicit deployment environment/secret contracts, monitoring contracts,
-and rendered RFQ/accept/checkout/proof/admin screens are implemented, with
-Base Sepolia native-USDC stress evidence recorded. The remaining production
-blockers are backend-driven admin FE wiring, admin control-plane hardening,
-live simnet/testnet evidence, alert secret deployment, and Base ownership
-acceptance evidence.
+and backend-driven RFQ/accept/checkout/proof/admin screens are implemented,
+with Base Sepolia native-USDC stress evidence recorded. The remaining
+production blockers are live simnet/testnet evidence, alert secret deployment,
+and Base ownership acceptance evidence.
 
-Open 9.8 items after rendered OTC web screens: `9.8.10`, `9.8.11`, and the
-expanded `9.8.12` subitems that make the admin UI backend-driven.
+Open 9.8 items after admin FE wiring: `9.8.10` and `9.8.11`.
 
-Loophole tracker after PR #51:
+Loophole tracker after admin FE wiring:
 
 - [x] Mock/local production fallback — OTC API production startup now fails
   closed unless Postgres, Base RPC, real Pearl P2TR xpub allocation, Pearl
@@ -388,10 +387,10 @@ Loophole tracker after PR #51:
   `9.6.4` and `9.8.10` are recorded.
 - [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
   production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
-- [ ] Backend-driven admin/support frontend workflow is not complete yet —
-  rendered screens exist and expose no release/refund actions, but `9.4.4.c`,
-  `9.4.4.d`, and `9.4.4.e` remain open until list/detail/note/support-alert
-  controls are wired to live backend APIs.
+- [x] Backend-driven admin/support frontend workflow — rendered screens expose
+  no release/refund/sign/broadcast actions, and admin list/detail, filters,
+  note/manual-review actions, failed alert-delivery replay, and the public
+  support-alert form are wired to live backend APIs.
 - [ ] Base Sepolia ownership acceptance evidence is not recorded yet — blocks
   any Base mainnet path until `9.6.7` is completed.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
@@ -434,13 +433,13 @@ Loophole tracker after PR #51:
   proof.
 - [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
   txids before any mainnet PRL code path is enabled.
-- [ ] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
+- [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
   prove no release action is exposed to users or operators.
   - Rendered RFQ, accept, checkout, public proof, and admin shell screens are
     merged, and tests prove no release/refund actions are exposed.
-  - [ ] 9.8.12.a Complete backend-driven admin list/detail/support-alert/manual
+  - [x] 9.8.12.a Complete backend-driven admin list/detail/support-alert/manual
     note wiring under `9.4.4.c` through `9.4.4.e`.
-  - [ ] 9.8.12.b Prove the wired admin UI still exposes no release, refund,
+  - [x] 9.8.12.b Prove the wired admin UI still exposes no release, refund,
     signing, or trade-term edit actions.
   - Admin backend contracts now expose read/debug/support/manual-review
     endpoints without arbitrary release, signing, or term-edit actions; admin
