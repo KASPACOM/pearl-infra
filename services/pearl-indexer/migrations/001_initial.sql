@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS indexer_state (
 
 CREATE TABLE IF NOT EXISTS pearl_blocks (
   hash TEXT PRIMARY KEY,
-  height BIGINT NOT NULL UNIQUE,
+  height BIGINT NOT NULL,
   previous_hash TEXT,
   timestamp TIMESTAMPTZ NOT NULL,
   txids TEXT[] NOT NULL DEFAULT '{}',
@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS pearl_blocks (
 );
 
 CREATE INDEX IF NOT EXISTS pearl_blocks_height_idx ON pearl_blocks (height);
+CREATE UNIQUE INDEX IF NOT EXISTS pearl_blocks_canonical_height_key
+  ON pearl_blocks (height)
+  WHERE detached = false;
 CREATE INDEX IF NOT EXISTS pearl_blocks_previous_hash_idx ON pearl_blocks (previous_hash);
 
 CREATE TABLE IF NOT EXISTS escrow_watches (

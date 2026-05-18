@@ -98,8 +98,12 @@ test('detects reorg when previousHash does not match indexed parent', async () =
   }
 
   const markedDetached = pg.calls.some((c) => /UPDATE pearl_blocks SET detached = true/i.test(c.text));
+  const rewoundState = pg.calls.some(
+    (c) => /ON CONFLICT \(key\) DO UPDATE\s+SET value = EXCLUDED.value/is.test(c.text) && c.params?.[1] === '0',
+  );
   const insertedNew = pg.calls.some((c) => /INSERT INTO pearl_blocks/i.test(c.text));
   assert.equal(markedDetached, true, 'should mark stale parent detached');
+  assert.equal(rewoundState, true, 'should persist replay height for restart-safe reorg recovery');
   assert.equal(insertedNew, false, 'should NOT insert the new block on reorg detection');
 });
 
@@ -116,6 +120,7 @@ test('returns duplicate for an already-indexed block', async () => {
 test('loadNextHeight returns the persisted value', async () => {
   const pg = new FakePg();
   pg.setFixture(/SELECT value FROM indexer_state/i, [{ value: '42' }]);
+  pg.setFixture(/SELECT MIN\(detached\.height\)/i, [{ height: null as never }]);
   const sink = new PgBlockSink(pg);
 
   const next = await sink.loadNextHeight(0);
@@ -123,8 +128,20 @@ test('loadNextHeight returns the persisted value', async () => {
   assert.equal(next, 42);
 });
 
+test('loadNextHeight rewinds to unfinished detached reorg height', async () => {
+  const pg = new FakePg();
+  pg.setFixture(/SELECT value FROM indexer_state/i, [{ value: '54797' }]);
+  pg.setFixture(/SELECT MIN\(detached\.height\)/i, [{ height: '54796' }]);
+  const sink = new PgBlockSink(pg);
+
+  const next = await sink.loadNextHeight(0);
+
+  assert.equal(next, 54796);
+});
+
 test('loadNextHeight falls back to default when state is empty', async () => {
   const pg = new FakePg();
+  pg.setFixture(/SELECT MIN\(detached\.height\)/i, [{ height: null as never }]);
   const sink = new PgBlockSink(pg);
 
   const next = await sink.loadNextHeight(54000);
