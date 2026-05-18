@@ -1,0 +1,507 @@
+{
+  "runId": "20260518114919",
+  "network": "base_sepolia",
+  "chainId": 84532,
+  "rpcUrl": "https://base-sepolia-rpc.publicnode.com",
+  "nativeUsdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "feeRecipient": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+  "deployer": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "startedAt": "2026-05-18T11:49:19.858Z",
+  "wallets": {
+    "releaseBuyer": "0xCc476c44aD1999bA263E9A49B05660BFa5593755",
+    "buyerRefundBuyer": "0x5C8472cae39BDD5F2F909E9282B1f662d7D08f2E",
+    "ownerRefundBuyer": "0xb64f1e29eB3c81bE61427d9Ef0b5110233FeA3Bd",
+    "pauseBuyer": "0xdACBD35223ADaA53c2e8FFeb04314B4525f9A6A8",
+    "parallelBuyerA": "0x2bda482087bFeee1E065bC30c73349C03893bee6",
+    "parallelBuyerB": "0x2645dB823CE82769836c04D466b9E10521DEB2b9",
+    "stranger": "0x636a7217cCeDa4385E736C9a69571BC43b4Ec432",
+    "sellerA": "0x3D55F64875437F7c0644A1c3F5b11ccC3d1DCFeB",
+    "sellerB": "0x6fE54f58349F8Df1b9937Ae18c9176834E7cFCEa",
+    "sellerC": "0x4c0c13Daaf21398855662a2E050375A9d7ba61c6"
+  },
+  "transactions": [
+    {
+      "label": "deploy stress escrow",
+      "hash": "0xfb3ecb822767699e84bacf51d5d3fbe864b80282b3ed0a049a8d81ac55890e62",
+      "blockNumber": 41668337,
+      "gasUsed": "1035573",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "fund gas wallet 1",
+      "hash": "0x8b9c3fa996ee2483d01791db9515872b20b3ae5e7b7f9f16227e226a39bc09b8",
+      "blockNumber": 41668339,
+      "gasUsed": "21000",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0xCc476c44aD1999bA263E9A49B05660BFa5593755"
+    },
+    {
+      "label": "fund gas wallet 2",
+      "hash": "0xaf49d8a5ad8acd7d86be5bdf503994a5c4503887604fd792b9cdfafa736c5a9b",
+      "blockNumber": 41668342,
+      "gasUsed": "21000",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x5C8472cae39BDD5F2F909E9282B1f662d7D08f2E"
+    },
+    {
+      "label": "fund gas wallet 3",
+      "hash": "0x35d002e7b72bd0228646b7e9e789d19b0f5bad9c31214d89182c4c845e4907c7",
+      "blockNumber": 41668344,
+      "gasUsed": "21000",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0xb64f1e29eB3c81bE61427d9Ef0b5110233FeA3Bd"
+    },
+    {
+      "label": "fund gas wallet 4",
+      "hash": "0x56a87762bf042608cb8be8f84c157f683ad814ea3e7506c0b9998f2ac7c46e80",
+      "blockNumber": 41668347,
+      "gasUsed": "21000",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0xdACBD35223ADaA53c2e8FFeb04314B4525f9A6A8"
+    },
+    {
+      "label": "fund gas wallet 5",
+      "hash": "0xb6428ed8e2eada52e565d2b709e4b46df30e9670c652f9893da00252b1c43b66",
+      "blockNumber": 41668349,
+      "gasUsed": "21000",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x2bda482087bFeee1E065bC30c73349C03893bee6"
+    },
+    {
+      "label": "fund gas wallet 6",
+      "hash": "0x61fb404664e60d54726e62eb2b7b3546dbfd1bc5e3dddfb8a8f9ff8089222d16",
+      "blockNumber": 41668352,
+      "gasUsed": "21000",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x2645dB823CE82769836c04D466b9E10521DEB2b9"
+    },
+    {
+      "label": "fund gas wallet 7",
+      "hash": "0x80d557007f1a12c85ba173939cff46c3434ee7384420101d3926e09b41f7ea33",
+      "blockNumber": 41668354,
+      "gasUsed": "21000",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x636a7217cCeDa4385E736C9a69571BC43b4Ec432"
+    },
+    {
+      "label": "fund release buyer USDC",
+      "hash": "0x0b983f64001efec299030abc12b454922b9a81c41a84733d341482dc6fc57142",
+      "blockNumber": 41668356,
+      "gasUsed": "62159",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "fund buyer-refund buyer USDC",
+      "hash": "0xc00b84763986f4461bbd94da5b02224e9dadf4c8ded42c3bfcb879c8f0ce24e8",
+      "blockNumber": 41668359,
+      "gasUsed": "62159",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "fund owner-refund buyer USDC",
+      "hash": "0x97ffed1b664717b2f08dcd8bc933f199ea3c54aa612f6082de6447c6a2c8fd59",
+      "blockNumber": 41668361,
+      "gasUsed": "62159",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "fund pause buyer USDC",
+      "hash": "0xdaa1bc9cdb35b9241454eee00e74c6a58626527fdaa06de0e110ed4728c91a25",
+      "blockNumber": 41668364,
+      "gasUsed": "62159",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "fund parallel buyer A USDC",
+      "hash": "0xdb2c2da6713af795349dbde66a8f0d6d1f9b6e513c0327aea38e1acd81d438f2",
+      "blockNumber": 41668368,
+      "gasUsed": "62159",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "fund parallel buyer B USDC",
+      "hash": "0xa2192ec6ba269ee21b8af69816caf26bdd8d68b52af16cd4b4ff1eb2b0b6a291",
+      "blockNumber": 41668370,
+      "gasUsed": "62159",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "create release trade",
+      "hash": "0x299cc8636b2ff77f64840563059296a5d66ef92091ff7a28f9640b04dedde76e",
+      "blockNumber": 41668372,
+      "gasUsed": "142069",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "release trade: approve",
+      "hash": "0x8dd7b7bbf3956ddc172333ed3356bd241611f60658c5cfb0769333ea725e10da",
+      "blockNumber": 41668375,
+      "gasUsed": "55437",
+      "from": "0xCc476c44aD1999bA263E9A49B05660BFa5593755",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "release trade: deposit",
+      "hash": "0x6002f6fff76dd6256ef56e335fc6b57228bf069bfb8dceefc5d0f09642362198",
+      "blockNumber": 41668377,
+      "gasUsed": "77413",
+      "from": "0xCc476c44aD1999bA263E9A49B05660BFa5593755",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "owner releases release trade",
+      "hash": "0xefb08be9e619316b93c756ce6fe7edf3bf7c3885335a2185fff29c189116b7ae",
+      "blockNumber": 41668380,
+      "gasUsed": "91667",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "create buyer refund trade",
+      "hash": "0x0c2c70a077cea972839f696e1e0cf4ec16c7bc6c1f4efbf676bce2fc692ad3f4",
+      "blockNumber": 41668382,
+      "gasUsed": "142069",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "buyer refund trade: approve",
+      "hash": "0x61bec2fd847f9840d364e4a8547594cc4fd0a7e5bbf9a0bfa78de53659b39d8b",
+      "blockNumber": 41668384,
+      "gasUsed": "55437",
+      "from": "0x5C8472cae39BDD5F2F909E9282B1f662d7D08f2E",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "buyer refund trade: deposit",
+      "hash": "0x47f5220021505e5c89b6f0fbd63ac37251a5b2633a6beb481f91927188823f3e",
+      "blockNumber": 41668387,
+      "gasUsed": "77413",
+      "from": "0x5C8472cae39BDD5F2F909E9282B1f662d7D08f2E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "buyer refunds after expiry",
+      "hash": "0xa90752749cc2227f219f406a1c934a7a2e672d7a794691ebf4ecf7607066449b",
+      "blockNumber": 41668392,
+      "gasUsed": "76528",
+      "from": "0x5C8472cae39BDD5F2F909E9282B1f662d7D08f2E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "create owner refund trade",
+      "hash": "0x5546ed9429b5ccca7ccb107e336476b31373659c7f71d5cd3e07de227bf392db",
+      "blockNumber": 41668395,
+      "gasUsed": "142057",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "owner refund trade: approve",
+      "hash": "0x5268088691138545924066746346f6f916b72d9f2b27bbb6a1ed6ed629342862",
+      "blockNumber": 41668397,
+      "gasUsed": "55437",
+      "from": "0xb64f1e29eB3c81bE61427d9Ef0b5110233FeA3Bd",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "owner refund trade: deposit",
+      "hash": "0xd5b98cdde12cf7111b9651b527a4b0182bfccc15599094a828ad3e15d0ab7f05",
+      "blockNumber": 41668399,
+      "gasUsed": "77413",
+      "from": "0xb64f1e29eB3c81bE61427d9Ef0b5110233FeA3Bd",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "owner refunds before expiry",
+      "hash": "0x463df3f69817dc041fd011e558625a9cd7cd935121757f0b93340e0ec93bd217",
+      "blockNumber": 41668402,
+      "gasUsed": "76259",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "pause escrow",
+      "hash": "0x72a011ed5644504991a9fdf29496fcdd8c3890093c94963d4e72eae58b09c6d3",
+      "blockNumber": 41668404,
+      "gasUsed": "46878",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "unpause escrow",
+      "hash": "0x2eb6b2c425e01f529c418e7e703509305d30e0f1df2a1e6fb06b77ccb872a292",
+      "blockNumber": 41668407,
+      "gasUsed": "24928",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "create pause deposit trade",
+      "hash": "0xea5a9b99407c50df51b34e8a35bcbcbb76ac3f03533b7b3fc603b37062d1b5c5",
+      "blockNumber": 41668409,
+      "gasUsed": "142069",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "pause before deposit",
+      "hash": "0x29d08fdb6acfbeabffcd616faec6d05867bc2cf3d00aba05adc93efe64862090",
+      "blockNumber": 41668411,
+      "gasUsed": "46878",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "unpause before deposit",
+      "hash": "0xde3f33322d80a92cac15333f306aac8522eba15e17de38bcf35de28e04d1a38b",
+      "blockNumber": 41668414,
+      "gasUsed": "24928",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "pause trade after unpause: approve",
+      "hash": "0x5c18e8b48ee51b2b4fd6e69e23e9eb1a4d7102c42e2827f91aab05c77763d55f",
+      "blockNumber": 41668416,
+      "gasUsed": "55437",
+      "from": "0xdACBD35223ADaA53c2e8FFeb04314B4525f9A6A8",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "pause trade after unpause: deposit",
+      "hash": "0x8e89038299535d167726f3af4f389071ae35cf03068dd2bf8e0248f4019de335",
+      "blockNumber": 41668419,
+      "gasUsed": "77413",
+      "from": "0xdACBD35223ADaA53c2e8FFeb04314B4525f9A6A8",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "owner refunds pause trade cleanup",
+      "hash": "0xebc7462bc7387d7494468bbb7bc70a22e8ea276f98db576d5945ca3edd8eea13",
+      "blockNumber": 41668421,
+      "gasUsed": "76259",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "create cancel trade",
+      "hash": "0x47f7875c2c0a2b50c86664f0e4fcdfe9d9f9b84380e6e78abb7d60f2bb19422b",
+      "blockNumber": 41668423,
+      "gasUsed": "122145",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "stranger cancels expired created trade",
+      "hash": "0xb5eb13d7eb238e73b9175058b194246386b8571537c5b9148de6103486df6d76",
+      "blockNumber": 41668435,
+      "gasUsed": "28453",
+      "from": "0x636a7217cCeDa4385E736C9a69571BC43b4Ec432",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "create parallel release trade",
+      "hash": "0x6905627fdf2b501ab4576cf053d1530c2492d1d179554af85cd12c8b3a2349dd",
+      "blockNumber": 41668438,
+      "gasUsed": "142069",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "create parallel refund trade",
+      "hash": "0xe37f69c10d324d19d1f6bfaf6edd51c587086e2a1b95700f60abe7f9c2ed93e0",
+      "blockNumber": 41668440,
+      "gasUsed": "142069",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "parallel release trade: approve",
+      "hash": "0xde9e95352fcbba65c9ca27f3e13f86f47856e1ebf8b7ef90109d1cbd7f9defb4",
+      "blockNumber": 41668442,
+      "gasUsed": "55437",
+      "from": "0x2bda482087bFeee1E065bC30c73349C03893bee6",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "parallel refund trade: approve",
+      "hash": "0xd54c135140121f588d2f7356f68cc47ad70a5f540ce41f9b5d01d2f351bd8ed9",
+      "blockNumber": 41668442,
+      "gasUsed": "55437",
+      "from": "0x2645dB823CE82769836c04D466b9E10521DEB2b9",
+      "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    },
+    {
+      "label": "parallel release trade: deposit",
+      "hash": "0xe8eee49bcb1d1c3435fbe217bc4febea23e36adc77fd0c6facf674cfc4c0ea4a",
+      "blockNumber": 41668445,
+      "gasUsed": "77413",
+      "from": "0x2bda482087bFeee1E065bC30c73349C03893bee6",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "parallel refund trade: deposit",
+      "hash": "0x850c25b971ef0dcb80bbc39f7292086b547c9a7058272f97a7c348c2a784aacc",
+      "blockNumber": 41668445,
+      "gasUsed": "60313",
+      "from": "0x2645dB823CE82769836c04D466b9E10521DEB2b9",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "owner releases one parallel trade",
+      "hash": "0x52f0139989fb5beeb4dee649e6432e96447cadfc16287f8ff35d3326d83df295",
+      "blockNumber": 41668447,
+      "gasUsed": "96467",
+      "from": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    },
+    {
+      "label": "buyer refunds other parallel trade",
+      "hash": "0xa31648597e2a0d90892dc07feb434310e09d6241887b6a35315d273f96383eca",
+      "blockNumber": 41668451,
+      "gasUsed": "76528",
+      "from": "0x2645dB823CE82769836c04D466b9E10521DEB2b9",
+      "to": "0x64113b802984fA86A532f7529A030787607E5280"
+    }
+  ],
+  "expectedReverts": [
+    {
+      "label": "stranger cannot deposit release trade",
+      "reason": "execution reverted: \"not buyer\""
+    },
+    {
+      "label": "stranger cannot release deposited trade",
+      "reason": "execution reverted (unknown custom error)"
+    },
+    {
+      "label": "buyer cannot refund before expiry",
+      "reason": "execution reverted: \"not authorized\""
+    },
+    {
+      "label": "stranger cannot refund before expiry",
+      "reason": "execution reverted: \"not authorized\""
+    },
+    {
+      "label": "owner cannot create while paused",
+      "reason": "execution reverted (unknown custom error)"
+    },
+    {
+      "label": "buyer cannot deposit while paused",
+      "reason": "execution reverted (unknown custom error)"
+    },
+    {
+      "label": "cannot reuse released trade id",
+      "reason": "execution reverted: \"trade exists\""
+    },
+    {
+      "label": "cannot reuse refunded trade id",
+      "reason": "execution reverted: \"trade exists\""
+    },
+    {
+      "label": "cannot reuse cancelled trade id",
+      "reason": "execution reverted: \"trade exists\""
+    }
+  ],
+  "checks": [
+    {
+      "label": "release trade status",
+      "passed": true,
+      "actual": 3,
+      "expected": 3
+    },
+    {
+      "label": "buyer refund returned amount plus fee",
+      "passed": true,
+      "actual": "1150000",
+      "expected": "1150000"
+    },
+    {
+      "label": "buyer refund trade status",
+      "passed": true,
+      "actual": 4,
+      "expected": 4
+    },
+    {
+      "label": "owner refund trade status",
+      "passed": true,
+      "actual": 4,
+      "expected": 4
+    },
+    {
+      "label": "pause trade cleanup status",
+      "passed": true,
+      "actual": 4,
+      "expected": 4
+    },
+    {
+      "label": "cancel trade status",
+      "passed": true,
+      "actual": 5,
+      "expected": 5
+    },
+    {
+      "label": "parallel release status",
+      "passed": true,
+      "actual": 3,
+      "expected": 3
+    },
+    {
+      "label": "parallel refund status",
+      "passed": true,
+      "actual": 4,
+      "expected": 4
+    },
+    {
+      "label": "escrow final USDC balance is zero",
+      "passed": true,
+      "actual": "0",
+      "expected": "0"
+    }
+  ],
+  "waits": [
+    {
+      "label": "buyer refund trade",
+      "expiry": 1779105068,
+      "observedTimestamp": 1779105070
+    },
+    {
+      "label": "cancel trade",
+      "expiry": 1779105152,
+      "observedTimestamp": 1779105154
+    },
+    {
+      "label": "parallel refund trade",
+      "expiry": 1779105186,
+      "observedTimestamp": 1779105188
+    }
+  ],
+  "escrow": "0x64113b802984fA86A532f7529A030787607E5280",
+  "finishedAt": "2026-05-18T11:53:13.361Z",
+  "deployerBalances": {
+    "before": {
+      "eth": "0.167968615066122149",
+      "USDC": "25.75"
+    },
+    "after": {
+      "eth": "0.146950467779695473",
+      "USDC": "21.5"
+    }
+  },
+  "summary": {
+    "success": true,
+    "escrow": "0x64113b802984fA86A532f7529A030787607E5280",
+    "txCount": 44,
+    "expectedRevertCount": 9,
+    "checkCount": 9,
+    "failedChecks": 0
+  }
+}
