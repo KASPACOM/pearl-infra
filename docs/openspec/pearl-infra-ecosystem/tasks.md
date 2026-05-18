@@ -134,6 +134,37 @@ Merged implementation checkpoints:
   hash verification, release/refund output policy checks, signer key custody
   controls, persistent request records, append-only audit records, retry-safe
   state, and no live broadcast from the signer path. Closes 9.8.9.
+- PR #50 — synced the checklist after PR #48 and PR #49.
+- PR #51 — added OTC deployment environment contracts, canonical secret names,
+  simnet/testnet2 env examples, testnet2 node/indexer deployment checklists,
+  and monitoring contracts for lag, deadlines, failed broadcasts, duplicate
+  events, manual-review backlog, and mismatched terms. Closes 9.6.1, 9.6.2,
+  9.6.3, 9.6.11, 9.8.3, and 9.8.13.
+
+Current Pearl OTC code/workflow status:
+
+- API/trade workflow is implemented through quote, accept, persistent trade
+  state, side-effect idempotency, on-chain Base term verification, Pearl watch
+  registration, and public proof projection.
+- Pearl indexer workflow is implemented through watched-address registration,
+  funding detection/classification, spend classification, detach/replay reorg
+  handling, and proof history APIs.
+- Base workflow is implemented through the native-USDC escrow contract, Base
+  Sepolia deployment/stress evidence, event normalization/storage, and worker
+  Base state consumption.
+- Settlement workflow is implemented through persistent decision records,
+  fail-closed manual-review decisions, PRL release/refund preparation, USDC
+  release preparation after confirmed PRL release, and duplicate-safe worker
+  iterations.
+- Signer workflow is implemented through fee caps, expected template hashes,
+  output-policy checks, signer key allow-list/pause controls, persistent
+  request state, append-only audit records, retry-safe requests, and no
+  broadcast from the signer path.
+- Ops workflow is implemented through explicit env contracts, secret names,
+  non-secret env examples, testnet2 node/indexer deployment checklists, and
+  monitoring contracts.
+- Frontend workflow is still in progress outside merged `dev`; page models and
+  typed clients are merged, but actual screens are not merged yet.
 
 Current delegation queue after ops deployment/monitoring implementation:
 
@@ -279,6 +310,45 @@ acceptance evidence.
 
 Open 9.8 items after ops deployment/monitoring implementation: `9.8.10`,
 `9.8.11`, and `9.8.12`.
+
+Loophole tracker after PR #51:
+
+- [x] Mock/local production fallback — OTC API production startup now fails
+  closed unless Postgres, Base RPC, real Pearl P2TR xpub allocation, Pearl
+  indexer watch URL, and a nonzero Base escrow contract are configured.
+- [x] Idempotency key reuse with changed payload — quote, accept, and
+  side-effect request hashes are persisted and conflicting reuse is rejected.
+- [x] Pearl escrow derivation collision/reuse — allocated derivation indexes
+  are persisted with uniqueness and retry on collision.
+- [x] Funding instructions before indexer observation — real P2TR quote
+  acceptance registers the Pearl indexer watch before returning funding
+  details.
+- [x] Public proof from stale trade JSON — Pearl confirmations, funding
+  outpoint, and release/refund txids are projected from active indexer
+  observations and spends.
+- [x] Ambiguous Pearl funding/spends/reorgs — funding is classified as
+  on-time, late, underpaid, overpaid, duplicate, or reorged; spends are
+  classified as release, refund, or unknown; detach/replay reorg paths are
+  tested.
+- [x] Missing Base event truth — Base escrow events are normalized and stored
+  for created, deposited, released, refunded, and cancelled transitions.
+- [x] Non-persistent settlement execution — worker iterations persist decisions
+  and prepare signer/broadcaster actions idempotently.
+- [x] Unsafe or unauditable signer path — signer boundary enforces fee caps,
+  template hash verification, output policy, custody allow-list/pause controls,
+  persistent requests, append-only audit records, and no live broadcast.
+- [x] Implicit deployment config and weak ops alerts — canonical env contracts,
+  secret names, deployment gates, and monitoring thresholds are documented.
+- [ ] No full simnet escrow evidence yet — blocks mainnet PRL paths until
+  `9.6.4` and `9.8.10` are recorded.
+- [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
+  production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
+- [ ] Actual frontend/admin screens are not merged yet — blocks user/operator
+  workflow completion until `9.4.x` and `9.8.12` land.
+- [ ] Base Sepolia ownership acceptance evidence is not recorded yet — blocks
+  any Base mainnet path until `9.6.7` is completed.
+- [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
+  after separate approval, ownership evidence, and live-run evidence.
 
 - [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
   Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
