@@ -20,6 +20,7 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     baseRpcUrl: env.BASE_RPC_URL,
     pearlIndexerWatchUrl: env.PEARL_INDEXER_WATCH_URL,
     pearlIndexerWatchTimeoutMs: Number(env.PEARL_INDEXER_WATCH_TIMEOUT_MS ?? 5_000),
+    adminApiToken: env.OTC_ADMIN_API_TOKEN,
   };
 }
 
@@ -40,6 +41,7 @@ export function assertOtcApiStartupConfig(config: OtcApiConfig, runtime: OtcApiR
   if (config.pearlEscrowAllocator !== 'p2tr_xpub') missing.push('PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
   if (!config.pearlEscrowXpub) missing.push('PEARL_ESCROW_XPUB');
   if (!config.pearlIndexerWatchUrl) missing.push('PEARL_INDEXER_WATCH_URL');
+  if (!config.adminApiToken) missing.push('OTC_ADMIN_API_TOKEN');
   if (config.baseEscrowContract === '0x0000000000000000000000000000000000000000') {
     missing.push('BASE_USDC_ESCROW_CONTRACT');
   }

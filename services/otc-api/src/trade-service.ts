@@ -19,11 +19,16 @@ import type { OtcRepository } from './repository.js';
 import type { PearlIndexedProof, PearlProofReader } from './pearl-proof-reader.js';
 import type {
   AcceptQuoteRequest,
+  AdminTradeDebugDetail,
+  AdminTradeQuery,
+  AdminTradeSummary,
   CreateQuoteRequest,
+  MarkManualReviewRequest,
   OtcApiConfig,
   OtcSideEffect,
   PrepareUsdcCreateTradeRequest,
   PublicTradeProof,
+  RecordSupportAlertRequest,
   RecordSideEffectRequest,
   UsdcCreateTradeIntent,
   UsdcEscrowVerification,
@@ -381,6 +386,100 @@ export class OtcTradeService {
     return this.repository.listSideEffects(tradeId);
   }
 
+  async listAdminTrades(query: AdminTradeQuery = {}): Promise<AdminTradeSummary[]> {
+    const trades = await this.repository.listTrades();
+    const summaries = await Promise.all(
+      trades
+        .filter((trade) => tradeMatchesAdminQuery(trade, query))
+        .map(async (trade) => this.createAdminTradeSummary(trade)),
+    );
+    return summaries.filter((summary) => !query.manualReviewOnly || summary.manualReview);
+  }
+
+  async getAdminTradeDebug(tradeId: string): Promise<AdminTradeDebugDetail> {
+    const trade = await this.getTrade(tradeId);
+    const [events, sideEffects, proof] = await Promise.all([
+      this.repository.listEvents(tradeId),
+      this.repository.listSideEffects(tradeId),
+      this.getPublicProof(tradeId),
+    ]);
+    return {
+      trade,
+      events,
+      sideEffects,
+      proof,
+      currentBlockers: getCurrentBlockers(trade, sideEffects, this.now()),
+      deadlineBreaches: getDeadlineBreaches(trade, this.now()),
+      safeActions: getSafeAdminActions(trade, sideEffects),
+      supportSummary: createSupportSummary(trade, sideEffects, this.now()),
+    };
+  }
+
+  async recordSupportAlert(tradeId: string, request: RecordSupportAlertRequest): Promise<OtcSideEffect> {
+    await this.getTrade(tradeId);
+    assertNonEmpty(request.idempotencyKey, 'idempotencyKey');
+    assertNonEmpty(request.message, 'message');
+    assertNonEmpty(request.actor, 'actor');
+    assertOneOf(request.severity, 'severity', ['info', 'warning', 'critical']);
+    if (request.source !== undefined) {
+      assertOneOf(request.source, 'source', ['user', 'operator', 'system']);
+    }
+    return this.saveSideEffect(tradeId, {
+      idempotencyKey: request.idempotencyKey,
+      effectType: 'support_alert',
+      status: request.severity === 'critical' ? 'failed' : 'prepared',
+      actor: request.actor,
+      sourceEventId: createStableId('event', [tradeId, 'support-alert', request.idempotencyKey]),
+      metadata: {
+        ...(request.metadata ?? {}),
+        severity: request.severity,
+        message: request.message,
+        source: request.source ?? 'user',
+        ...(request.contact ? { contact: request.contact } : {}),
+      },
+    });
+  }
+
+  async markManualReview(tradeId: string, request: MarkManualReviewRequest): Promise<AdminTradeDebugDetail> {
+    const trade = await this.getTrade(tradeId);
+    assertNonEmpty(request.idempotencyKey, 'idempotencyKey');
+    assertNonEmpty(request.reason, 'reason');
+    assertNonEmpty(request.actor, 'actor');
+    const timestamp = this.now().toISOString();
+    if (trade.state !== 'failed_manual_review') {
+      assertTradeTransition(trade.state, 'failed_manual_review');
+      await this.repository.updateTrade({
+        ...trade,
+        state: 'failed_manual_review',
+        updatedAt: timestamp,
+      });
+      await this.repository.appendEvent({
+        tradeId,
+        fromState: trade.state,
+        toState: 'failed_manual_review',
+        source: 'admin',
+        sourceEventId: createStableId('event', [tradeId, 'manual-review', request.idempotencyKey]),
+        observedAt: timestamp,
+        metadata: {
+          actor: request.actor,
+          reason: request.reason,
+        },
+      });
+    }
+    await this.saveSideEffect(tradeId, {
+      idempotencyKey: request.idempotencyKey,
+      effectType: 'manual_review_note',
+      status: 'confirmed',
+      actor: request.actor,
+      sourceEventId: createStableId('event', [tradeId, 'manual-review-note', request.idempotencyKey]),
+      metadata: {
+        ...(request.metadata ?? {}),
+        reason: request.reason,
+      },
+    });
+    return this.getAdminTradeDebug(tradeId);
+  }
+
   private async saveSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
     const timestamp = this.now().toISOString();
     const { sideEffect } = await this.repository.saveSideEffect({
@@ -401,6 +500,167 @@ export class OtcTradeService {
       updatedAt: timestamp,
     });
     return sideEffect;
+  }
+
+  private async createAdminTradeSummary(trade: OtcTrade): Promise<AdminTradeSummary> {
+    const sideEffects = await this.repository.listSideEffects(trade.tradeId);
+    const now = this.now();
+    return {
+      tradeId: trade.tradeId,
+      quoteId: trade.quoteId,
+      state: trade.state,
+      side: trade.side,
+      amountPrl: trade.amountPrl,
+      amountUsdc: trade.amountUsdc,
+      ageMs: Math.max(0, now.getTime() - new Date(trade.createdAt).getTime()),
+      updatedAgeMs: Math.max(0, now.getTime() - new Date(trade.updatedAt).getTime()),
+      currentBlockers: getCurrentBlockers(trade, sideEffects, now),
+      deadlineBreaches: getDeadlineBreaches(trade, now),
+      manualReview: isManualReviewTrade(trade),
+      alertCount: sideEffects.filter((effect) => effect.effectType === 'support_alert').length,
+      failedSideEffectCount: sideEffects.filter((effect) => effect.status === 'failed').length,
+      safeActions: getSafeAdminActions(trade, sideEffects),
+      updatedAt: trade.updatedAt,
+    };
+  }
+}
+
+function tradeMatchesAdminQuery(trade: OtcTrade, query: AdminTradeQuery): boolean {
+  if (query.state && trade.state !== query.state) {
+    return false;
+  }
+  if (!query.search) {
+    return true;
+  }
+  const needle = query.search.toLowerCase();
+  return [
+    trade.tradeId,
+    trade.quoteId,
+    trade.buyerPearlAddress,
+    trade.buyerUsdcAddress,
+    trade.sellerPearlRefundAddress,
+    trade.sellerUsdcReceiveAddress,
+    trade.pearlEscrow.address,
+    trade.pearlEscrow.fundingOutpoint,
+    trade.pearlEscrow.releaseTxid,
+    trade.pearlEscrow.refundTxid,
+    trade.usdcEscrow.tradeKey,
+    trade.usdcEscrow.depositTxHash,
+    trade.usdcEscrow.releaseTxHash,
+    trade.usdcEscrow.refundTxHash,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.toLowerCase().includes(needle));
+}
+
+function getCurrentBlockers(trade: OtcTrade, sideEffects: OtcSideEffect[], now: Date): string[] {
+  const blockers = new Set<string>();
+  if (isManualReviewTrade(trade)) {
+    blockers.add(`manual_review:${trade.state}`);
+  }
+  for (const breach of getDeadlineBreaches(trade, now)) {
+    blockers.add(`deadline:${breach}`);
+  }
+  for (const effect of sideEffects) {
+    if (effect.status === 'failed') {
+      blockers.add(`failed_side_effect:${effect.effectType}`);
+    }
+  }
+  if (trade.state === 'pearl_escrow_pending') blockers.add('waiting_for_prl_funding');
+  if (trade.state === 'usdc_escrow_pending') blockers.add('waiting_for_usdc_deposit');
+  if (trade.state === 'release_pending') blockers.add('waiting_for_prl_release_confirmation');
+  if (tradeStateIsTerminal(trade.state)) blockers.add(`terminal:${trade.state}`);
+  return Array.from(blockers).sort();
+}
+
+function getDeadlineBreaches(trade: OtcTrade, now: Date): string[] {
+  const breaches: string[] = [];
+  const deadlines = [
+    ['quote_expires_at', trade.deadlines.quoteExpiresAt],
+    ['pearl_funding_deadline', trade.deadlines.pearlFundingDeadline],
+    ['usdc_deposit_deadline', trade.deadlines.usdcDepositDeadline],
+    ['settlement_deadline', trade.deadlines.settlementDeadline],
+    ['refund_available_at', trade.deadlines.refundAvailableAt],
+  ] as const;
+  for (const [name, value] of deadlines) {
+    if (new Date(value).getTime() < now.getTime() && !tradeStateIsTerminal(trade.state)) {
+      breaches.push(name);
+    }
+  }
+  return breaches;
+}
+
+function getSafeAdminActions(trade: OtcTrade, sideEffects: OtcSideEffect[]): string[] {
+  const actions = new Set<string>(['record_support_alert', 'copy_support_summary']);
+  if (!tradeStateIsTerminal(trade.state)) {
+    actions.add('mark_manual_review');
+    actions.add('refresh_proof');
+  }
+  if (sideEffects.some((effect) => effect.status === 'failed')) {
+    actions.add('inspect_failed_side_effect');
+  }
+  if (sideEffects.some((effect) => effect.effectType === 'pearl_watch_register' && effect.status === 'failed')) {
+    actions.add('retry_watch_registration');
+  }
+  if (trade.state === 'prl_release_failed') {
+    actions.add('inspect_prl_release_package');
+  }
+  return Array.from(actions).sort();
+}
+
+function createSupportSummary(
+  trade: OtcTrade,
+  sideEffects: OtcSideEffect[],
+  now: Date,
+): AdminTradeDebugDetail['supportSummary'] {
+  const blockers = getCurrentBlockers(trade, sideEffects, now);
+  const nextDeadline = findNextDeadline(trade, now);
+  return {
+    headline: `Trade ${trade.tradeId} is ${trade.state}`,
+    waitingOn: blockers.length > 0 ? blockers : ['no_current_blocker_detected'],
+    ...(nextDeadline ? { nextDeadline } : {}),
+    publicProofPath: `/otc/trades/${trade.tradeId}/proof`,
+  };
+}
+
+function findNextDeadline(
+  trade: OtcTrade,
+  now: Date,
+): AdminTradeDebugDetail['supportSummary']['nextDeadline'] | undefined {
+  return [
+    ['quote_expires_at', trade.deadlines.quoteExpiresAt],
+    ['pearl_funding_deadline', trade.deadlines.pearlFundingDeadline],
+    ['usdc_deposit_deadline', trade.deadlines.usdcDepositDeadline],
+    ['settlement_deadline', trade.deadlines.settlementDeadline],
+    ['refund_available_at', trade.deadlines.refundAvailableAt],
+  ]
+    .map(([name, at]) => ({ name, at, msRemaining: new Date(at).getTime() - now.getTime() }))
+    .filter((deadline) => deadline.msRemaining >= 0)
+    .sort((a, b) => a.msRemaining - b.msRemaining)[0];
+}
+
+function isManualReviewTrade(trade: OtcTrade): boolean {
+  return [
+    'failed_manual_review',
+    'late_prl_funding',
+    'usdc_refunded',
+    'prl_release_failed',
+    'amount_mismatch',
+    'reorged',
+    'stale_indexer',
+    'unknown_spend',
+  ].includes(trade.state);
+}
+
+function assertNonEmpty(value: unknown, field: string): asserts value is string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`${field} is required`);
+  }
+}
+
+function assertOneOf<T extends string>(value: unknown, field: string, allowed: readonly T[]): asserts value is T {
+  if (typeof value !== 'string' || !allowed.includes(value as T)) {
+    throw new Error(`${field} is invalid`);
   }
 }
 

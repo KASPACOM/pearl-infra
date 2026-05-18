@@ -22,6 +22,8 @@ const config: OtcApiConfig = {
   baseEscrowContract: '0x1111111111111111111111111111111111111111',
   baseNetwork: 'base_sepolia',
 };
+const adminToken = 'test-admin-token';
+const adminHeaders = { authorization: `Bearer ${adminToken}` };
 
 const escrowAllocator: PearlEscrowAllocator = {
   async allocateEscrow({ tradeId, config: allocatorConfig }) {
@@ -41,7 +43,7 @@ async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {
     escrowAllocator,
     () => new Date('2026-05-16T12:00:00.000Z'),
   );
-  const server = createOtcHttpServer(service);
+  const server = createOtcHttpServer(service, { adminToken });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
   try {
@@ -53,10 +55,10 @@ async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {
   }
 }
 
-async function postJson(baseUrl: string, path: string, body: unknown): Promise<Response> {
+async function postJson(baseUrl: string, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return fetch(`${baseUrl}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
 }
@@ -119,6 +121,47 @@ test('serves quote, accept, trade, and proof routes', async () => {
     assert.equal(sideEffectsResponse.status, 200);
     const sideEffects = (await sideEffectsResponse.json()) as unknown[];
     assert.equal(sideEffects.length, 1);
+
+    const supportAlertResponse = await postJson(baseUrl, `/otc/trades/${trade.tradeId}/support-alerts`, {
+      idempotencyKey: 'http-support-alert-1',
+      actor: 'support',
+      severity: 'warning',
+      message: 'User needs help with deposit status',
+      source: 'user',
+    });
+    assert.equal(supportAlertResponse.status, 201);
+
+    const unauthorizedAdminResponse = await fetch(`${baseUrl}/otc/admin/trades?manual_review_only=false&search=${trade.tradeId}`);
+    assert.equal(unauthorizedAdminResponse.status, 401);
+
+    const adminListResponse = await fetch(`${baseUrl}/otc/admin/trades?manual_review_only=false&search=${trade.tradeId}`, {
+      headers: adminHeaders,
+    });
+    assert.equal(adminListResponse.status, 200);
+    const adminTrades = (await adminListResponse.json()) as Array<{ tradeId: string; alertCount: number }>;
+    assert.equal(adminTrades.length, 1);
+    assert.equal(adminTrades[0].tradeId, trade.tradeId);
+    assert.equal(adminTrades[0].alertCount, 1);
+
+    const manualReviewResponse = await postJson(baseUrl, `/otc/admin/trades/${trade.tradeId}/manual-review`, {
+      idempotencyKey: 'http-manual-review-1',
+      actor: 'operator',
+      reason: 'User reported an error; hold for operator inspection',
+    }, adminHeaders);
+    assert.equal(manualReviewResponse.status, 200);
+    const manualReview = (await manualReviewResponse.json()) as {
+      trade: { state: string };
+      supportSummary: { publicProofPath: string };
+      safeActions: string[];
+    };
+    assert.equal(manualReview.trade.state, 'failed_manual_review');
+    assert.equal(manualReview.supportSummary.publicProofPath, `/otc/trades/${trade.tradeId}/proof`);
+    assert.equal(manualReview.safeActions.includes('copy_support_summary'), true);
+
+    const adminDetailResponse = await fetch(`${baseUrl}/otc/admin/trades/${trade.tradeId}`, { headers: adminHeaders });
+    assert.equal(adminDetailResponse.status, 200);
+    const adminDetail = (await adminDetailResponse.json()) as { sideEffects: unknown[] };
+    assert.equal(adminDetail.sideEffects.length, 3);
   });
 });
 

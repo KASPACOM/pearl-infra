@@ -32,6 +32,7 @@ Non-secret environment examples live in `ops/otc/`.
 | `pearl-otc-api-db` | OTC API | `OTC_API_DATABASE_URL` |
 | `pearl-otc-base-rpc` | OTC API and worker | `BASE_RPC_URL` |
 | `pearl-otc-p2tr-xpub` | OTC API | `PEARL_ESCROW_XPUB` |
+| `pearl-otc-admin-api` | OTC API admin surface | `OTC_ADMIN_API_TOKEN` |
 | `pearl-otc-signer-policy` | settlement worker / signer boundary | `PEARL_SIGNER_KEY_ID`, `PEARL_SIGNER_ALLOWED_KEY_IDS`, `PEARL_SIGNER_RELEASE_FEE_CAP_GRAINS`, `PEARL_SIGNER_REFUND_FEE_CAP_GRAINS` |
 | `pearl-otc-signer-store` | signer boundary | `PEARL_SIGNER_REQUEST_STORE_PATH`, `PEARL_SIGNER_AUDIT_LOG_PATH` |
 | `pearl-otc-operator-alerts` | alerting | `OTC_ALERT_WEBHOOK_URL` or pager integration secret |
@@ -82,6 +83,7 @@ OTC API, indexer, frontend, or general worker containers.
 | `PEARL_ESCROW_ALLOW_MAINNET` | yes | `false` until approval |
 | `PEARL_INDEXER_WATCH_URL` | yes | private URL for testnet2 watched-address API |
 | `PEARL_INDEXER_WATCH_TIMEOUT_MS` | yes | `5000` |
+| `OTC_ADMIN_API_TOKEN` | yes | bearer token from `pearl-otc-admin-api` |
 | `OTC_QUOTE_TTL_MS` | yes | quoted policy value |
 | `OTC_PEARL_FUNDING_TTL_MS` | yes | quoted policy value |
 | `OTC_USDC_DEPOSIT_TTL_MS` | yes | quoted policy value |
@@ -119,7 +121,8 @@ Before enabling quote acceptance in `testnet2-base-sepolia`:
 - testnet2 `pearld` RPC health returns block count and best hash;
 - indexer `/healthz` and `/watches` smoke checks pass;
 - `PEARL_INDEXER_WATCH_URL` points at the private watched-address API;
-- OTC API starts with `OTC_API_REQUIRE_PRODUCTION_CONFIG=true`;
+- OTC API starts with `OTC_API_REQUIRE_PRODUCTION_CONFIG=true` and
+  `OTC_ADMIN_API_TOKEN` configured;
 - Base Sepolia contract address matches recorded evidence;
 - signer policy is configured with fee caps and `PEARL_SIGNER_PAUSED=true`;
 - `PEARL_BROADCAST_ENABLED=false` until simnet evidence is recorded.

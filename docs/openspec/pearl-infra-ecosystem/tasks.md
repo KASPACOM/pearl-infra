@@ -242,6 +242,16 @@ Current delegation queue after ops deployment/monitoring implementation:
 - [ ] 9.4.4 Add admin/manual-review shell for stuck trades.
   - [x] 9.4.4.a Extend the OTC web API client with side-effect list/record
     routes needed by the operator manual-review shell.
+  - [x] 9.4.4.b Add backend admin diagnostics endpoints for trade list, trade
+    debug detail, user support/error alerts, support summary, bearer-gated
+    admin routes, and audited manual-review notes.
+  - [ ] 9.4.4.c Build the admin trade list UI with state/manual-review/search
+    filters and alert/backlog indicators.
+  - [ ] 9.4.4.d Build the admin trade debug detail UI showing trade state,
+    Pearl watch/proof history, Base events, side effects, audit notes,
+    deadlines, blockers, and safe actions.
+  - [ ] 9.4.4.e Add the user support/error alert form and copyable support
+    summary so support can escalate stuck trades quickly.
 - [x] 9.4.5 Add typed OTC API client and Base USDC escrow ethers call builders using the shared ABI/config.
 - [ ] 9.4.6 Show all relevant deadlines and disable USDC deposit when the deposit cutoff has passed or when on-chain trade terms do not match backend terms.
   - [x] 9.4.6.a Add shared deadline models and deposit-action gating for wallet
@@ -389,6 +399,9 @@ Loophole tracker after PR #51:
   txids before any mainnet PRL code path is enabled.
 - [ ] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
   prove no release action is exposed to users or operators.
+  - Admin backend contracts now expose read/debug/support/manual-review
+    endpoints without arbitrary release, signing, or term-edit actions; admin
+    routes require `OTC_ADMIN_API_TOKEN` in production-like deployments.
 - [x] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
   broadcasts, duplicate events, manual-review backlog, and mismatched
   backend/on-chain terms.

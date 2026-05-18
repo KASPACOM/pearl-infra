@@ -42,6 +42,7 @@ export interface OtcRepository {
   findQuoteIdempotencyByClientRequestId(clientRequestId: string): Promise<QuoteIdempotencyRecord | undefined>;
   saveTrade(trade: OtcTrade, clientRequestId: string, requestHash?: string): Promise<void>;
   findTradeById(tradeId: string): Promise<OtcTrade | undefined>;
+  listTrades(): Promise<OtcTrade[]>;
   findTradeByQuoteId(quoteId: string): Promise<OtcTrade | undefined>;
   findTradeByClientRequestId(clientRequestId: string): Promise<OtcTrade | undefined>;
   findTradeIdempotencyByClientRequestId(clientRequestId: string): Promise<TradeIdempotencyRecord | undefined>;
@@ -103,6 +104,10 @@ export class InMemoryOtcRepository implements OtcRepository {
 
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
     return this.trades.get(tradeId);
+  }
+
+  async listTrades(): Promise<OtcTrade[]> {
+    return Array.from(this.trades.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async findTradeByQuoteId(quoteId: string): Promise<OtcTrade | undefined> {
@@ -291,6 +296,15 @@ export class PgOtcRepository implements OtcRepository {
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
     const result = await this.client.query<TradeRow>('SELECT trade FROM otc_trades WHERE trade_id = $1', [tradeId]);
     return result.rows[0]?.trade;
+  }
+
+  async listTrades(): Promise<OtcTrade[]> {
+    const result = await this.client.query<TradeRow>(
+      `SELECT trade
+         FROM otc_trades
+        ORDER BY updated_at DESC, trade_id ASC`,
+    );
+    return result.rows.map((row) => row.trade);
   }
 
   async findTradeByQuoteId(quoteId: string): Promise<OtcTrade | undefined> {
