@@ -561,9 +561,15 @@ Loophole tracker after admin FE wiring:
 - [x] 10.8.2 Add `bridge_exit_requests` table for mirrored Igra burn/lock events.
 - [x] 10.8.3 Implement repository/API support for bridge deposit watches and reserve watches via the shared `/watches` API. Completed in PR #12.
 - [ ] 10.8.4 Track Pearl deposit observations by txid/vout, amount, block, confirmations, match status, consumed mint tx, and reorg state.
+  - [x] 10.8.4.a Add bridge-service deposit observation projection for outpoint, amount, confirmations, match status, consumed claim spend, unsafe classification, and reorg blockers.
 - [ ] 10.8.5 Track reserve spends and classify each spend as exit release, consolidation, ops transfer, fee/change, or unknown.
+  - [x] 10.8.5.a Add bridge-service reserve spend projection that separates known spends from unknown spends before relayer decisions.
 - [ ] 10.8.6 Expose reconciliation views for confirmed reserves, pending deposits, pending exits, minted `wPRL` supply, reserve surplus/deficit, stale requests, and unknown reserve spends.
+  - [x] 10.8.6.a Add bridge-service reconciliation snapshot for reserves, known spends, pending exits, minted supply, surplus/deficit, stale watches, and unknown reserve-spend blockers.
 - [ ] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
+  - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.
 - [ ] 10.10 Add bridge API/proof contracts for deposit status, exit status, reserve backing, and public audit trail.
+  - [x] 10.10.1 Add bridge public proof DTOs for deposit status, exit status, reserve backing, blockers, and public audit fields.
 - [ ] 10.11 Add low-cap pilot gates: min/max amounts, rolling window caps, hot-wallet cap, monitoring, and emergency pause test.
+  - [x] 10.11.1 Add service-side low-cap pilot gates for deposit min/max, max exit, supply cap, rolling mint cap, and reserve-available checks.
 - [ ] 10.12 After bridge entry/exit pilot passes, create `wPRL/USDC` pool plan with initial liquidity, price assumptions, and max bridge exposure approval.
