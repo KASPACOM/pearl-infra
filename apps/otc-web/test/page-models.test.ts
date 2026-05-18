@@ -120,6 +120,14 @@ test('checkout model disables USDC deposit after deadline or verification mismat
 
   assert.equal(mismatched.base.depositAction.kind, 'blocked');
   assert.match(mismatched.base.depositAction.reason ?? '', /amountMicros mismatch/);
+
+  const unverified = buildTradeCheckoutPageModel(trade, {
+    now: NOW,
+    wallet: { connected: true, chainId: 84532 },
+  });
+
+  assert.equal(unverified.base.depositAction.kind, 'blocked');
+  assert.match(unverified.base.depositAction.reason ?? '', /not been verified/);
 });
 
 test('checkout and public proof models surface manual-review banners and timeline facts', () => {

@@ -9,7 +9,10 @@ test('posts quote and accept requests to the OTC HTTP routes', async () => {
     baseUrl: 'https://api.example.test/',
     fetcher: async (url, init) => {
       calls.push({ url: String(url), init: init ?? {} });
-      return jsonResponse(url.toString().endsWith('/accept') ? { tradeId: 'trade_1' } : { quoteId: 'quote_1' }, 201);
+      if (url.toString().endsWith('/accept')) {
+        return jsonResponse({ tradeId: 'trade_1' }, 201);
+      }
+      return jsonResponse({ quoteId: 'quote_1' }, init?.method === 'POST' ? 201 : 200);
     },
   });
 
@@ -22,6 +25,7 @@ test('posts quote and accept requests to the OTC HTTP routes', async () => {
     usdcRefundAddress: '0x2222222222222222222222222222222222222222',
     clientRequestId: 'quote-client-1',
   });
+  const fetchedQuote = await client.getQuote('quote_1');
   const trade = await client.acceptQuote('quote_1', {
     buyerPearlAddress: 'tprl1pbuyer',
     buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
@@ -31,11 +35,14 @@ test('posts quote and accept requests to the OTC HTTP routes', async () => {
   });
 
   assert.equal(quote.quoteId, 'quote_1');
+  assert.equal(fetchedQuote.quoteId, 'quote_1');
   assert.equal(trade.tradeId, 'trade_1');
   assert.equal(calls[0].url, 'https://api.example.test/otc/quotes');
-  assert.equal(calls[1].url, 'https://api.example.test/otc/quotes/quote_1/accept');
+  assert.equal(calls[1].url, 'https://api.example.test/otc/quotes/quote_1');
+  assert.equal(calls[2].url, 'https://api.example.test/otc/quotes/quote_1/accept');
   assert.equal(calls[0].init.method, 'POST');
-  assert.equal(calls[1].init.method, 'POST');
+  assert.equal(calls[1].init.method, 'GET');
+  assert.equal(calls[2].init.method, 'POST');
 });
 
 test('gets trade and proof routes', async () => {

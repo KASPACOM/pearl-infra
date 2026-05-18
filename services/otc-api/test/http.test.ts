@@ -76,6 +76,11 @@ test('serves quote, accept, trade, and proof routes', async () => {
     const quote = (await quoteResponse.json()) as { quoteId: string; amountUsdc: string };
     assert.equal(quote.amountUsdc, '170.000000');
 
+    const getQuoteResponse = await fetch(`${baseUrl}/otc/quotes/${quote.quoteId}`);
+    assert.equal(getQuoteResponse.status, 200);
+    const fetchedQuote = (await getQuoteResponse.json()) as { quoteId: string };
+    assert.equal(fetchedQuote.quoteId, quote.quoteId);
+
     const tradeResponse = await postJson(baseUrl, `/otc/quotes/${quote.quoteId}/accept`, {
       buyerPearlAddress: 'tprl1pbuyer',
       buyerUsdcAddress: '0x3333333333333333333333333333333333333333',

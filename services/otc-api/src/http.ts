@@ -31,6 +31,10 @@ export async function handleOtcHttpRequest(service: OtcTradeService, request: In
     return { statusCode: 201, body: await service.createQuote(await readJsonBody(request)) };
   }
 
+  if (method === 'GET' && parts.length === 3 && parts[0] === 'otc' && parts[1] === 'quotes') {
+    return { statusCode: 200, body: await service.getQuote(parts[2]) };
+  }
+
   if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'quotes' && parts[3] === 'accept') {
     return { statusCode: 201, body: await service.acceptQuote(parts[2], await readJsonBody(request)) };
   }

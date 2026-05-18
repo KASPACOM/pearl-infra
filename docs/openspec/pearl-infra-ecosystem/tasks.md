@@ -163,14 +163,12 @@ Current Pearl OTC code/workflow status:
 - Ops workflow is implemented through explicit env contracts, secret names,
   non-secret env examples, testnet2 node/indexer deployment checklists, and
   monitoring contracts.
-- Frontend workflow is still in progress outside merged `dev`; page models and
-  typed clients are merged, but actual screens are not merged yet.
+- Frontend workflow is implemented through rendered RFQ, quote accept,
+  checkout, public proof, and admin/manual-review screens built from the
+  existing typed clients and page models.
 
-Current delegation queue after ops deployment/monitoring implementation:
+Current delegation queue after rendered OTC web screens:
 
-- Frontend owner: page models are complete in PR #37. Actual RFQ, checkout,
-  proof, and admin screens remain open under `9.4.1` through `9.4.4` and
-  `9.4.6` through `9.4.8`.
 - Evidence owner: `9.6.4`, `9.8.10` full simnet escrow run, `9.3.9`
   testnet2 ingest, and `9.8.11` testnet2/Base Sepolia run with real txids.
   Run these after the deployment config is applied and services are reachable.
@@ -229,28 +227,28 @@ Current delegation queue after ops deployment/monitoring implementation:
 
 ### 9.4 Frontend Checkout
 
-- [ ] 9.4.1 Add RFQ buy/sell PRL page in `apps/otc-web`.
+- [x] 9.4.1 Add RFQ buy/sell PRL page in `apps/otc-web`.
   - [x] 9.4.1.a Add RFQ page model with buy/sell tabs, PRL amount validation,
     Pearl/Base address validation, and locked USDC-on-Base request shaping.
-- [ ] 9.4.2 Add checkout status page using mocked API responses.
+- [x] 9.4.2 Add checkout status page using mocked API responses.
   - [x] 9.4.2.a Add quote-acceptance and trade-checkout page models for mocked
     API responses, role-based seller fields, state badges, leg cards, and
     timeline facts.
-- [ ] 9.4.3 Add public proof page for Pearl and Base settlement legs.
+- [x] 9.4.3 Add public proof page for Pearl and Base settlement legs.
   - [x] 9.4.3.a Add public proof page model for quote terms, deadlines, Pearl
     facts, Base facts, timeline events, and read-only action gating.
-- [ ] 9.4.4 Add admin/manual-review shell for stuck trades.
+- [x] 9.4.4 Add admin/manual-review shell for stuck trades.
   - [x] 9.4.4.a Extend the OTC web API client with side-effect list/record
     routes needed by the operator manual-review shell.
 - [x] 9.4.5 Add typed OTC API client and Base USDC escrow ethers call builders using the shared ABI/config.
-- [ ] 9.4.6 Show all relevant deadlines and disable USDC deposit when the deposit cutoff has passed or when on-chain trade terms do not match backend terms.
+- [x] 9.4.6 Show all relevant deadlines and disable USDC deposit when the deposit cutoff has passed or when on-chain trade terms do not match backend terms.
   - [x] 9.4.6.a Add shared deadline models and deposit-action gating for wallet
     connection, chain mismatch, expired USDC deposit windows, and failed
     on-chain term verification.
-- [ ] 9.4.7 Display late funding, refunded, reorged, stale indexer, and manual-review states without offering release actions to users.
+- [x] 9.4.7 Display late funding, refunded, reorged, stale indexer, and manual-review states without offering release actions to users.
   - [x] 9.4.7.a Add shared state families and failure banners for all manual
     review states, with checkout/proof models explicitly hiding release actions.
-- [ ] 9.4.8 For proof pages, show quote terms, deadlines, PRL funding/release/refund txids, USDC deposit/release/refund txids, confirmations, and manual-review reason.
+- [x] 9.4.8 For proof pages, show quote terms, deadlines, PRL funding/release/refund txids, USDC deposit/release/refund txids, confirmations, and manual-review reason.
   - [x] 9.4.8.a Add proof-page model coverage for deadlines, PRL/Base tx facts,
     confirmations, timeline entries, and manual-review banner copy.
 
@@ -298,18 +296,17 @@ Current delegation queue after ops deployment/monitoring implementation:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after ops deployment/monitoring implementation: API
+Status after rendered OTC web screens: API
 startup/idempotency, derivation allocation safety, watch registration, Pearl
 funding/spend detection, reorg hardening, Pearl proof projection, Base escrow
 event ingestion, the persistent settlement-worker iteration, the Pearl signer
 boundary policy/request/audit layer, explicit deployment environment/secret
-contracts, and monitoring contracts are implemented, with Base Sepolia
-native-USDC stress evidence recorded. The remaining production blockers are
-live simnet/testnet evidence, actual frontend/admin screens, and Base ownership
-acceptance evidence.
+contracts, monitoring contracts, and actual RFQ/accept/checkout/proof/admin
+screens are implemented, with Base Sepolia native-USDC stress evidence
+recorded. The remaining production blockers are live simnet/testnet evidence
+and Base ownership acceptance evidence.
 
-Open 9.8 items after ops deployment/monitoring implementation: `9.8.10`,
-`9.8.11`, and `9.8.12`.
+Open 9.8 items after rendered OTC web screens: `9.8.10` and `9.8.11`.
 
 Loophole tracker after PR #51:
 
@@ -343,8 +340,8 @@ Loophole tracker after PR #51:
   `9.6.4` and `9.8.10` are recorded.
 - [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
   production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
-- [ ] Actual frontend/admin screens are not merged yet — blocks user/operator
-  workflow completion until `9.4.x` and `9.8.12` land.
+- [x] Actual frontend/admin screens are rendered from the 9.4 page models with
+  no release/refund actions exposed in user or operator UI.
 - [ ] Base Sepolia ownership acceptance evidence is not recorded yet — blocks
   any Base mainnet path until `9.6.7` is completed.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
@@ -387,7 +384,7 @@ Loophole tracker after PR #51:
   proof.
 - [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
   txids before any mainnet PRL code path is enabled.
-- [ ] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
+- [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
   prove no release action is exposed to users or operators.
 - [x] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
   broadcasts, duplicate events, manual-review backlog, and mismatched
