@@ -49,6 +49,9 @@ export interface OtcApiConfig {
   pearlIndexerWatchTimeoutMs?: number;
   adminApiToken?: string;
   supportAlertWebhookUrl?: string;
+  supportAlertTelegramBotToken?: string;
+  supportAlertTelegramChatId?: string;
+  supportAlertTelegramMessageThreadId?: string;
 }
 
 export interface OtcApiRuntimeConfig {

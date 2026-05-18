@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { WebhookSupportAlertNotifier } from '../src/support-alert-notifier.ts';
+import {
+  createConfiguredSupportAlertNotifier,
+  TelegramSupportAlertNotifier,
+  WebhookSupportAlertNotifier,
+} from '../src/support-alert-notifier.ts';
 
 test('posts support alert webhook payload without private escrow terms', async () => {
   const requests: Array<{ url: string; body: any }> = [];
@@ -114,4 +118,79 @@ test('throws when support alert webhook returns a non-success status', async () 
       }),
     /support alert webhook failed with HTTP 500/,
   );
+});
+
+test('posts support alert to Telegram sendMessage with escaped HTML', async () => {
+  const requests: Array<{ url: string; body: any }> = [];
+  const notifier = new TelegramSupportAlertNotifier(
+    {
+      botToken: 'test-bot-token',
+      chatId: '-1001234567890',
+      messageThreadId: '456',
+    },
+    (async (url, init) => {
+      requests.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch,
+  );
+
+  await notifier.notifySupportAlert({
+    trade: {
+      tradeId: 'trade_<1>',
+      quoteId: 'quote_1',
+      state: 'pearl_escrow_pending',
+      side: 'buy_prl',
+    } as any,
+    alert: {
+      idempotencyKey: 'support-alert-telegram-1',
+      tradeId: 'trade_<1>',
+      effectType: 'support_alert',
+      status: 'prepared',
+      actor: 'support',
+      metadata: {
+        severity: 'critical',
+        message: 'User says <deposit> failed',
+        source: 'user',
+        contact: 'user@example.com',
+      },
+      createdAt: '2026-05-16T12:01:00.000Z',
+      updatedAt: '2026-05-16T12:01:00.000Z',
+    },
+    supportSummary: {
+      headline: 'Trade trade_<1> is pearl_escrow_pending',
+      waitingOn: ['waiting_for_prl_funding'],
+      publicProofPath: '/otc/trades/trade_<1>/proof',
+    },
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, 'https://api.telegram.org/bottest-bot-token/sendMessage');
+  assert.equal(requests[0].body.chat_id, '-1001234567890');
+  assert.equal(requests[0].body.message_thread_id, 456);
+  assert.equal(requests[0].body.parse_mode, 'HTML');
+  assert.match(requests[0].body.text, /Pearl OTC CRITICAL alert/);
+  assert.match(requests[0].body.text, /trade_&lt;1&gt;/);
+  assert.match(requests[0].body.text, /User says &lt;deposit&gt; failed/);
+});
+
+test('creates configured notifier for Telegram alerts without requiring webhook', async () => {
+  const notifier = createConfiguredSupportAlertNotifier({
+    pearlNetwork: 'testnet2',
+    pearlEscrowAllocator: 'mock',
+    pearlEscrowDerivationPrefix: '0',
+    allowMainnetPearlEscrow: false,
+    quoteTtlMs: 1,
+    pearlFundingTtlMs: 1,
+    usdcDepositTtlMs: 1,
+    settlementTtlMs: 1,
+    priceUsdcPerPrl: '0.170000',
+    feeBps: 0,
+    pearlEscrowConfirmations: 1,
+    baseEscrowContract: '0x1111111111111111111111111111111111111111',
+    baseNetwork: 'base_sepolia',
+    supportAlertTelegramBotToken: 'test-bot-token',
+    supportAlertTelegramChatId: '-1001234567890',
+  });
+
+  assert.ok(notifier);
 });
