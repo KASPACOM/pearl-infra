@@ -49,6 +49,7 @@ dependencies are configured:
 - `PEARL_ESCROW_ALLOCATOR=p2tr_xpub`
 - `PEARL_ESCROW_XPUB`
 - `OTC_ADMIN_API_TOKEN`
+- `OTC_ALERT_WEBHOOK_URL`
 
 Quote creation, quote acceptance, and side-effect writes store canonical
 request hashes. Reusing the same idempotency key with a different payload is a
@@ -57,4 +58,6 @@ hard error instead of returning the original object.
 Admin routes under `/otc/admin/*` require `Authorization: Bearer
 $OTC_ADMIN_API_TOKEN`. User-facing support/error reports use the narrow public
 `POST /otc/trades/:tradeId/support-alerts` endpoint and cannot mark manual
-review or read admin diagnostics.
+review or read admin diagnostics. When `OTC_ALERT_WEBHOOK_URL` is configured,
+new support/error reports are posted to the operator alert webhook and the
+delivery result is audited as a `support_alert_delivery` side effect.

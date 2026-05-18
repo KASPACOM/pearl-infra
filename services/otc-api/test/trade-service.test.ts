@@ -5,6 +5,7 @@ import { canTransitionTrade } from '@kaspacom/pearl-sdk';
 
 import type { PearlProofReader } from '../src/pearl-proof-reader.ts';
 import { InMemoryOtcRepository } from '../src/repository.ts';
+import type { SupportAlertNotification, SupportAlertNotifier } from '../src/support-alert-notifier.ts';
 import { OtcTradeService, type PearlEscrowAllocator, type PearlEscrowWatchRegistrar } from '../src/trade-service.ts';
 import type { OtcApiConfig } from '../src/types.ts';
 import type { UsdcEscrowReader } from '../src/usdc-escrow-reader.ts';
@@ -87,12 +88,35 @@ class StaticPearlProofReader implements PearlProofReader {
   }
 }
 
+class RecordingSupportAlertNotifier implements SupportAlertNotifier {
+  readonly notifications: SupportAlertNotification[] = [];
+  private readonly fail: boolean;
+
+  constructor(fail = false) {
+    this.fail = fail;
+  }
+
+  async notifySupportAlert(notification: SupportAlertNotification): Promise<void> {
+    if (this.fail) {
+      throw new Error('operator alert webhook unavailable');
+    }
+    this.notifications.push(notification);
+  }
+}
+
 function createService(now = new Date('2026-05-16T12:00:00.000Z')): OtcTradeService {
   return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, () => now);
 }
 
 function createServiceWithUsdcReader(reader: UsdcEscrowReader, now = new Date('2026-05-16T12:00:00.000Z')): OtcTradeService {
   return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, reader, () => now);
+}
+
+function createServiceWithSupportAlertNotifier(
+  notifier: SupportAlertNotifier,
+  now = new Date('2026-05-16T12:00:00.000Z'),
+): OtcTradeService {
+  return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, undefined, () => now, undefined, undefined, notifier);
 }
 
 test('creates an idempotent Base USDC quote', async () => {
@@ -613,6 +637,80 @@ test('builds admin trade diagnostics and records support alerts', async () => {
   assert.equal(detail.sideEffects.length, 1);
   assert.equal(detail.supportSummary.publicProofPath, `/otc/trades/${trade.tradeId}/proof`);
   assert.equal(detail.currentBlockers.includes('failed_side_effect:support_alert'), true);
+});
+
+test('delivers support alerts to the operator notifier and audits delivery result', async () => {
+  const notifier = new RecordingSupportAlertNotifier();
+  const service = createServiceWithSupportAlertNotifier(notifier);
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-alert-delivery',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-alert-delivery',
+  });
+
+  await service.recordSupportAlert(trade.tradeId, {
+    idempotencyKey: 'support-alert-delivery-1',
+    actor: 'support',
+    severity: 'warning',
+    message: 'User needs operator help',
+    source: 'user',
+  });
+  await service.recordSupportAlert(trade.tradeId, {
+    idempotencyKey: 'support-alert-delivery-1',
+    actor: 'support',
+    severity: 'warning',
+    message: 'User needs operator help',
+    source: 'user',
+  });
+
+  const sideEffects = await service.listSideEffects(trade.tradeId);
+  assert.equal(notifier.notifications.length, 1);
+  assert.equal(notifier.notifications[0].supportSummary.publicProofPath, `/otc/trades/${trade.tradeId}/proof`);
+  assert.equal(sideEffects.some((effect) => effect.effectType === 'support_alert_delivery' && effect.status === 'confirmed'), true);
+});
+
+test('audits failed support alert delivery without losing the user alert', async () => {
+  const notifier = new RecordingSupportAlertNotifier(true);
+  const service = createServiceWithSupportAlertNotifier(notifier);
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-alert-delivery-failed',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-alert-delivery-failed',
+  });
+
+  const alert = await service.recordSupportAlert(trade.tradeId, {
+    idempotencyKey: 'support-alert-delivery-failed-1',
+    actor: 'support',
+    severity: 'critical',
+    message: 'Critical operator alert should be persisted',
+    source: 'user',
+  });
+
+  const sideEffects = await service.listSideEffects(trade.tradeId);
+  assert.equal(alert.effectType, 'support_alert');
+  assert.equal(sideEffects.some((effect) => effect.effectType === 'support_alert_delivery' && effect.status === 'failed'), true);
 });
 
 test('marks a trade for manual review with an audited admin note', async () => {

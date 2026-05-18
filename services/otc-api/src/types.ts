@@ -48,6 +48,7 @@ export interface OtcApiConfig {
   pearlIndexerWatchUrl?: string;
   pearlIndexerWatchTimeoutMs?: number;
   adminApiToken?: string;
+  supportAlertWebhookUrl?: string;
 }
 
 export interface OtcApiRuntimeConfig {
@@ -63,6 +64,7 @@ export type OtcSideEffectType =
   | 'pearl_release'
   | 'pearl_refund'
   | 'support_alert'
+  | 'support_alert_delivery'
   | 'manual_review_note';
 
 export type OtcSideEffectStatus = 'prepared' | 'submitted' | 'confirmed' | 'failed';
