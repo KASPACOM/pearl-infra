@@ -232,7 +232,8 @@ Current delegation queue after rendered OTC web screens:
 - [x] 9.3.8.a Add regression test: confirmed PRL funding becomes detached after a reorg and settlement worker can no longer release USDC.
 - [x] 9.3.8.b Fix live Pearl indexer reorg replay so detached historical blocks
   can coexist with replacement canonical blocks at the same height, and startup
-  resumes from an unfinished detached fork point.
+  resumes from an unfinished detached fork point. Also handle pearld verbosity
+  `2` blocks returning full transactions under `rawtx`.
 - [ ] 9.3.9 Run a testnet2 integration ingest once testnet PRL/access is available.
 
 ### 9.4 Frontend Checkout
@@ -508,15 +509,22 @@ Loophole tracker after admin FE wiring:
     `fe0873e0213dc557dd27db55ae16438f3bf3c151`; prod repos exist but have no
     images yet.
 - [x] 9.10.8.a Merge ArgoCD manifests and dev image-tag update.
-- [ ] 9.10.8.b Bootstrap the dev Argo Application CRs into the dev cluster.
+- [x] 9.10.8.b Bootstrap the dev Argo Application CRs into the dev cluster.
 - [ ] 9.10.8.c Confirm Argo sync creates healthy dev API and web pods.
+  - 2026-05-18: `oyster-otc-web` is Synced/Healthy and 1/1 Running.
+  - 2026-05-18: `oyster-otc-api` is Synced/Degraded because
+    ExternalSecret `dev/oyster-otc-api` does not exist yet.
 - [ ] 9.10.8.d Execute the main/prod deploy path and confirm prod API and web
   images/pods.
-- [ ] 9.10.9 Configure DNS/Cloudflare records for `dev-oyster.kaspa.com`,
-  `dev-api-oyster.kaspa.com`, `oyster.kaspa.com`, and
-  `api-oyster.kaspa.com`.
+- [x] 9.10.9.a Configure dev DNS/Cloudflare records for
+  `dev-oyster.kaspa.com` and `dev-api-oyster.kaspa.com`.
+- [ ] 9.10.9.b Configure prod DNS/Cloudflare records for `oyster.kaspa.com`
+  and `api-oyster.kaspa.com`.
 - [ ] 9.10.10 Run live `/healthz`, quote, support-alert, and admin-auth smoke
   checks against dev, then main.
+  - 2026-05-18: `http://dev-oyster.kaspa.com` returns the OTC web shell.
+  - 2026-05-18: `http://dev-api-oyster.kaspa.com/healthz` returns ALB 503
+    until the API runtime secret is populated and the pod starts.
 - [ ] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
   indexer on `65.21.206.46` and smoke `PEARL_INDEXER_WATCH_URL` from the API
   runtime network.
