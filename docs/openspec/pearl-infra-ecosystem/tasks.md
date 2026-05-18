@@ -128,14 +128,8 @@ Merged implementation checkpoints:
   checks, expected revert selectors, and redacted RPC evidence. Strengthens
   9.6.5 evidence.
 
-Current delegation queue after PR #45:
+Current delegation queue after 9.8.7/9.8.8 implementation:
 
-- Base events owner: `9.8.7`. Add Base escrow event ingestion for created,
-  deposited, released, refunded, and cancelled transitions.
-- Settlement-worker owner: 9.5.x decision core is complete in PR #33. Next
-  worker work is `9.8.8`, the persistent execution loop that consumes OTC API,
-  Pearl indexer observations/spends, Base events, signer, and broadcaster
-  adapters.
 - Pearl signer/custody owner: 9.7.x package hooks are complete through PR #32.
   `9.8.9` remains open for the production signer boundary, audit trail, fee
   caps, template hash verification, and retry-safe persistence.
@@ -267,12 +261,13 @@ Current delegation queue after PR #45:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after PR #45: API startup/idempotency, derivation allocation safety,
-watch registration, Pearl funding/spend detection, reorg hardening, and Pearl
-proof projection are merged, with Base Sepolia native-USDC stress evidence now
-recorded. The remaining production blockers are Base event ingestion,
-persistent worker execution, signer boundary hardening, live simnet/testnet
-evidence, actual frontend/admin screens, and ops monitoring.
+Status after 9.8.8: API startup/idempotency, derivation allocation safety,
+watch registration, Pearl funding/spend detection, reorg hardening, Pearl
+proof projection, Base escrow event ingestion, and the persistent settlement
+worker iteration are implemented, with Base Sepolia native-USDC stress
+evidence now recorded. The remaining production blockers are signer boundary
+hardening, live simnet/testnet evidence, actual frontend/admin screens, and ops
+monitoring.
 
 - [x] 9.8.1 Make OTC API production startup fail closed unless Postgres,
   Base RPC, real Pearl P2TR allocation, Pearl xpub, and a nonzero Base escrow
@@ -290,9 +285,9 @@ evidence, actual frontend/admin screens, and ops monitoring.
   spend txids from indexed observations/spends, not stale trade JSON.
   - Pearl spend detection source data landed in PR #41; the OTC API proof
     projection consumes active indexer observations/spends.
-- [ ] 9.8.7 Add Base escrow event ingestion for created/deposited/released/
+- [x] 9.8.7 Add Base escrow event ingestion for created/deposited/released/
   refunded/cancelled transitions.
-- [ ] 9.8.8 Convert the settlement-worker decision core into a persistent
+- [x] 9.8.8 Convert the settlement-worker decision core into a persistent
   execution loop that consumes API, Pearl indexer, Base events, signer, and
   broadcaster adapters.
 - [ ] 9.8.9 Implement the Pearl signer boundary with fee caps, template hash

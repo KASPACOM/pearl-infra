@@ -82,3 +82,44 @@ export interface SettlementDecisionRepository {
   }>;
   findDecisionByIdempotencyKey(idempotencyKey: string): Promise<SettlementDecisionRecord | undefined>;
 }
+
+export interface SettlementWorkerTradeSource {
+  listOpenTrades(): Promise<readonly OtcTrade[]>;
+  applyTradeState?(tradeId: string, state: TradeState, decision: SettlementDecisionRecord): Promise<void>;
+  flagManualReview?(tradeId: string, reason: string, decision: SettlementDecisionRecord): Promise<void>;
+}
+
+export interface SettlementPearlProofSource {
+  getPearlProofState(trade: OtcTrade): Promise<PearlProofState>;
+}
+
+export interface SettlementBaseEscrowSource {
+  getBaseEscrowState(trade: OtcTrade): Promise<BaseEscrowEventState>;
+}
+
+export interface SettlementSignerAdapter {
+  preparePrlRelease(trade: OtcTrade, decision: SettlementDecisionRecord): Promise<SettlementPreparedAction>;
+  preparePrlRefund(trade: OtcTrade, decision: SettlementDecisionRecord): Promise<SettlementPreparedAction>;
+}
+
+export interface SettlementBroadcasterAdapter {
+  prepareUsdcRelease(trade: OtcTrade, decision: SettlementDecisionRecord): Promise<SettlementPreparedAction>;
+}
+
+export interface SettlementPreparedAction {
+  actionId: string;
+  decisionId: string;
+  tradeId: string;
+  action: SettlementDecisionAction;
+  status: 'prepared';
+  idempotencyKey: string;
+  createdAt: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface SettlementWorkerIterationResult {
+  scannedTrades: number;
+  decisions: readonly SettlementDecisionRecord[];
+  createdDecisionIds: readonly string[];
+  preparedActions: readonly SettlementPreparedAction[];
+}

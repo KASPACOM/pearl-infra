@@ -8,6 +8,7 @@
     "test": "npm run typecheck && node --test test/*.test.ts"
   },
   "dependencies": {
-    "@kaspacom/pearl-sdk": "0.0.0"
+    "@kaspacom/pearl-sdk": "0.0.0",
+    "@kaspacom/usdc-escrow-client": "0.0.0"
   }
 }
