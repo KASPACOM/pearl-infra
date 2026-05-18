@@ -18,6 +18,11 @@ export function getTradeIdFromPath(pathname: string): string | undefined {
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 }
 
+export function getAdminTradeIdFromPath(pathname: string): string | undefined {
+  const match = pathname.match(/\/admin\/trades\/([^/]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+}
+
 export function getQuoteRoleFromSearch(search: string): QuoteRole {
   return new URLSearchParams(search).get('role') === 'seller' ? 'seller' : 'buyer';
 }

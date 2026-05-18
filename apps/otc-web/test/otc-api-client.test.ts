@@ -109,13 +109,151 @@ test('gets escrow verification and side-effect routes', async () => {
   assert.equal(calls[3].init.method, 'POST');
 });
 
+test('gets bearer-gated admin list and debug detail routes', async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const client = new OtcApiClient({
+    baseUrl: 'https://api.example.test',
+    fetcher: async (url, init) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      if (url.toString().includes('/admin/trades/trade_1')) {
+        return jsonResponse({
+          trade: { tradeId: 'trade_1' },
+          sideEffects: [{ effectType: 'support_alert_delivery', status: 'failed' }],
+          events: [],
+          proof: { tradeId: 'trade_1' },
+          currentBlockers: ['failed_side_effect:support_alert_delivery'],
+          deadlineBreaches: [],
+          safeActions: ['copy_support_summary'],
+          redaction: 'operator',
+          supportSummary: { headline: 'Trade trade_1 needs review', waitingOn: [], publicProofPath: '/otc/trades/trade_1/proof' },
+        });
+      }
+      return jsonResponse({
+        items: [
+          {
+            tradeId: 'trade_1',
+            quoteId: 'quote_1',
+            state: 'unknown_spend',
+            side: 'buy_prl',
+            amountPrl: '1000.00000000',
+            amountUsdc: '170.000000',
+            ageMs: 60000,
+            updatedAgeMs: 30000,
+            currentBlockers: ['manual_review:unknown_spend'],
+            deadlineBreaches: ['settlement_deadline'],
+            manualReview: true,
+            alertCount: 1,
+            latestAlertSeverity: 'critical',
+            alertDeliveryStatus: 'failed',
+            failedSideEffectCount: 1,
+            safeActions: ['copy_support_summary'],
+            updatedAt: '2026-05-18T12:00:00.000Z',
+          },
+        ],
+        nextCursor: 'cursor_2',
+        total: 1,
+        limit: 25,
+      });
+    },
+  });
+
+  const trades = await client.listAdminTrades(
+    {
+      state: 'unknown_spend',
+      manualReviewOnly: true,
+      search: 'trade_1',
+      severity: 'critical',
+      failedSideEffectOnly: true,
+      deadlineBreachedOnly: true,
+      blocker: 'unknown_spend',
+      minUpdatedAgeMs: 1000,
+      alertDeliveryStatus: 'failed',
+      cursor: 'cursor_1',
+      limit: 25,
+    },
+    'admin-token',
+  );
+  const detail = await client.getAdminTradeDebug('trade_1', 'admin-token');
+
+  assert.equal(trades.items[0]?.tradeId, 'trade_1');
+  assert.equal(trades.nextCursor, 'cursor_2');
+  assert.equal(detail.currentBlockers[0], 'failed_side_effect:support_alert_delivery');
+  assert.equal(
+    calls[0].url,
+    'https://api.example.test/otc/admin/trades?state=unknown_spend&manual_review_only=true&search=trade_1&severity=critical&failed_side_effect_only=true&deadline_breached_only=true&blocker=unknown_spend&min_updated_age_ms=1000&alert_delivery_status=failed&cursor=cursor_1&limit=25',
+  );
+  assert.equal(calls[1].url, 'https://api.example.test/otc/admin/trades/trade_1');
+  assert.equal((calls[0].init.headers as Headers).get('authorization'), 'Bearer admin-token');
+  assert.equal((calls[1].init.headers as Headers).get('authorization'), 'Bearer admin-token');
+});
+
+test('posts admin alert, manual-review, replay, and public support alert routes', async () => {
+  const calls: Array<{ url: string; init: RequestInit; body: unknown }> = [];
+  const client = new OtcApiClient({
+    baseUrl: 'https://api.example.test',
+    fetcher: async (url, init) => {
+      const text = typeof init?.body === 'string' ? init.body : '{}';
+      calls.push({ url: String(url), init: init ?? {}, body: JSON.parse(text) });
+      return jsonResponse({ tradeId: 'trade_1', status: 'confirmed', effectType: 'support_alert' }, 201);
+    },
+  });
+
+  await client.recordAdminSupportAlert(
+    'trade_1',
+    {
+      idempotencyKey: 'admin-alert-1',
+      severity: 'warning',
+      message: 'needs operator note',
+      contact: 'ops@example.test',
+      metadata: { source: 'test' },
+    },
+    'admin-token',
+  );
+  await client.markAdminManualReview(
+    'trade_1',
+    {
+      idempotencyKey: 'manual-review-1',
+      reason: 'unknown spend needs review',
+      metadata: { source: 'test' },
+    },
+    'admin-token',
+  );
+  await client.replayAdminSupportAlertDelivery('trade_1', 'admin-alert-1', { idempotencyKey: 'replay-1' }, 'admin-token');
+  await client.recordPublicSupportAlert('trade_1', {
+    idempotencyKey: 'user-alert-1',
+    actor: 'user',
+    severity: 'critical',
+    message: 'I need help',
+    source: 'user',
+    contact: 'user@example.test',
+    metadata: { source: 'test' },
+  });
+
+  assert.equal(calls[0].url, 'https://api.example.test/otc/admin/trades/trade_1/alerts');
+  assert.equal(calls[1].url, 'https://api.example.test/otc/admin/trades/trade_1/manual-review');
+  assert.equal(calls[2].url, 'https://api.example.test/otc/admin/trades/trade_1/alerts/admin-alert-1/replay');
+  assert.equal(calls[3].url, 'https://api.example.test/otc/trades/trade_1/support-alerts');
+  assert.equal((calls[0].init.headers as Headers).get('authorization'), 'Bearer admin-token');
+  assert.equal((calls[1].init.headers as Headers).get('authorization'), 'Bearer admin-token');
+  assert.equal((calls[2].init.headers as Headers).get('authorization'), 'Bearer admin-token');
+  assert.equal((calls[3].init.headers as Headers).get('authorization'), null);
+  assert.equal('actor' in (calls[0].body as Record<string, unknown>), false);
+  assert.equal('actor' in (calls[1].body as Record<string, unknown>), false);
+  assert.deepEqual(calls[2].body, { idempotencyKey: 'replay-1' });
+  assert.equal((calls[3].body as { actor?: string }).actor, 'user');
+  assert.equal((calls[3].body as { source?: string }).source, 'user');
+});
+
 test('throws mapped API errors', async () => {
   const client = new OtcApiClient({
     baseUrl: 'https://api.example.test',
     fetcher: async () => jsonResponse({ error: 'not_found', message: 'trade not found' }, 404),
   });
 
-  await assert.rejects(() => client.getTrade('missing'), /trade not found/);
+  await assert.rejects(
+    () => client.getTrade('missing'),
+    (error) => error instanceof Error && error.message === 'trade not found' && 'status' in error && error.status === 404,
+  );
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
