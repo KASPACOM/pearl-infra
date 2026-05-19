@@ -4,7 +4,7 @@ import type { OtcQuoteSide } from '@kaspacom/pearl-sdk';
 import { createClientRequestId, createOtcClient } from '../api.js';
 import { demoQuote } from '../demo-data.js';
 import { buildQuotePageModel } from '../page-models.js';
-import { Field } from '../components/Primitives.js';
+import { BrandLoader, Field } from '../components/Primitives.js';
 
 export function RfqPage() {
   const [side, setSide] = useState<OtcQuoteSide>('buy_prl');
@@ -102,7 +102,7 @@ export function RfqPage() {
           </div>
 
           <button className="om-button om-button--primary" type="button" disabled={status === 'submitting'} onClick={submit}>
-            {status === 'submitting' ? 'Getting price...' : 'Get price'}
+            {status === 'submitting' ? <BrandLoader compact label="Getting price..." /> : 'Get price'}
           </button>
           {error ? <p className="om-form-error">{error}</p> : null}
         </form>

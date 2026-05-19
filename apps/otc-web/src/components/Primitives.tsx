@@ -1,6 +1,41 @@
 import type { ReactNode } from 'react';
 import type { DeadlineModel, FailureBannerModel, StateBadgeModel, TimelineEventModel } from '../page-models.js';
 
+export type BrandLoaderVariant = 'pearl-pulse' | 'shell-breathe';
+
+export function BrandLoader({
+  label,
+  variant = 'pearl-pulse',
+  compact = false,
+}: {
+  label: string;
+  variant?: BrandLoaderVariant;
+  compact?: boolean;
+}) {
+  return (
+    <span className={`om-loader om-loader--${variant} ${compact ? 'om-loader--compact' : ''}`} role="status" aria-live="polite">
+      {variant === 'shell-breathe' ? (
+        <svg className="om-loader__shell" viewBox="0 0 120 120" aria-hidden="true">
+          <g className="om-loader__shell-bottom">
+            <path d="M18 62 Q60 96 102 62 Q60 72 18 62 Z" />
+          </g>
+          <g className="om-loader__shell-top">
+            <path d="M18 60 Q60 18 102 60 Q60 50 18 60 Z" />
+          </g>
+          <circle className="om-loader__shell-pearl" cx="60" cy="60" r="5" />
+        </svg>
+      ) : (
+        <span className="om-loader__pulse" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      )}
+      <span>{label}</span>
+    </span>
+  );
+}
+
 export function StateBadge({ badge }: { badge: StateBadgeModel }) {
   return <span className={`om-badge om-badge--${badge.family}`}>{badge.label}</span>;
 }

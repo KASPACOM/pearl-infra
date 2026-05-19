@@ -21,11 +21,12 @@ export function AppShell({
   children: ReactNode;
   environment?: string;
 }) {
+  const shellClassName = active === 'admin' ? 'om-shell om-shell--admin' : 'om-shell';
   return (
-    <div className="om-shell">
+    <div className={shellClassName}>
       <header className="om-topbar">
         <a className="om-brand" href="/" aria-label="Oysters Market home">
-          <span className="om-brand__mark">O</span>
+          <span className="om-brand__mark" aria-hidden="true" />
           <span>
             <strong>Oysters Market</strong>
             <small>Private market access</small>
@@ -39,7 +40,7 @@ export function AppShell({
             </a>
           ))}
         </nav>
-        <div className="om-operator">Support desk</div>
+        <div className="om-operator">PRL Settlement Desk</div>
       </header>
       <main className="om-main">{children}</main>
     </div>

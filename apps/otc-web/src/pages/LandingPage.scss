@@ -11,9 +11,9 @@
   overflow: hidden;
   border: 1px solid var(--om-line);
   border-radius: 8px;
-  background: #080a12;
+  background: #07060a;
   isolation: isolate;
-  padding: clamp(28px, 6vw, 74px);
+  padding: 74px;
 }
 
 .landing-hero__scene {
@@ -21,9 +21,9 @@
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(90deg, rgba(155, 92, 255, 0.16) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(244, 201, 106, 0.12) 1px, transparent 1px),
-    #080a12;
+    linear-gradient(90deg, rgba(139, 92, 246, 0.16) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(212, 169, 43, 0.1) 1px, transparent 1px),
+    #07060a;
   background-size: 68px 68px;
 }
 
@@ -40,7 +40,9 @@
   h1 {
     max-width: 760px;
     margin: 12px 0 18px;
-    font-size: clamp(42px, 8vw, 86px);
+    font-family: var(--om-serif);
+    font-size: 78px;
+    font-weight: 400;
     letter-spacing: 0;
     line-height: 0.94;
   }
@@ -61,31 +63,23 @@
   margin-top: 28px;
 }
 
-.landing-ledger {
+.landing-preview {
   position: absolute;
   top: 12%;
   right: 8%;
-  display: grid;
-  gap: 10px;
-  width: min(360px, 42vw);
-  border: 1px solid rgba(155, 92, 255, 0.34);
+  width: min(620px, 44vw);
+  margin: 0;
+  border: 1px solid rgba(139, 92, 246, 0.34);
   border-radius: 8px;
-  background: rgba(17, 21, 34, 0.72);
-  padding: 18px;
-}
+  background: rgba(13, 11, 20, 0.82);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.46);
+  opacity: 0.82;
+  overflow: hidden;
 
-.landing-ledger__bar {
-  height: 14px;
-  border-radius: 4px;
-  background: var(--om-surface-3);
-
-  &.is-short {
-    width: 72%;
-  }
-
-  &.is-glow {
-    width: 52%;
-    background: var(--om-accent);
+  img {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 }
 
@@ -172,7 +166,7 @@
 
   h2 {
     margin-top: 8px;
-    font-size: clamp(28px, 4vw, 46px);
+    font-size: 40px;
     line-height: 1.05;
   }
 }
@@ -216,7 +210,7 @@
 
   h2 {
     margin: 8px 0 14px;
-    font-size: clamp(26px, 4vw, 42px);
+    font-size: 38px;
   }
 
   p {
@@ -245,13 +239,14 @@
 @media (max-width: 900px) {
   .landing-hero {
     min-height: 680px;
+    padding: 40px;
   }
 
   .landing-hero__scene::after {
     background: linear-gradient(180deg, rgba(8, 10, 18, 0.12), rgba(8, 10, 18, 0.92) 58%);
   }
 
-  .landing-ledger {
+  .landing-preview {
     top: 8%;
     right: 5%;
     width: 64vw;
@@ -277,5 +272,19 @@
   .landing-steps,
   .landing-section--split {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-hero__content h1 {
+    font-size: 52px;
+  }
+
+  .landing-hero {
+    padding: 28px;
+  }
+
+  .landing-preview {
+    display: none;
   }
 }
