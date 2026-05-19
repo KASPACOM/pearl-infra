@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import type { BridgeExitRequestRepository } from './repository.js';
 import type { BridgeExitRequest, IgraBridgeEvent, IgraBridgeEventType } from './types.js';
 
 export interface MirrorIgraBridgeEventInput {
@@ -84,6 +85,41 @@ export function applyExitLifecycleEvent(existing: BridgeExitRequest, event: Igra
     };
   }
   return existing;
+}
+
+export interface ApplyIgraBridgeEventResult {
+  eventId: string;
+  action: 'ignored' | 'exit_created' | 'exit_updated' | 'exit_missing';
+  exit?: BridgeExitRequest;
+}
+
+export async function applyIgraBridgeEventToExitRepository(
+  repository: BridgeExitRequestRepository,
+  event: IgraBridgeEvent,
+  now = new Date(),
+): Promise<ApplyIgraBridgeEventResult> {
+  const requested = bridgeExitFromIgraEvent(event, now);
+  if (requested) {
+    const saved = await repository.upsertExitRequest(requested);
+    return {
+      eventId: event.eventId,
+      action: saved.created ? 'exit_created' : 'exit_updated',
+      exit: saved.exit,
+    };
+  }
+
+  if (event.eventType !== 'exit_processed' && event.eventType !== 'exit_refunded') {
+    return { eventId: event.eventId, action: 'ignored' };
+  }
+
+  const exitId = readString(event.payload, 'exitId');
+  if (!exitId) throw new Error(`${event.eventType} event requires exitId`);
+  const existing = await repository.findExitRequest(exitId);
+  if (!existing) return { eventId: event.eventId, action: 'exit_missing' };
+
+  const updated = applyExitLifecycleEvent(existing, event, now);
+  const saved = await repository.upsertExitRequest(updated);
+  return { eventId: event.eventId, action: 'exit_updated', exit: saved.exit };
 }
 
 export function formatIgraEventId(chainId: number, txHash: string, logIndex: number): string {

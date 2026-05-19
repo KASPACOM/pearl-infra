@@ -8,15 +8,18 @@ import type {
   IgraBridgeEvent,
 } from './types.js';
 
-export interface BridgeStateRepository {
+export interface BridgeExitRequestRepository {
+  upsertExitRequest(exit: BridgeExitRequest): Promise<{ exit: BridgeExitRequest; created: boolean }>;
+  findExitRequest(exitId: string): Promise<BridgeExitRequest | undefined>;
+  listExitRequests(): Promise<BridgeExitRequest[]>;
+}
+
+export interface BridgeStateRepository extends BridgeExitRequestRepository {
   saveReconciliationSnapshot(record: BridgeReconciliationSnapshotRecord): Promise<{ record: BridgeReconciliationSnapshotRecord; created: boolean }>;
   latestReconciliationSnapshot(): Promise<BridgeReconciliationSnapshotRecord | undefined>;
   listReconciliationSnapshots(limit?: number): Promise<BridgeReconciliationSnapshotRecord[]>;
   saveIgraEvent(event: IgraBridgeEvent): Promise<{ event: IgraBridgeEvent; created: boolean }>;
   listIgraEvents(): Promise<IgraBridgeEvent[]>;
-  upsertExitRequest(exit: BridgeExitRequest): Promise<{ exit: BridgeExitRequest; created: boolean }>;
-  findExitRequest(exitId: string): Promise<BridgeExitRequest | undefined>;
-  listExitRequests(): Promise<BridgeExitRequest[]>;
   saveAdminDecision(decision: BridgeAdminDecision): Promise<{ decision: BridgeAdminDecision; created: boolean }>;
   listAdminDecisions(targetId?: string): Promise<BridgeAdminDecision[]>;
 }

@@ -196,11 +196,12 @@ Current Pearl OTC code/workflow status:
   notes, manual-review notes, failed alert-delivery replay, and the public
   support/error alert form, while settlement execution controls stay absent.
 
-Current delegation queue after PR #70:
+Current delegation queue after PR #70 plus bridge live-indexing work:
 
-- Bridge events/indexer owner: finish `10.8.7.b`, `10.8.8.b`, and `10.8.9.b`
-  by wiring the Igra RPC event poller, checkpointed cursor, Postgres
-  `bridge_exit_requests` writes, and live Pearl reserve-spend scanner updates.
+- Bridge events/indexer owner: `10.8.7.b`, `10.8.8.b`, and `10.8.9.b` are now
+  covered by the bridge-service Igra RPC poller, checkpoint store, Postgres
+  exit repository, and reserve-spend applier. Next bridge evidence task is
+  `10.8.10` simnet rehearsal.
 - Bridge FE owner: implement `10.10.5` proof-page/frontend models for deposit
   status, exit status, reserve backing, blockers, public audit fields, event
   hashes, and quorum counts.
@@ -662,15 +663,15 @@ Loophole tracker after admin FE wiring:
   - [x] 10.8.6.b Add canonical event IDs, event hashes, relayer attestation counts, and quorum requirements to public bridge proof projections.
   - [x] 10.8.6.c Persist reconciliation snapshots so operators can compare reserve health across blocks, not only read the latest in-memory projection.
   - [x] 10.8.6.d Wire the persisted snapshot source into an admin/read-only API.
-- [ ] 10.8.7 Poll Igra `PearlBridge` events and mirror deposit claims, exit requests, processed exits, refunds, cap changes, pause changes, relayer changes, and operator changes.
+- [x] 10.8.7 Poll Igra `PearlBridge` events and mirror deposit claims, exit requests, processed exits, refunds, cap changes, pause changes, relayer changes, and operator changes.
   - [x] 10.8.7.a Add Igra event mirror helpers for all `PearlBridge` event types keyed by `(chainId, txHash, logIndex)`.
-  - [ ] 10.8.7.b Connect the mirror helpers to a real Igra RPC/event poller and checkpointed block cursor.
-- [ ] 10.8.8 Write Igra exit events into `bridge_exit_requests` with idempotent upsert semantics keyed by `(igra_burn_txid, igra_burn_log_index)`.
+  - [x] 10.8.7.b Connect the mirror helpers to a real Igra RPC/event poller and checkpointed block cursor.
+- [x] 10.8.8 Write Igra exit events into `bridge_exit_requests` with idempotent upsert semantics keyed by `(igra_burn_txid, igra_burn_log_index)`.
   - [x] 10.8.8.a Convert mirrored `ExitRequested` events into idempotent bridge exit rows in the bridge-state repository.
-  - [ ] 10.8.8.b Back the exit mirror with Postgres `bridge_exit_requests` writes in the live service.
-- [ ] 10.8.9 Classify Pearl reserve spends against mirrored exits, mark exact release txids once, and route mismatches or unknown spends to manual review.
+  - [x] 10.8.8.b Back the exit mirror with Postgres `bridge_exit_requests` writes in the live service.
+- [x] 10.8.9 Classify Pearl reserve spends against mirrored exits, mark exact release txids once, and route mismatches or unknown spends to manual review.
   - [x] 10.8.9.a Add reserve-spend matcher for exact exit release matches, amount mismatch, recipient mismatch, duplicate release txid, and unknown spend blockers.
-  - [ ] 10.8.9.b Wire reserve-spend matching into the live Pearl spend scanner and update `bridge_exit_requests` on exact matches.
+  - [x] 10.8.9.b Wire reserve-spend matching into the live Pearl spend scanner and update `bridge_exit_requests` on exact matches.
 - [ ] 10.8.10 Run a bridge simnet rehearsal with real Pearl deposit txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve reconciliation evidence.
 - [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
   - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.

@@ -20,6 +20,20 @@ function watch(metadata: Record<string, unknown>): WatchedAddress {
   };
 }
 
+function bridgeReserveWatch(metadata: Record<string, unknown> = {}): WatchedAddress {
+  return {
+    watchId: 'reserve_1',
+    purpose: 'bridge_reserve',
+    network: 'testnet2',
+    address: 'tprl1preserve',
+    requiredConfirmations: 3,
+    status: 'active',
+    metadata,
+    createdAt: '2026-05-18T00:00:00.000Z',
+    updatedAt: '2026-05-18T00:00:00.000Z',
+  };
+}
+
 function block(overrides: Partial<PearlBlockSummary>): PearlBlockSummary {
   return {
     hash: 'b2',
@@ -134,6 +148,57 @@ test('classifySpend marks unknown_spend when no release or refund policy matches
 
   assert.equal(result.classification, 'unknown_spend');
   assert.equal(result.classificationData.reason, 'no_release_or_refund_template_match');
+});
+
+test('classifySpend marks bridge reserve spend as exit_release with matcher metadata', () => {
+  const result = classifySpend({
+    watch: bridgeReserveWatch({ reserve_change_address: 'tprl1preservechange' }),
+    spendTxid: 'release1',
+    spentOutpoint: 'reserve-funding:0',
+    spendingOutputs: [
+      {
+        txid: 'release1',
+        vout: 0,
+        amountGrains: '100',
+        scriptPubKey: { hex: '51', address: 'tprl1pexitrecipient' },
+      },
+      {
+        txid: 'release1',
+        vout: 1,
+        amountGrains: '900',
+        scriptPubKey: { hex: '51', address: 'tprl1preservechange' },
+      },
+    ],
+  });
+
+  assert.equal(result.classification, 'exit_release');
+  assert.equal(result.classificationData.amount_grains, '100');
+  assert.equal(result.classificationData.pearl_recipient, 'tprl1pexitrecipient');
+});
+
+test('classifySpend keeps ambiguous bridge reserve spends as unknown_spend', () => {
+  const result = classifySpend({
+    watch: bridgeReserveWatch(),
+    spendTxid: 'ambiguous-release',
+    spentOutpoint: 'reserve-funding:0',
+    spendingOutputs: [
+      {
+        txid: 'ambiguous-release',
+        vout: 0,
+        amountGrains: '100',
+        scriptPubKey: { hex: '51', address: 'tprl1pfirst' },
+      },
+      {
+        txid: 'ambiguous-release',
+        vout: 1,
+        amountGrains: '200',
+        scriptPubKey: { hex: '51', address: 'tprl1psecond' },
+      },
+    ],
+  });
+
+  assert.equal(result.classification, 'unknown_spend');
+  assert.equal(result.classificationData.reason, 'ambiguous_external_release_outputs');
 });
 
 test('FundingScannerSink records spends for watched escrow outpoints', async () => {

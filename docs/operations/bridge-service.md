@@ -7,7 +7,7 @@ prepares manual-review decisions before any mint or Pearl release is signed.
 
 ## Current Package
 
-`services/bridge-service` exports pure, testable primitives:
+`services/bridge-service` exports testable primitives and live adapters:
 
 - `buildBridgeDepositWatch` and `buildBridgeReserveWatch` create the shared
   Pearl indexer `/watches` payloads for `bridge_deposit` and `bridge_reserve`.
@@ -33,9 +33,17 @@ prepares manual-review decisions before any mint or Pearl release is signed.
 - `mirrorIgraBridgeEvent`, `bridgeExitFromIgraEvent`, and
   `applyExitLifecycleEvent` normalize `PearlBridge` logs into durable bridge
   state.
+- `IgraBridgeEventPoller` and `IgraJsonRpcClient` read `PearlBridge` logs from
+  a real Igra RPC endpoint, decode contract events, persist only newly observed
+  events, mirror exits, and advance a checkpointed block cursor.
+- `PgBridgeExitRequestRepository` writes mirrored Igra exits and matched Pearl
+  releases into the shared Postgres `bridge_exit_requests` table.
 - `matchReserveSpendToExit` matches Pearl reserve spends to pending exits by
   amount and recipient, and routes mismatches, duplicate release txids, or
   unknown spends to manual review.
+- `applyReserveSpendMatchesToExits` applies exact Pearl reserve-spend matches
+  to exit rows and returns manual-review blockers for unknown or mismatched
+  spends.
 - `createBridgeHttpServer` exposes read-only proof/status routes and
   bearer-gated admin decision routes for pilot operators.
 - `evaluateBridgePilotAlerts` emits reserve-deficit, stale-watch,
@@ -89,10 +97,6 @@ boundary after the pilot proves reserve accounting and event mirroring.
 
 ## Still Needed
 
-- Wire the Igra event mirror to a real RPC/event poller and persist to Postgres
-  instead of the JSON pilot store.
-- Wire reserve-spend matching into the live Pearl indexer spend scanner and
-  `bridge_exit_requests` table.
 - Add frontend proof pages after the bridge API shape is stable.
 - Select live reserve addresses, signer policy, and hot/warm/cold cap limits,
   then run the emergency pause drill.
