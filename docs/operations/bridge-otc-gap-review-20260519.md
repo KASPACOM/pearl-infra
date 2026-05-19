@@ -50,18 +50,25 @@ These items block a live bridge pilot and any public `wPRL/USDC` pool:
    - Next action: document reserve tiers, signer ownership, emergency pause
      authority, daily limits, and maximum hot-wallet exposure.
 
-4. Execute an emergency pause drill.
+4. Decide and implement bridge reserve custody.
+   - The bridge can watch reserve addresses and reconcile reserve spends, but
+     the live Pearl reserve address/multisig/threshold-signing construction is
+     not implemented or selected.
+   - Next action: choose the low-cap pilot custody shape, record the reserve
+     address set, and prove the Pearl release signing path before any live exit.
+
+5. Execute an emergency pause drill.
    - The runbook exists, but the live operator drill still needs evidence.
    - Next action: run a low-cap pause/unpause drill against the deployed test
      bridge path and commit the result.
 
-5. Add bridge proof-page/frontend support.
+6. Add bridge proof-page/frontend support.
    - Public API contracts exist; user-facing proof pages still need to consume
      them.
    - Next action: add frontend models/pages for deposit status, exit status,
      reserve backing, blockers, event hashes, quorum counts, and cap usage.
 
-6. Upgrade federation/signing beyond the pilot shape.
+7. Upgrade federation/signing beyond the pilot shape.
    - Current bridge decisions use relayer attestations plus manual operator
      approval.
    - Next action: finalize federation membership, relayer independence rules,
@@ -78,31 +85,40 @@ These items block a full production-grade Pearl OTC settlement release:
    - Still missing: real Base Sepolia `createTrade`, `deposit`, and terminal
      `release` or `refund` txids plus a real PRL signing/broadcast path.
 
-2. Replace the remaining simulated Base leg in live evidence.
-   - The checker can verify receipts, but the evidence needs actual Base
-     Sepolia receipts from the current escrow contract.
-   - Next action: run the real Base Sepolia leg and feed the tx hashes into
-     `services/otc-api/test/live-full-otc-evidence.test.ts`.
+2. Decide whether the first mainnet OTC pilot uses the current coordinator
+   P2TR model or waits for true multisig escrow.
+   - Current implementation derives one P2TR escrow address per trade from an
+     xpub and uses a policy-gated coordinator signer. It is not the final
+     non-custodial 2-of-3 buyer/seller/arbiter multisig design.
+   - Next action: either approve this constrained custody model for a low-cap
+     pilot, or implement Taproot script/MuSig/FROST-style multisig before
+     mainnet OTC trades.
 
-3. Resolve the PRL raw signer path.
+3. Replace the remaining simulated Base leg in live evidence.
+   - The checker can verify receipts, but the evidence needs actual Base
+   Sepolia receipts from the current escrow contract.
+   - Next action: run the real Base Sepolia leg and feed the tx hashes into
+   `services/otc-api/test/live-full-otc-evidence.test.ts`.
+
+4. Resolve the PRL raw signer path.
    - Oyster currently does not provide arbitrary raw transaction signing for
      the desired path.
    - Next action: use a non-Oyster raw signer path or extend Oyster before
      enabling mainnet PRL release/refund code paths.
 
-4. Move from simnet to explicitly approved low-cap mainnet.
+5. Move from simnet to explicitly approved low-cap mainnet.
    - Pearl testnet2 is not a mandatory blocker because there is no usable
      faucet/liquidity.
    - Next action: finish the remaining simnet proof, then run only low-cap
      mainnet PRL paths with explicit approval, real txids, public proof, and
      clean reconciliation.
 
-5. Finish production Oyster deployment.
+6. Finish production Oyster deployment.
    - Dev API/web are deployed and smoked.
    - Prod secrets, prod image release, prod DNS, and prod smoke checks remain
      open.
 
-6. Replace shared bearer-token admin auth with real operator identity.
+7. Replace shared bearer-token admin auth with real operator identity.
    - Multi-token RBAC is present as a compatibility layer.
    - A real identity provider/session layer is still required before broader
      support rollout.
@@ -125,7 +141,8 @@ Do not seed `wPRL/USDC` liquidity until all of these are true:
 2. Writable simnet proof PR: rerun bridge rehearsal with freshly-created Pearl
    simnet deposit/release txids.
 3. Custody policy PR: reserve addresses, signer tiers, emergency pause drill,
-   and cap policy.
+   cap policy, and an explicit decision on coordinator P2TR versus true
+   multisig/threshold custody for OTC and bridge reserves.
 4. Low-cap mainnet proof PR: real Pearl mainnet and Base/Igra txids after
    explicit approval, with public proof and clean reconciliation.
 5. Bridge proof UI PR: public bridge deposit/exit/reserve proof pages.

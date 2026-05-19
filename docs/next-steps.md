@@ -37,6 +37,10 @@ Current state after PR #81:
    - Select reserve addresses, signer ownership, hot/warm/cold cap limits,
      emergency pause authority, relayer/operator identities, and final
      multisig owner.
+   - Explicitly decide whether OTC mainnet starts with the current
+     coordinator-signed P2TR escrow model or waits for true PRL multisig escrow.
+   - Select and prove the bridge reserve custody construction; reserve watches
+     exist, but live reserve multisig/threshold signing is not implemented yet.
 
 4. Complete OTC live evidence.
    - Run the real Base Sepolia `createTrade`, `deposit`, and terminal
