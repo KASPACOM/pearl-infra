@@ -1,0 +1,84 @@
+{
+  "network": "local",
+  "chainId": 19416,
+  "rpcUrlRedacted": "http://127.0.0.1:19545",
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "deployerBalanceEthBefore": "10000.0",
+  "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "finalOwner": null,
+  "relayer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "operator": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "caps": [
+    "1",
+    "100000000",
+    "1",
+    "100000000",
+    "86400",
+    "100000000",
+    "100000000"
+  ],
+  "transactions": [
+    {
+      "label": "deploy WrappedPearl",
+      "hash": "0xf46b597e98ba61f138cd484c81f93e70abaa3709e2ee855107f7a16645ad83da",
+      "blockNumber": 1,
+      "gasUsed": "834950",
+      "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "to": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    },
+    {
+      "label": "deploy PearlBridge",
+      "hash": "0xb57beefd36c4128b215c17448d7d003d9577c5bdc2fa0812801cb91fb335c980",
+      "blockNumber": 2,
+      "gasUsed": "2083826",
+      "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "to": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    },
+    {
+      "label": "set WrappedPearl bridge",
+      "hash": "0xf31354ff82312cb1d69ddfe3891a25e714851d30b2cbd9bb56cbc6fc970b40f3",
+      "blockNumber": 3,
+      "gasUsed": "50343",
+      "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "to": "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+    },
+    {
+      "label": "enable bridge relayer",
+      "hash": "0xf74c24971624574b8841efee9ffe4b36e552b8f0cefb2210d6b95ce467614e8c",
+      "blockNumber": 4,
+      "gasUsed": "47908",
+      "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "to": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    },
+    {
+      "label": "enable bridge operator",
+      "hash": "0x3bb1eb2a3e98262b7a1ba5ce4a690e05e5561c8f474edd2516312c71af87f29c",
+      "blockNumber": 5,
+      "gasUsed": "47898",
+      "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "to": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+    }
+  ],
+  "startedAt": "2026-05-19T14:20:17.265Z",
+  "wrappedPearl": {
+    "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "deployTx": "0xf46b597e98ba61f138cd484c81f93e70abaa3709e2ee855107f7a16645ad83da",
+    "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "pendingOwner": "0x0000000000000000000000000000000000000000",
+    "bridge": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+  },
+  "pearlBridge": {
+    "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+    "deployTx": "0xb57beefd36c4128b215c17448d7d003d9577c5bdc2fa0812801cb91fb335c980",
+    "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "pendingOwner": "0x0000000000000000000000000000000000000000",
+    "wrappedPearl": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "relayerEnabled": true,
+    "operatorEnabled": true,
+    "entryPaused": false,
+    "exitRequestPaused": false,
+    "exitProcessingPaused": false,
+    "ownershipTransferTx": null
+  },
+  "completedAt": "2026-05-19T14:20:17.678Z"
+}

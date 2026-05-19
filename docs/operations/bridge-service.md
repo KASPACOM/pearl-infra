@@ -108,3 +108,7 @@ boundary after the pilot proves reserve accounting and event mirroring.
   writable `pearld`/wallet credentials are available. The local-Igra rehearsal
   using public real Pearl simnet txids is recorded in
   `docs/operations/bridge-simnet-rehearsal-evidence-20260519.md`.
+- Use `docs/operations/bridge-mainnet-readiness.md` for the current
+  no-Pearl-testnet path: prepare guarded Igra mainnet deployment tooling, but
+  keep Pearl proof/reconciliation tests on simnet until mainnet custody is
+  explicitly approved.
