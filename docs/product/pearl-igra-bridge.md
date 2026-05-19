@@ -4,7 +4,7 @@
 
 The bridge MVP wraps Pearl L1 PRL into an ERC-20 asset on Igra so users can trade `wPRL/USDC` while the OTC desk remains the manual safety path for larger or stuck settlements.
 
-This document defines the token-level controls for OpenSpec `10.5`. The actual bridge contract interface, events, replay protection, and tests remain separate work items under `10.6` and `10.7`.
+This document defines the token-level controls for OpenSpec `10.5`. The bridge contract interface, events, replay protection, and tests are implemented by `WrappedPearl` and `PearlBridge` under `contracts/usdc-escrow/src` for `10.6` and `10.7`.
 
 ## Wrapped Token
 
@@ -52,10 +52,55 @@ Required control split:
 
 Recommended implementation:
 
-- `WrappedPearl` uses role-based minting with only the bridge contract holding `MINTER_ROLE`.
+- `WrappedPearl` uses `Ownable2Step` with one explicit `bridge` minter/burner address. This keeps the pilot control surface smaller than a general role graph while preserving transferable admin ownership for the later multisig handoff.
 - `WrappedPearl` does not expose public mint or owner-mint functions.
-- `WrappedPearl` may expose `burn` / `burnFrom` only if the bridge exit design uses direct burn. If the bridge design locks instead of burns, token-level burn should stay disabled.
+- `WrappedPearl` exposes bridge-only burn support so `PearlBridge.requestExit` can atomically burn user `wPRL` and record the exit request in one transaction.
 - Token transfer pause should be avoided for the pool phase unless the pilot explicitly accepts the risk of freezing secondary-market users. Prefer pausing bridge entry/exit in the bridge contract.
+
+## Igra Contract Interface And Events
+
+`PearlBridge` deliberately does not verify Pearl L1 consensus. It accepts only federation/relayer-submitted deposit claims and operator-submitted exit release records after off-chain Pearl indexer/federation checks.
+
+Entry / mint:
+
+```solidity
+function claimDeposit(bytes32 pearlTxid, uint32 vout, address recipient, uint256 amountGrains)
+  external returns (bytes32 claimId);
+```
+
+- Replay key: `claimId = keccak256(abi.encodePacked(pearlTxid, vout))`.
+- Reused claims are rejected before mint.
+- Amount must satisfy min/max deposit, rolling-window mint cap, and pilot supply cap.
+- Mint amount is exactly `amountGrains`; no fees are hidden in token precision.
+
+Exit:
+
+```solidity
+function requestExit(string calldata pearlRecipient, uint256 amountGrains)
+  external returns (bytes32 exitId);
+function processExit(bytes32 exitId, bytes32 pearlReleaseTxid) external;
+function refundExit(bytes32 exitId) external;
+```
+
+- `requestExit` burns `amountGrains` from the requester before storing the exit.
+- `processExit` is operator-only and idempotent for the same release txid on the same exit.
+- A conflicting release txid for an already processed exit is rejected.
+- A Pearl release txid can only be recorded once globally, which catches duplicate operator bookkeeping across different exits.
+- `refundExit` is operator-only and mints the burned amount back to the requester when Pearl release cannot happen.
+- Cap reductions must keep `totalSupply + pendingExitGrains <= pilotSupplyCapGrains`, so already-minted supply and refundable exits cannot be configured above the pilot cap.
+
+Events:
+
+- `DepositClaimed(claimId, pearlTxid, vout, recipient, amountGrains)`
+- `ExitRequested(exitId, requester, pearlRecipient, amountGrains)`
+- `ExitProcessed(exitId, pearlReleaseTxid, operator)`
+- `ExitRefunded(exitId, requester, amountGrains, operator)`
+- `CapsUpdated(caps)`
+- `RelayerUpdated(relayer, enabled)`
+- `OperatorUpdated(operator, enabled)`
+- `EntryPaused(actor, paused)`
+- `ExitRequestPaused(actor, paused)`
+- `ExitProcessingPaused(actor, paused)`
 
 ## Supply Controls
 
@@ -90,6 +135,25 @@ Before any non-toy pilot:
 - emergency pause path is tested;
 - replay protection is tested for deposit claims and exit processing;
 - public proof fields cover deposit txid/outpoint, mint tx, exit event, release tx, reserves, and cap usage.
+- bridge service decisions require canonical event IDs / event hashes, distinct
+  authorized relayer attestations, finality thresholds, and manual operator
+  approval before mint or release preparation.
+
+## KAT-Style Phase-2 Direction
+
+The first `PearlBridge` contract is acceptable only for a low-cap custodial
+pilot. The next bridge phase should converge toward the KAT control model:
+
+- independent relayers observe Pearl deposits and Igra exits separately;
+- every mint/release decision is keyed by a canonical event ID and event hash;
+- relayers must reach quorum over exactly the same event hash before the bridge
+  service prepares an action;
+- Pearl-side releases should move from operator-only recording to
+  threshold/FROST-style authorization once signer custody is finalized;
+- public proof must show deposit, mint, exit, release, reserves, cap usage,
+  event hashes, finality, and relayer quorum counts;
+- replay rules must be global for both Pearl deposit outpoints and Pearl
+  release txids.
 
 Before a `wPRL/USDC` pool:
 

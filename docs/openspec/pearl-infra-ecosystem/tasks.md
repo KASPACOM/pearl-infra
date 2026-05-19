@@ -317,10 +317,24 @@ Current delegation queue after rendered OTC web screens:
 - [x] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
   - See `docs/operations/otc-monitoring.md`.
 - [x] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
-  - PRL-side simnet evidence is recorded in
+  - [x] 9.6.4.a Record PRL-side simnet evidence in
     `docs/operations/pearl-simnet-escrow-evidence-20260518.md`, covering real
     simnet funding detection plus signed release and refund transactions mined
     by `pearld` and classified by the indexer.
+  - [x] 9.6.4.b Record external simnet node/indexer access: `65.21.206.46`
+    runs simnet `pearld` at public RPC `http://65.21.206.46:18556` with RPC
+    auth required, and simnet watched-address API at
+    `http://65.21.206.46:18088`.
+  - [x] 9.6.4.c Record simnet watch evidence for
+    `simnet-e2e-1779131665`: height `145`, `144` observed outputs,
+    `464964.66624540` observed PRL, `458505.41336571` unspent observed
+    PRL, and `2` recorded spends.
+  - [x] 9.6.4.d Run a wallet-backed simnet escrow path with oyster wallet
+    addresses. Evidence is recorded in
+    `docs/operations/pearl-wallet-backed-simnet-evidence-20260519.md`: Oyster
+    funded a unique watched escrow address, then spent the exact escrow outpoint
+    to the buyer release address; the indexer classified funding as `on_time`
+    and the spend as `release`.
 - [x] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
   - Native Base Sepolia USDC lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`.
   - Mock-token lifecycle evidence remains recorded in `contracts/usdc-escrow/deployments/base-sepolia-mock-run.json` as secondary isolated proof.
@@ -460,6 +474,13 @@ Loophole tracker after admin FE wiring:
 - [ ] 9.8.10 Record a full simnet escrow run: quote -> accept -> PRL funding
   detection -> Base deposit -> PRL release/refund -> Base release/refund ->
   proof.
+  - [x] 9.8.10.a Record live simnet watched-address evidence for the fixture
+    escrow address via the external read-only indexer API.
+  - [x] 9.8.10.b Record wallet-funded PRL-side simnet evidence with Oyster,
+    unique escrow address, watched-address detection, release spend, and indexer
+    spend classification.
+  - [ ] 9.8.10.c Complete the full quote -> accept -> wallet-funded PRL ->
+    Base deposit -> settlement-worker release/refund -> public proof path.
 - [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
   txids before any mainnet PRL code path is enabled.
 - [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
@@ -561,6 +582,14 @@ Loophole tracker after admin FE wiring:
   runtime network.
   - 2026-05-18: dev cluster egress `3.77.60.57` is allowlisted to
     `65.21.206.46:8088`; in-cluster curl to `/healthz` returned `{"ok":true}`.
+- [x] 9.10.12 Expose simnet node/indexer access for external agents without
+  SSH tunneling.
+  - 2026-05-18: nginx proxies `http://65.21.206.46:18088` to the local
+    simnet indexer as read-only `GET /healthz` and `GET /watches/:id`; public
+    `POST /watches` returns `403`.
+  - 2026-05-18: nginx proxies `http://65.21.206.46:18556` to simnet `pearld`
+    RPC; unauthenticated calls return `401`, authenticated `getblockcount`
+    returned `145`.
 
 ## 10. PRL Igra Bridge And wPRL/USDC Pool
 
@@ -569,16 +598,35 @@ Loophole tracker after admin FE wiring:
 - [x] 10.3 Define entry flow: Pearl PRL deposit, indexer confirmation, relayer/federation verification, Igra `wPRL` mint.
 - [x] 10.4 Define exit flow: Igra `wPRL` burn/lock, exit request, operator review, Pearl PRL release, proof record.
 - [x] 10.5 Define `wPRL` token decimals, symbol/name, conversion rules, mint authority, and owner/multisig controls.
-- [ ] 10.6 Design Igra bridge contract interface and events for deposit claims, minting, exit requests, processing, refunds, pause, caps, and replay protection.
-- [ ] 10.7 Build Igra bridge contract tests for mint replay protection, exit burn/lock, min/max limits, rolling caps, pause, and processed-exit idempotency.
+- [x] 10.6 Design Igra bridge contract interface and events for deposit claims, minting, exit requests, processing, refunds, pause, caps, and replay protection.
+  - 2026-05-18: Added `WrappedPearl` and `PearlBridge` under `contracts/usdc-escrow/src`. The bridge is federated/custodial by design: relayers submit Pearl outpoint claims, the contract enforces replay protection and caps, operators record globally unique Pearl release txids for exits, and cap reductions cannot go below active supply plus pending exit liabilities.
+- [x] 10.7 Build Igra bridge contract tests for mint replay protection, exit burn/lock, min/max limits, rolling caps, pause, and processed-exit idempotency.
+  - 2026-05-18: Added `PearlBridge.t.sol` covering bridge-only minting, deposit replay rejection, min/max/pilot/rolling caps, separate entry/exit pauses, burn-and-record exit requests, operator-only processing, idempotent processed exits, conflicting and reused release txid rejection, refunds/double-refund rejection, cap reductions below active liabilities, and two-step ownership.
 - [ ] 10.8 Extend Pearl indexer support for bridge deposit watches, reserve addresses, confirmed deposits, reserve spends, pending exits, and reconciliation gaps.
 - [x] 10.8.1 Add shared watched-addresses migration for bridge deposit/reserve watches and address observations.
 - [x] 10.8.2 Add `bridge_exit_requests` table for mirrored Igra burn/lock events.
 - [x] 10.8.3 Implement repository/API support for bridge deposit watches and reserve watches via the shared `/watches` API. Completed in PR #12.
 - [ ] 10.8.4 Track Pearl deposit observations by txid/vout, amount, block, confirmations, match status, consumed mint tx, and reorg state.
+  - [x] 10.8.4.a Add bridge-service deposit observation projection for outpoint, amount, confirmations, match status, consumed claim spend, unsafe classification, and reorg blockers.
 - [ ] 10.8.5 Track reserve spends and classify each spend as exit release, consolidation, ops transfer, fee/change, or unknown.
+  - [x] 10.8.5.a Add bridge-service reserve spend projection that separates known spends from unknown spends before relayer decisions.
 - [ ] 10.8.6 Expose reconciliation views for confirmed reserves, pending deposits, pending exits, minted `wPRL` supply, reserve surplus/deficit, stale requests, and unknown reserve spends.
-- [ ] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
+  - [x] 10.8.6.a Add bridge-service reconciliation snapshot for reserves, known spends, pending exits, minted supply, surplus/deficit, stale watches, and unknown reserve-spend blockers.
+  - [x] 10.8.6.b Add canonical event IDs, event hashes, relayer attestation counts, and quorum requirements to public bridge proof projections.
+- [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
+  - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.
+  - [x] 10.9.2 Harden bridge relayer guardrails after PR #65 strategy review:
+    fail closed on wrong-watch observations, observations outside watch
+    history, multiple live deposit outputs, insufficient confirmations,
+    missing/out-of-range expected amount bounds, and non-`on_time`
+    classifications.
+  - [x] 10.9.3 Add KAT-style canonical deposit/exit event identity, deterministic event hashing, independent relayer quorum evaluation, finality wait state, and fail-closed blockers for unknown relayers, mismatched event hashes, duplicate attestations, and impossible quorum policies.
+  - [x] 10.9.4 Require approved relayer quorum plus manual operator approval before bridge-service mint/release prepare decisions.
 - [ ] 10.10 Add bridge API/proof contracts for deposit status, exit status, reserve backing, and public audit trail.
+  - [x] 10.10.1 Add bridge public proof DTOs for deposit status, exit status, reserve backing, blockers, and public audit fields.
+  - [x] 10.10.2 Extend bridge public proof contracts with canonical event IDs, event hashes, relayer attestation counts, quorum requirements, and reserve-backing blockers.
 - [ ] 10.11 Add low-cap pilot gates: min/max amounts, rolling window caps, hot-wallet cap, monitoring, and emergency pause test.
+  - [x] 10.11.1 Add service-side low-cap pilot gates for deposit min/max, max exit, supply cap, rolling mint cap, and reserve-available checks.
+  - [x] 10.11.2 Require clean reserves, relayer quorum, finality, and manual operator approval before prepare actions.
+  - [ ] 10.11.3 Add hot-wallet reserve tier cap checks, monitoring alerts, and an emergency pause drill once live reserve addresses and signer policy are selected.
 - [ ] 10.12 After bridge entry/exit pilot passes, create `wPRL/USDC` pool plan with initial liquidity, price assumptions, and max bridge exposure approval.
