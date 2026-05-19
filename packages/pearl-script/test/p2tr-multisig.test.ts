@@ -3,12 +3,11 @@ import test from 'node:test';
 
 import * as ecc from 'tiny-secp256k1';
 
-import { createPearlP2trMultisigEscrowPayment } from '../dist/index.js';
+import { BIP341_NUMS_INTERNAL_PUBKEY_HEX, createPearlP2trMultisigEscrowPayment } from '../dist/index.js';
 
 test('creates a deterministic simnet 2-of-3 Taproot escrow payment', () => {
   const payment = createPearlP2trMultisigEscrowPayment({
     network: 'simnet',
-    internalPubkey: xOnlyPublicKey('01'),
     buyerPubkey: xOnlyPublicKey('02'),
     sellerPubkey: xOnlyPublicKey('03'),
     arbiterPubkey: xOnlyPublicKey('04'),
@@ -17,6 +16,8 @@ test('creates a deterministic simnet 2-of-3 Taproot escrow payment', () => {
 
   assert.match(payment.address, /^rprl1p/);
   assert.match(payment.outputScriptHex, /^5120[0-9a-f]{64}$/);
+  assert.equal(payment.internalPubkeyHex, BIP341_NUMS_INTERNAL_PUBKEY_HEX);
+  assert.equal(payment.internalKeyPolicy, 'bip341_nums_script_path_only');
   assert.equal(payment.leaves.length, 4);
   assert.deepEqual(payment.leaves.map((leaf) => leaf.kind), [
     'buyer_seller_release',
@@ -39,7 +40,6 @@ test('requires a positive timeout for the seller refund leaf', () => {
     () =>
       createPearlP2trMultisigEscrowPayment({
         network: 'simnet',
-        internalPubkey: xOnlyPublicKey('01'),
         buyerPubkey: xOnlyPublicKey('02'),
         sellerPubkey: xOnlyPublicKey('03'),
         arbiterPubkey: xOnlyPublicKey('04'),
@@ -50,13 +50,52 @@ test('requires a positive timeout for the seller refund leaf', () => {
     () =>
       createPearlP2trMultisigEscrowPayment({
         network: 'simnet',
-        internalPubkey: xOnlyPublicKey('01'),
         buyerPubkey: xOnlyPublicKey('02'),
         sellerPubkey: xOnlyPublicKey('03'),
         arbiterPubkey: xOnlyPublicKey('04'),
         refundLockTime: 0,
       }),
     /refundLockTime must be a positive integer/,
+  );
+});
+
+test('rejects caller-provided internal keys for multisig escrow', () => {
+  assert.throws(
+    () =>
+      createPearlP2trMultisigEscrowPayment({
+        network: 'simnet',
+        internalPubkey: xOnlyPublicKey('01'),
+        buyerPubkey: xOnlyPublicKey('02'),
+        sellerPubkey: xOnlyPublicKey('03'),
+        arbiterPubkey: xOnlyPublicKey('04'),
+        refundLockTime: 144,
+      } as any),
+    /does not accept a spendable internalPubkey/,
+  );
+});
+
+test('rejects invalid and duplicate multisig signer keys', () => {
+  assert.throws(
+    () =>
+      createPearlP2trMultisigEscrowPayment({
+        network: 'simnet',
+        buyerPubkey: 'ff'.repeat(32),
+        sellerPubkey: xOnlyPublicKey('03'),
+        arbiterPubkey: xOnlyPublicKey('04'),
+        refundLockTime: 144,
+      }),
+    /valid secp256k1 point/,
+  );
+  assert.throws(
+    () =>
+      createPearlP2trMultisigEscrowPayment({
+        network: 'simnet',
+        buyerPubkey: xOnlyPublicKey('02'),
+        sellerPubkey: xOnlyPublicKey('02'),
+        arbiterPubkey: xOnlyPublicKey('04'),
+        refundLockTime: 144,
+      }),
+    /must be distinct/,
   );
 });
 

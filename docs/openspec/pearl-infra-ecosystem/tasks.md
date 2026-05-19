@@ -799,6 +799,9 @@ blockers visible for planning. See
   - [x] 11.5.a Add simnet 2-of-3 P2TR escrow address/package construction with
     buyer/seller/arbiter script-path leaves and timeout-refund metadata. See
     `docs/operations/pearl-multisig-simnet-evidence-20260519.md`.
+    - Review-loop hardening: multisig escrow construction uses the BIP341 NUMS
+      internal key for script-path-only custody and rejects invalid or duplicate
+      role keys before producing an address.
   - [ ] 11.5.b Prove a funded simnet multisig release/refund spend through
     `pearld` and the watched-address indexer before treating multisig custody
     as live-ready.

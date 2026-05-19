@@ -93,6 +93,9 @@ These items block a full production-grade Pearl OTC settlement release:
    - 2026-05-19 update: simnet 2-of-3 P2TR address/package construction now
      passes in `packages/pearl-script` and `packages/pearl-escrow`; see
      `docs/operations/pearl-multisig-simnet-evidence-20260519.md`.
+   - 2026-05-19 review-loop update: the multisig package now uses the BIP341
+     NUMS internal key for script-path-only custody and rejects invalid or
+     duplicate signer role keys.
    - Next action: prove a funded simnet multisig release/refund spend through
      `pearld` and the watched-address indexer, then decide whether low-cap
      mainnet uses this path or the constrained coordinator path.

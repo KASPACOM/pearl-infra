@@ -5,6 +5,8 @@ Typed package for constructing Pearl OTC escrow packages.
 Current scope:
 
 - creates Pearl P2TR escrow addresses from a provided internal public key;
+- creates Pearl 2-of-3 buyer/seller/arbiter P2TR escrow packages with a BIP341
+  NUMS internal key for script-path-only custody;
 - builds release and refund transaction templates with expected funding amount, optional funding outpoint, signer policy, and refund eligibility;
 - validates release/refund destination addresses against the Pearl network;
 - creates signer policy requests, fee-cap checks, idempotency keys, and broadcast retry records;
@@ -30,4 +32,4 @@ const escrow = createPearlEscrowPackage({
 });
 ```
 
-The caller is responsible for generating and storing the internal key material. Do not use deployer, operator, or user private keys directly in this package.
+For `createPearlEscrowPackage`, the caller is responsible for generating and storing the internal key material. Do not use deployer, operator, or user private keys directly in this package. `createPearlMultisigEscrowPackage` does not accept caller-provided internal keys; it uses a BIP341 NUMS internal key so the policy is enforced through the Taproot script leaves.

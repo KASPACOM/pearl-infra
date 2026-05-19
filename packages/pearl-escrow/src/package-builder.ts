@@ -71,7 +71,6 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
 
   const payment = createPearlP2trMultisigEscrowPayment({
     network: input.network,
-    internalPubkey: input.internalPubkey,
     buyerPubkey: input.buyerPubkey,
     sellerPubkey: input.sellerPubkey,
     arbiterPubkey: input.arbiterPubkey,
@@ -84,6 +83,10 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
     address: input.releaseAddress,
     role: 'buyer',
     requiredSigners: ['buyer', 'seller'],
+    alternativeSignerSets: [
+      ['buyer', 'arbiter'],
+      ['seller', 'arbiter'],
+    ],
     signingPath: 'taproot_script_path',
   });
   const refundTemplate = createTemplate({
@@ -112,6 +115,7 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
     refundTemplate,
     keys: {
       internalPubkeyHex: payment.internalPubkeyHex,
+      internalKeyPolicy: payment.internalKeyPolicy,
       taprootOutputScriptHex: payment.outputScriptHex,
       signerPubkeys: {
         buyer: toHex(input.buyerPubkey),
@@ -140,6 +144,7 @@ function createTemplate(input: {
   role: 'buyer' | 'refund';
   lockTime?: number;
   requiredSigners: PearlEscrowTxTemplate['signingPolicy']['requiredSigners'];
+  alternativeSignerSets?: PearlEscrowTxTemplate['signingPolicy']['alternativeSignerSets'];
   timelockSatisfied?: boolean;
   signingPath?: PearlEscrowTxTemplate['signingPolicy']['path'];
 }): PearlEscrowTxTemplate {
@@ -162,12 +167,13 @@ function createTemplate(input: {
     signingPolicy: {
       path: input.signingPath ?? 'taproot_key_path',
       requiredSigners: input.requiredSigners,
+      ...(input.alternativeSignerSets == null ? {} : { alternativeSignerSets: input.alternativeSignerSets }),
       ...(input.timelockSatisfied == null ? {} : { timelockSatisfied: input.timelockSatisfied }),
     },
   };
 }
 
-function assertMainnetGate(input: CreatePearlEscrowPackageInput): void {
+function assertMainnetGate(input: { network: CreatePearlEscrowPackageInput['network']; allowMainnet?: boolean }): void {
   if (input.network === 'mainnet' && !input.allowMainnet) {
     throw new Error('mainnet Pearl escrow package creation is disabled until simnet verification is recorded');
   }

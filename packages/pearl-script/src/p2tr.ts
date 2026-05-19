@@ -13,6 +13,8 @@ export interface PearlP2trPayment {
   internalPubkeyHex: string;
 }
 
+export const BIP341_NUMS_INTERNAL_PUBKEY_HEX = '50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0';
+
 export type PearlMultisigEscrowLeafKind =
   | 'buyer_seller_release'
   | 'buyer_arbiter_release'
@@ -27,6 +29,7 @@ export interface PearlMultisigEscrowLeaf {
 }
 
 export interface PearlP2trMultisigEscrowPayment extends PearlP2trPayment {
+  internalKeyPolicy: 'bip341_nums_script_path_only';
   leaves: PearlMultisigEscrowLeaf[];
 }
 
@@ -53,17 +56,25 @@ export function createPearlP2trPayment(input: {
 
 export function createPearlP2trMultisigEscrowPayment(input: {
   network: PearlScriptNetworkName;
-  internalPubkey: string | Uint8Array;
+  internalPubkey?: never;
   buyerPubkey: string | Uint8Array;
   sellerPubkey: string | Uint8Array;
   arbiterPubkey: string | Uint8Array;
   refundLockTime?: number;
 }): PearlP2trMultisigEscrowPayment {
   ensureEccInitialized();
-  const internalPubkey = normalizeXOnlyPubkey(input.internalPubkey);
+  if ('internalPubkey' in input) {
+    throw new Error('multisig escrow uses the BIP341 NUMS internal key and does not accept a spendable internalPubkey');
+  }
+  const internalPubkey = normalizeXOnlyPubkey(BIP341_NUMS_INTERNAL_PUBKEY_HEX);
   const buyerPubkey = normalizeXOnlyPubkey(input.buyerPubkey);
   const sellerPubkey = normalizeXOnlyPubkey(input.sellerPubkey);
   const arbiterPubkey = normalizeXOnlyPubkey(input.arbiterPubkey);
+  assertDistinctSignerPubkeys([
+    ['buyer', buyerPubkey],
+    ['seller', sellerPubkey],
+    ['arbiter', arbiterPubkey],
+  ]);
   if (input.refundLockTime == null) {
     throw new Error('refundLockTime is required for multisig escrow timeout refund leaf');
   }
@@ -90,6 +101,7 @@ export function createPearlP2trMultisigEscrowPayment(input: {
     address: payment.address,
     outputScriptHex: Buffer.from(payment.output).toString('hex'),
     internalPubkeyHex: Buffer.from(internalPubkey).toString('hex'),
+    internalKeyPolicy: 'bip341_nums_script_path_only',
     leaves,
   };
 }
@@ -97,12 +109,30 @@ export function createPearlP2trMultisigEscrowPayment(input: {
 export function normalizeXOnlyPubkey(pubkey: string | Uint8Array): Uint8Array {
   const bytes = typeof pubkey === 'string' ? Buffer.from(stripHexPrefix(pubkey), 'hex') : pubkey;
   if (bytes.length === 32) {
+    if (!ecc.isXOnlyPoint(bytes)) {
+      throw new Error('expected x-only public key to be a valid secp256k1 point');
+    }
     return Uint8Array.from(bytes);
   }
   if (bytes.length === 33 && (bytes[0] === 0x02 || bytes[0] === 0x03)) {
+    if (!ecc.isPoint(bytes)) {
+      throw new Error('expected compressed public key to be a valid secp256k1 point');
+    }
     return Uint8Array.from(bytes.slice(1));
   }
   throw new Error(`expected x-only or compressed public key, got ${bytes.length} bytes`);
+}
+
+function assertDistinctSignerPubkeys(entries: readonly (readonly [string, Uint8Array])[]): void {
+  const seen = new Map<string, string>();
+  for (const [role, pubkey] of entries) {
+    const hex = Buffer.from(pubkey).toString('hex');
+    const existingRole = seen.get(hex);
+    if (existingRole) {
+      throw new Error(`multisig signer pubkeys must be distinct: ${role} duplicates ${existingRole}`);
+    }
+    seen.set(hex, role);
+  }
 }
 
 function ensureEccInitialized(): void {
