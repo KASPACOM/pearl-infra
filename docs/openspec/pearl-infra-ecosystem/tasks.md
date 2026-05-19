@@ -140,6 +140,30 @@ Merged implementation checkpoints:
   and monitoring contracts for lag, deadlines, failed broadcasts, duplicate
   events, manual-review backlog, and mismatched terms. Closes 9.6.1, 9.6.2,
   9.6.3, 9.6.11, 9.8.3, and 9.8.13.
+- PR #52 — documented the OTC status and remaining loopholes.
+- PR #53 — added rendered OTC web screens for RFQ, quote accept, checkout,
+  public proof, and admin shell.
+- PR #54 — added admin diagnostics and support-alert backend APIs.
+- PR #55 — added webhook delivery for support alerts.
+- PR #56 — added Telegram support-alert delivery.
+- PR #57 — expanded the Pearl admin remaining checklist.
+- PR #58 — wired the admin trade list UI.
+- PR #59 — hardened admin backend controls, auth, redaction, filters, and
+  alert replay.
+- PR #60 — added Oyster app deployment pipelines, Argo manifests, and image
+  contracts.
+- PR #61 — fixed Pearl indexer reorg replay.
+- PR #62 — added the Oyster dark landing page and FAQ.
+- PR #63 — hardened public OTC API inputs.
+- PR #64 — hardened the PRL transaction runtime in the settlement worker.
+- PR #65 — added Pearl bridge service reconciliation.
+- PR #66 — added `WrappedPearl` and `PearlBridge` EVM contracts.
+- PR #67 — recorded Pearl simnet escrow evidence.
+- PR #68 — added bridge quorum attestations.
+- PR #69 — clarified the remaining bridge checklist.
+- PR #70 — added bridge persistence repository, Igra event mirror helpers, exit
+  lifecycle projection, reserve-spend matcher, public bridge proof/status HTTP
+  routes, admin decision routes, pilot alerts, and the bridge pilot runbook.
 
 Current Pearl OTC code/workflow status:
 
@@ -172,21 +196,36 @@ Current Pearl OTC code/workflow status:
   notes, manual-review notes, failed alert-delivery replay, and the public
   support/error alert form, while settlement execution controls stay absent.
 
-Current delegation queue after rendered OTC web screens:
+Current delegation queue after PR #70:
 
-- Evidence owner: `9.6.4`, `9.8.10` full simnet escrow run, `9.3.9`
-  testnet2 ingest, and `9.8.11` testnet2/Base Sepolia run with real txids.
-  Run these after the deployment config is applied and services are reachable.
-- Ops/secrets owner: `9.6.12` operator alert secrets and one non-production
-  Telegram/webhook delivery proof.
-- Base Solidity/EVM owner: `9.6.7` and `9.6.9` remain open; `9.6.5`,
-  `9.6.6`, and `9.6.8` are complete, with PR #45 stress evidence recorded.
-- Admin/backend owner: `9.9.x` production hardening remains open on top of the
-  merged admin diagnostics, support alert, webhook, and Telegram alert backend.
-- Igra bridge Solidity/EVM owner: `10.6` and `10.7`.
-- Bridge service/federation owner: `10.8.4` through `10.11`, sequenced after
-  bridge contract shape is fixed.
-- Pool planning owner: `10.12`, deferred until entry/exit pilot evidence exists.
+- Bridge events/indexer owner: finish `10.8.7.b`, `10.8.8.b`, and `10.8.9.b`
+  by wiring the Igra RPC event poller, checkpointed cursor, Postgres
+  `bridge_exit_requests` writes, and live Pearl reserve-spend scanner updates.
+- Bridge FE owner: implement `10.10.5` proof-page/frontend models for deposit
+  status, exit status, reserve backing, blockers, public audit fields, event
+  hashes, and quorum counts.
+- Bridge rehearsal owner: execute `10.8.10` with real simnet Pearl deposit
+  txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve
+  reconciliation evidence.
+- Bridge ops/custody owner: complete `10.11.3` by selecting live reserve
+  addresses, signer policy, hot/warm/cold reserve caps, monitoring alerts, and
+  an emergency pause drill.
+- Threshold authorization owner: scope `10.13.1` through `10.13.3` for
+  federation membership, signer custody, threshold/FROST-style authorization,
+  and public reserve proof snapshots.
+- EVM audit owner: re-audit `WrappedPearl` and `PearlBridge` before pilot
+  rehearsal, covering ownership transfer, operator/relayer permissions, cap
+  semantics, pause behavior, replay protection, exit liabilities, deployment
+  scripts, and verification evidence.
+- OTC evidence owner: finish `9.8.10.c`, `9.3.9`, and `9.8.11` for the full
+  quote -> accept -> PRL funding -> Base deposit -> worker -> public proof path
+  and later testnet2/Base Sepolia run with real txids.
+- Base ops owner: finish `9.6.7`; keep `9.6.9` blocked until explicit Base
+  mainnet approval.
+- Oyster/prod ops owner: finish `9.10.6.b`, `9.10.8.d`, `9.10.9.b`, and
+  `9.10.10.f` only when prod release is approved.
+- Pool planning owner: keep `10.12` blocked until one low-cap entry and one
+  low-cap exit pass with public proof and clean reserve reconciliation.
 
 ### 9.1 Base Smart Contract
 
