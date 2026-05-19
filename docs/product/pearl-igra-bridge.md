@@ -104,7 +104,7 @@ Events:
 
 ## Supply Controls
 
-The bridge contract should enforce a pilot supply cap denominated in Pearl grains. Raising the cap requires multisig action and a recorded reserve reconciliation snapshot.
+The bridge contract should enforce a pilot supply cap denominated in Pearl grains. Raising the cap requires multisig action and a recorded reserve reconciliation snapshot. Lowering the cap must also fail if the new cap is below live `wPRL` supply plus pending exit liabilities.
 
 Supply invariant:
 
@@ -133,8 +133,9 @@ Before any non-toy pilot:
 - pilot max supply cap is set and recorded;
 - min deposit, max deposit, max exit, and rolling-window caps are configured;
 - emergency pause path is tested;
-- replay protection is tested for deposit claims and exit processing;
-- public proof fields cover deposit txid/outpoint, mint tx, exit event, release tx, reserves, and cap usage.
+- replay protection is tested for deposit claims, exit processing, and release txid reuse across exits;
+- cap reduction below active supply or active supply plus pending exits is rejected;
+- public proof fields cover deposit txid/outpoint, mint tx, exit event, release tx, reserves, and cap usage;
 - bridge service decisions require canonical event IDs / event hashes, distinct
   authorized relayer attestations, finality thresholds, and manual operator
   approval before mint or release preparation.

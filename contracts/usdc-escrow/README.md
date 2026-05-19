@@ -145,6 +145,12 @@ gates are set. See `docs/operations/bridge-mainnet-readiness.md`.
 Local validation evidence is recorded in
 `deployments/local-pearl-bridge-20260519141615.json`.
 
+The bridge contract review currently closes the EVM-side replay and cap safety
+checks: Pearl release txids are globally unique across exits, and pilot cap
+reductions cannot drop below live `wPRL` supply plus pending exit liabilities.
+Operational reserve reconciliation and mainnet approval remain runbook gates,
+not automatic EVM checks.
+
 ## Mainnet Gate
 
 Base mainnet deployment for the OTC USDC escrow remains disabled. Igra bridge
