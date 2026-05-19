@@ -45,15 +45,26 @@ contract PearlBridgeTest {
         _assertEq(uint256(token.decimals()), 8);
         _assertEq(token.bridge(), address(bridge));
 
-        VM.expectRevert(bytes("bridge contract required"));
-        token.setBridge(STRANGER);
-
         VM.expectRevert(bytes("not bridge"));
         token.mint(RECIPIENT, ONE_PRL);
 
         _claim(_txid("deposit-1"), 0, RECIPIENT, 10 * ONE_PRL);
         _assertEq(token.balanceOf(RECIPIENT), 10 * ONE_PRL);
         _assertEq(token.totalSupply(), 10 * ONE_PRL);
+    }
+
+    function testWrappedPearlBridgeAdminRequiresOwnerAndContract() external {
+        VM.prank(STRANGER);
+        VM.expectRevert();
+        token.setBridge(address(bridge));
+
+        VM.expectRevert(bytes("bridge required"));
+        token.setBridge(address(0));
+
+        VM.expectRevert(bytes("bridge contract required"));
+        token.setBridge(STRANGER);
+
+        _assertEq(token.bridge(), address(bridge));
     }
 
     function testDepositClaimMintsExactAmountAndStoresReplayKey() external {
@@ -225,7 +236,7 @@ contract PearlBridgeTest {
         bridge.processExit(secondExitId, releaseTxid);
     }
 
-    function testExitProcessingRequiresOperatorAndCanBePausedSeparately() external {
+    function testExitProcessingRequiresOperatorAndCanBePausedSeparatelyFromRefunds() external {
         bytes32 exitId = _requestExit();
 
         VM.prank(STRANGER);
@@ -236,6 +247,12 @@ contract PearlBridgeTest {
         VM.prank(OPERATOR);
         VM.expectRevert(bytes("exit processing paused"));
         bridge.processExit(exitId, _txid("release-1"));
+
+        VM.prank(OPERATOR);
+        bridge.refundExit(exitId);
+
+        _assertStatus(_exitStatus(exitId), PearlBridge.ExitStatus.Refunded);
+        _assertEq(bridge.pendingExitGrains(), 0);
     }
 
     function testRefundExitMintsBackBurnedAmountAndBlocksProcessing() external {
@@ -332,6 +349,14 @@ contract PearlBridgeTest {
         VM.prank(STRANGER);
         VM.expectRevert();
         bridge.setEntryPaused(true);
+
+        VM.prank(STRANGER);
+        VM.expectRevert();
+        bridge.setExitRequestPaused(true);
+
+        VM.prank(STRANGER);
+        VM.expectRevert();
+        bridge.setExitProcessingPaused(true);
 
         bridge.setRelayer(RELAYER, false);
         VM.prank(RELAYER);
