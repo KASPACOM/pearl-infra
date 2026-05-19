@@ -9,6 +9,10 @@ export interface BridgeDepositStatusProof {
   amountGrains?: string;
   confirmations: number;
   blockers: string[];
+  eventId?: string;
+  eventHash?: string;
+  relayerAttestationCount?: number;
+  relayerQuorumRequired?: number;
   mintTxHash?: string;
   igraRecipient?: string;
 }
@@ -22,6 +26,10 @@ export interface BridgeExitStatusProof {
   pearlRecipient: string;
   pearlReleaseTxid?: string;
   blockers: string[];
+  eventId?: string;
+  eventHash?: string;
+  relayerAttestationCount?: number;
+  relayerQuorumRequired?: number;
 }
 
 export interface BridgeReserveBackingProof {
@@ -61,6 +69,14 @@ export function createBridgePublicProof(input: {
         ...(deposit.amountGrains ? { amountGrains: deposit.amountGrains } : {}),
         confirmations: deposit.confirmations,
         blockers: deposit.blockers,
+        ...(readString(watch?.metadata, 'canonical_event_id') ? { eventId: readString(watch?.metadata, 'canonical_event_id') } : {}),
+        ...(readString(watch?.metadata, 'canonical_event_hash') ? { eventHash: readString(watch?.metadata, 'canonical_event_hash') } : {}),
+        ...(readNumber(watch?.metadata, 'relayer_attestation_count') !== undefined
+          ? { relayerAttestationCount: readNumber(watch?.metadata, 'relayer_attestation_count') }
+          : {}),
+        ...(readNumber(watch?.metadata, 'relayer_quorum_required') !== undefined
+          ? { relayerQuorumRequired: readNumber(watch?.metadata, 'relayer_quorum_required') }
+          : {}),
         ...(readString(watch?.metadata, 'igra_mint_tx_hash') ? { mintTxHash: readString(watch?.metadata, 'igra_mint_tx_hash') } : {}),
         ...(readString(watch?.metadata, 'igra_recipient') ? { igraRecipient: readString(watch?.metadata, 'igra_recipient') } : {}),
       };
@@ -73,6 +89,14 @@ export function createBridgePublicProof(input: {
       amountGrains: exit.requestedAmountGrains,
       pearlRecipient: exit.pearlRecipient,
       ...(exit.pearlReleaseTxid ? { pearlReleaseTxid: exit.pearlReleaseTxid } : {}),
+      ...(readString(exit.metadata, 'canonical_event_id') ? { eventId: readString(exit.metadata, 'canonical_event_id') } : {}),
+      ...(readString(exit.metadata, 'canonical_event_hash') ? { eventHash: readString(exit.metadata, 'canonical_event_hash') } : {}),
+      ...(readNumber(exit.metadata, 'relayer_attestation_count') !== undefined
+        ? { relayerAttestationCount: readNumber(exit.metadata, 'relayer_attestation_count') }
+        : {}),
+      ...(readNumber(exit.metadata, 'relayer_quorum_required') !== undefined
+        ? { relayerQuorumRequired: readNumber(exit.metadata, 'relayer_quorum_required') }
+        : {}),
       blockers: exit.status === 'pending' && input.reconciliation.blockers.length > 0
         ? input.reconciliation.blockers
         : [],
@@ -95,4 +119,11 @@ export function createBridgePublicProof(input: {
 function readString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = metadata?.[key];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readNumber(metadata: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = metadata?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  return undefined;
 }

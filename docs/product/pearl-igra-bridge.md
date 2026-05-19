@@ -135,6 +135,25 @@ Before any non-toy pilot:
 - emergency pause path is tested;
 - replay protection is tested for deposit claims and exit processing;
 - public proof fields cover deposit txid/outpoint, mint tx, exit event, release tx, reserves, and cap usage.
+- bridge service decisions require canonical event IDs / event hashes, distinct
+  authorized relayer attestations, finality thresholds, and manual operator
+  approval before mint or release preparation.
+
+## KAT-Style Phase-2 Direction
+
+The first `PearlBridge` contract is acceptable only for a low-cap custodial
+pilot. The next bridge phase should converge toward the KAT control model:
+
+- independent relayers observe Pearl deposits and Igra exits separately;
+- every mint/release decision is keyed by a canonical event ID and event hash;
+- relayers must reach quorum over exactly the same event hash before the bridge
+  service prepares an action;
+- Pearl-side releases should move from operator-only recording to
+  threshold/FROST-style authorization once signer custody is finalized;
+- public proof must show deposit, mint, exit, release, reserves, cap usage,
+  event hashes, finality, and relayer quorum counts;
+- replay rules must be global for both Pearl deposit outpoints and Pearl
+  release txids.
 
 Before a `wPRL/USDC` pool:
 

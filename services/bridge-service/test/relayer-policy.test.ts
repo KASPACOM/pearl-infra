@@ -5,6 +5,12 @@ import {
   decideDepositMint,
   decideExitRelease,
 } from '../src/relayer-policy.ts';
+import {
+  createDepositBridgeEvent,
+  createExitBridgeEvent,
+  evaluateBridgeAttestationQuorum,
+  type BridgeAttestationQuorum,
+} from '../src/attestations.ts';
 import { createBridgeReconciliationSnapshot } from '../src/reconciliation.ts';
 import type { BridgeAddressObservation, BridgeExitRequest, WatchedBridgeAddressWithHistory } from '../src/types.ts';
 import type { BridgePilotLimits } from '../src/types.ts';
@@ -18,6 +24,11 @@ const limits: BridgePilotLimits = {
   rollingWindowUsedGrains: '200',
 };
 
+const quorumPolicy = {
+  relayerIds: ['relayer-a', 'relayer-b', 'relayer-c'],
+  requiredAttestations: 2,
+};
+
 test('prepares mint only after confirmed deposit and manual approval', () => {
   const obs = observation({ amountGrains: '500', matchStatus: 'confirmed' });
   const watch = depositWatch({ observations: [obs] });
@@ -27,20 +38,49 @@ test('prepares mint only after confirmed deposit and manual approval', () => {
     observation: obs,
     limits,
     mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(watch, obs),
   });
   const approved = decideDepositMint({
     watch,
     observation: obs,
     limits,
     mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(watch, obs),
     manualApprovalId: 'approval-1',
   });
 
   assert.equal(waiting.action, 'wait');
-  assert.match(waiting.reason, /manual federation approval/);
+  assert.match(waiting.reason, /manual operator approval/);
   assert.equal(approved.action, 'prepare_mint');
   assert.equal(approved.metadata?.amountGrains, '500');
+  assert.equal(approved.metadata?.relayerAttestations, 2);
   assert.match(approved.idempotencyKey, /^bridge:prepare_mint:/);
+});
+
+test('waits for quorum attestations before mint even with manual approval', () => {
+  const obs = observation({ amountGrains: '500', matchStatus: 'confirmed' });
+  const watch = depositWatch({ observations: [obs] });
+
+  const missing = decideDepositMint({
+    watch,
+    observation: obs,
+    limits,
+    mintedSupplyGrains: '1000',
+    manualApprovalId: 'approval-1',
+  });
+  const incomplete = decideDepositMint({
+    watch,
+    observation: obs,
+    limits,
+    mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(watch, obs, 1),
+    manualApprovalId: 'approval-1',
+  });
+
+  assert.equal(missing.action, 'wait');
+  assert.match(missing.reason, /quorum attestations/);
+  assert.equal(incomplete.action, 'wait');
+  assert.match(incomplete.reason, /1\/2/);
 });
 
 test('routes unsafe deposits to manual review before mint', () => {
@@ -56,6 +96,7 @@ test('routes unsafe deposits to manual review before mint', () => {
     observation: obs,
     limits,
     mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(depositWatch({ observations: [obs] }), obs),
     manualApprovalId: 'approval-1',
   });
 
@@ -72,6 +113,7 @@ test('routes wrong-watch, low-confirmation, and out-of-range deposit inputs to m
     observation: lowConfirmationWatch.observations[0],
     limits,
     mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(lowConfirmationWatch, lowConfirmationWatch.observations[0]),
     manualApprovalId: 'approval-1',
   });
 
@@ -80,6 +122,7 @@ test('routes wrong-watch, low-confirmation, and out-of-range deposit inputs to m
     observation: observation({ watchId: 'other-watch', amountGrains: '500', matchStatus: 'confirmed' }),
     limits,
     mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(depositWatch(), observation({ watchId: 'other-watch', amountGrains: '500', matchStatus: 'confirmed' })),
     manualApprovalId: 'approval-1',
   });
 
@@ -95,6 +138,7 @@ test('routes wrong-watch, low-confirmation, and out-of-range deposit inputs to m
     observation: aboveExpectedWatch.observations[0],
     limits,
     mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(aboveExpectedWatch, aboveExpectedWatch.observations[0]),
     manualApprovalId: 'approval-1',
   });
 
@@ -119,6 +163,7 @@ test('routes multiple live deposit observations to manual review before mint', (
     observation: watch.observations[0],
     limits,
     mintedSupplyGrains: '1000',
+    attestationQuorum: approvedDepositQuorum(watch, watch.observations[0]),
     manualApprovalId: 'approval-1',
   });
 
@@ -139,18 +184,67 @@ test('prepares exit release only when reconciliation is clean and approval exist
     exit: exitRequest({ requestedAmountGrains: '200' }),
     reconciliation,
     limits,
+    attestationQuorum: approvedExitQuorum(exitRequest({ requestedAmountGrains: '200' })),
   });
   const approved = decideExitRelease({
     exit: exitRequest({ requestedAmountGrains: '200' }),
     reconciliation,
     limits,
+    attestationQuorum: approvedExitQuorum(exitRequest({ requestedAmountGrains: '200' })),
     manualApprovalId: 'approval-exit-1',
   });
 
   assert.equal(waiting.action, 'wait');
-  assert.match(waiting.reason, /manual federation approval/);
+  assert.match(waiting.reason, /manual operator approval/);
   assert.equal(approved.action, 'prepare_exit_release');
   assert.equal(approved.metadata?.amountGrains, '200');
+  assert.equal(approved.metadata?.relayerAttestations, 2);
+});
+
+test('blocks exit release on failed quorum before release preparation', () => {
+  const exit = exitRequest({ requestedAmountGrains: '200' });
+  const reconciliation = createBridgeReconciliationSnapshot({
+    depositWatches: [],
+    reserveWatches: [reserveWatch('1000')],
+    exits: [exit],
+    mintedSupplyGrains: '500',
+    now: new Date('2026-05-18T18:00:00.000Z'),
+  });
+  const event = createExitBridgeEvent({
+    exitId: exit.exitId,
+    igraBurnTxid: exit.igraBurnTxid,
+    igraBurnLogIndex: exit.igraBurnLogIndex,
+    igraBurnBlock: exit.igraBurnBlock,
+    igraChainId: exit.igraChainId,
+    bridgeAddress: '0x2222222222222222222222222222222222222222',
+    amountGrains: exit.requestedAmountGrains,
+    pearlRecipient: exit.pearlRecipient,
+    requiredConfirmations: 20,
+    observedConfirmations: 20,
+  });
+  const blockedQuorum = evaluateBridgeAttestationQuorum({
+    event,
+    policy: quorumPolicy,
+    attestations: [
+      {
+        relayerId: 'relayer-a',
+        eventId: event.eventId,
+        eventHash: '0xdead',
+        observedAt: '2026-05-18T18:00:00.000Z',
+      },
+    ],
+  });
+
+  const decision = decideExitRelease({
+    exit,
+    reconciliation,
+    limits,
+    attestationQuorum: blockedQuorum,
+    manualApprovalId: 'approval-exit-1',
+  });
+
+  assert.equal(decision.action, 'manual_review');
+  assert.match(decision.reason, /event_hash_mismatch/);
 });
 
 test('blocks exit release on reconciliation blockers or exit caps', () => {
@@ -206,6 +300,61 @@ function depositWatch(overrides: Partial<WatchedBridgeAddressWithHistory> = {}):
     spends: [],
     ...overrides,
   };
+}
+
+function approvedDepositQuorum(
+  watch: WatchedBridgeAddressWithHistory,
+  obs: BridgeAddressObservation,
+  attestationCount = 2,
+): BridgeAttestationQuorum {
+  const [pearlTxid, vout = '0'] = obs.outpoint.split(':');
+  const event = createDepositBridgeEvent({
+    pearlNetwork: watch.network,
+    pearlTxid,
+    vout: Number(vout),
+    amountGrains: obs.amountGrains,
+    igraRecipient: typeof watch.metadata.igra_recipient === 'string'
+      ? watch.metadata.igra_recipient
+      : '0x1111111111111111111111111111111111111111',
+    depositWatchId: watch.watchId,
+    requiredConfirmations: watch.requiredConfirmations,
+    observedConfirmations: obs.confirmations,
+  });
+  return evaluateBridgeAttestationQuorum({
+    event,
+    policy: quorumPolicy,
+    attestations: quorumPolicy.relayerIds.slice(0, attestationCount).map((relayerId) => ({
+      relayerId,
+      eventId: event.eventId,
+      eventHash: event.eventHash,
+      observedAt: '2026-05-18T18:00:00.000Z',
+    })),
+  });
+}
+
+function approvedExitQuorum(exit: BridgeExitRequest): BridgeAttestationQuorum {
+  const event = createExitBridgeEvent({
+    exitId: exit.exitId,
+    igraBurnTxid: exit.igraBurnTxid,
+    igraBurnLogIndex: exit.igraBurnLogIndex,
+    igraBurnBlock: exit.igraBurnBlock,
+    igraChainId: exit.igraChainId,
+    bridgeAddress: '0x2222222222222222222222222222222222222222',
+    amountGrains: exit.requestedAmountGrains,
+    pearlRecipient: exit.pearlRecipient,
+    requiredConfirmations: 20,
+    observedConfirmations: 20,
+  });
+  return evaluateBridgeAttestationQuorum({
+    event,
+    policy: quorumPolicy,
+    attestations: quorumPolicy.relayerIds.slice(0, 2).map((relayerId) => ({
+      relayerId,
+      eventId: event.eventId,
+      eventHash: event.eventHash,
+      observedAt: '2026-05-18T18:00:00.000Z',
+    })),
+  });
 }
 
 function reserveWatch(amountGrains: string): WatchedBridgeAddressWithHistory {

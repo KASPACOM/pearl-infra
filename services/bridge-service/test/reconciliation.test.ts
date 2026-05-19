@@ -17,6 +17,10 @@ test('reconciles confirmed deposits, reserves, pending exits, and public proof',
       igra_recipient: '0x1111111111111111111111111111111111111111',
       expected_amount_min_grains: '100',
       expected_amount_max_grains: '200',
+      canonical_event_id: '0xevent',
+      canonical_event_hash: '0xhash',
+      relayer_attestation_count: 2,
+      relayer_quorum_required: 3,
       igra_mint_tx_hash: '0xmint',
     },
     observations: [
@@ -73,6 +77,10 @@ test('reconciles confirmed deposits, reserves, pending exits, and public proof',
     exits: [exit],
   });
   assert.equal(proof.deposits[0].pearlOutpoint, 'pearl-deposit:0');
+  assert.equal(proof.deposits[0].eventId, '0xevent');
+  assert.equal(proof.deposits[0].eventHash, '0xhash');
+  assert.equal(proof.deposits[0].relayerAttestationCount, 2);
+  assert.equal(proof.deposits[0].relayerQuorumRequired, 3);
   assert.equal(proof.deposits[0].mintTxHash, '0xmint');
   assert.equal(proof.reserveBacking.reserveAvailableGrains, '700');
 });

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import type { BridgeAttestationQuorum } from './attestations.js';
 import type {
   BridgeAddressObservation,
   BridgeExitRequest,
@@ -14,6 +15,7 @@ export interface DepositMintDecisionInput {
   observation?: BridgeAddressObservation;
   limits: BridgePilotLimits;
   mintedSupplyGrains: string;
+  attestationQuorum?: BridgeAttestationQuorum;
   manualApprovalId?: string;
 }
 
@@ -21,6 +23,7 @@ export interface ExitReleaseDecisionInput {
   exit: BridgeExitRequest;
   reconciliation: BridgeReconciliationSnapshot;
   limits: BridgePilotLimits;
+  attestationQuorum?: BridgeAttestationQuorum;
   manualApprovalId?: string;
 }
 
@@ -36,12 +39,21 @@ export function decideDepositMint(input: DepositMintDecisionInput): BridgeRelaye
   if (!input.observation || input.observation.matchStatus !== 'confirmed') {
     return decision('wait', 'deposit does not have enough confirmations', sourceIds);
   }
+  const quorumDecision = getAttestationQuorumDecision(input.attestationQuorum, 'mint');
+  if (quorumDecision) {
+    return decision(quorumDecision.action, quorumDecision.reason, sourceIds, quorumDecision.metadata);
+  }
+  if (!input.attestationQuorum) throw new Error('approved mint quorum missing');
+  const approvedQuorum = input.attestationQuorum;
   if (!input.manualApprovalId) {
-    return decision('wait', 'manual federation approval is required before mint', sourceIds);
+    return decision('wait', 'manual operator approval is required before mint', sourceIds);
   }
   return decision('prepare_mint', 'confirmed Pearl deposit is approved for wPRL mint', sourceIds, {
     amountGrains: input.observation.amountGrains,
     approvalId: input.manualApprovalId,
+    eventHash: approvedQuorum.eventHash,
+    eventId: approvedQuorum.eventId,
+    relayerAttestations: approvedQuorum.validAttestationCount,
   });
 }
 
@@ -62,13 +74,57 @@ export function decideExitRelease(input: ExitReleaseDecisionInput): BridgeRelaye
   if (BigInt(input.exit.requestedAmountGrains) > BigInt(input.reconciliation.reserveAvailableGrains)) {
     return decision('manual_review', 'exit exceeds available Pearl reserves', sourceIds);
   }
+  const quorumDecision = getAttestationQuorumDecision(input.attestationQuorum, 'release');
+  if (quorumDecision) {
+    return decision(quorumDecision.action, quorumDecision.reason, sourceIds, quorumDecision.metadata);
+  }
+  if (!input.attestationQuorum) throw new Error('approved release quorum missing');
+  const approvedQuorum = input.attestationQuorum;
   if (!input.manualApprovalId) {
-    return decision('wait', 'manual federation approval is required before Pearl release', sourceIds);
+    return decision('wait', 'manual operator approval is required before Pearl release', sourceIds);
   }
   return decision('prepare_exit_release', 'pending Igra exit is approved for Pearl reserve release', sourceIds, {
     amountGrains: input.exit.requestedAmountGrains,
     approvalId: input.manualApprovalId,
+    eventHash: approvedQuorum.eventHash,
+    eventId: approvedQuorum.eventId,
+    relayerAttestations: approvedQuorum.validAttestationCount,
   });
+}
+
+function getAttestationQuorumDecision(
+  quorum: BridgeAttestationQuorum | undefined,
+  action: 'mint' | 'release',
+): { action: BridgeRelayerDecision['action']; reason: string; metadata?: BridgeRelayerDecision['metadata'] } | undefined {
+  if (!quorum) {
+    return {
+      action: 'wait',
+      reason: `relayer quorum attestations are required before ${action}`,
+    };
+  }
+  if (quorum.status === 'manual_review') {
+    return {
+      action: 'manual_review',
+      reason: `relayer quorum is blocked: ${quorum.blockers.join(', ')}`,
+      metadata: {
+        eventHash: quorum.eventHash,
+        eventId: quorum.eventId,
+        relayerAttestations: quorum.validAttestationCount,
+      },
+    };
+  }
+  if (quorum.status === 'wait') {
+    return {
+      action: 'wait',
+      reason: `waiting for relayer quorum attestations: ${quorum.validAttestationCount}/${quorum.requiredAttestations}`,
+      metadata: {
+        eventHash: quorum.eventHash,
+        eventId: quorum.eventId,
+        relayerAttestations: quorum.validAttestationCount,
+      },
+    };
+  }
+  return undefined;
 }
 
 function getDepositBlocker(input: DepositMintDecisionInput): string | undefined {
