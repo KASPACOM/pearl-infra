@@ -28,7 +28,7 @@ export function LandingPage() {
       <section className="landing-hero">
         <div className="landing-hero__scene" aria-hidden="true">
           <figure className="landing-preview">
-            <img src="/brand/oysters-market-quote.png" alt="" />
+            <img src="/brand/oysters-market-quote.webp" alt="" decoding="async" />
           </figure>
           <div className="landing-chain">
             <span />
