@@ -371,6 +371,40 @@ contract PearlBridgeTest {
         bridge.processExit(exitId, _txid("release-1"));
     }
 
+    function testBridgeRolesCannotCollapseIntoOwnerOrEachOther() external {
+        VM.expectRevert(bytes("relayer is owner"));
+        bridge.setRelayer(address(this), true);
+
+        VM.expectRevert(bytes("operator is owner"));
+        bridge.setOperator(address(this), true);
+
+        VM.expectRevert(bytes("operator is relayer"));
+        bridge.setOperator(RELAYER, true);
+
+        VM.expectRevert(bytes("relayer is operator"));
+        bridge.setRelayer(OPERATOR, true);
+
+        VM.expectRevert(bytes("owner is relayer"));
+        bridge.transferOwnership(RELAYER);
+
+        VM.expectRevert(bytes("owner is operator"));
+        bridge.transferOwnership(OPERATOR);
+    }
+
+    function testPendingOwnerCannotBecomeActionRole() external {
+        address newOwner = address(0xA11CE0);
+        bridge.transferOwnership(newOwner);
+
+        VM.expectRevert(bytes("relayer is pending owner"));
+        bridge.setRelayer(newOwner, true);
+
+        VM.expectRevert(bytes("operator is pending owner"));
+        bridge.setOperator(newOwner, true);
+
+        bridge.transferOwnership(address(0));
+        bridge.setRelayer(newOwner, true);
+    }
+
     function testOwnershipTransferUsesTwoStepAndRenounceIsDisabled() external {
         address newOwner = address(0xA11CE0);
 

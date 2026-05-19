@@ -142,6 +142,13 @@ evidence JSON under `deployments/`, uses Igra legacy gas pricing on non-local
 networks, and refuses Igra mainnet unless explicit approval and role/ownership
 gates are set. See `docs/operations/bridge-mainnet-readiness.md`.
 
+For Igra mainnet, the script validates deployment readiness before sending any
+transaction: setup owner, final owner, relayer, and operator must be separate
+addresses, approval/checklist flags plus a reviewed readiness manifest must be
+set, the manifest must match the live role addresses, and pilot cap inputs must
+pass the bridge's min/max, rolling-cap, and supply-cap relationships.
+The contract also rejects owner/relayer/operator role collapse after deployment.
+
 Local validation evidence is recorded in
 `deployments/local-pearl-bridge-20260519141615.json`.
 
@@ -191,6 +198,7 @@ Production ownership checklist:
 - Record `pendingOwner()` after transfer.
 - Have the multisig call `acceptOwnership()`.
 - Record acceptance transaction hash and final `owner()`.
+- Confirm final owner, relayer, and operator are distinct on-chain.
 - Confirm `renounceOwnership()` still reverts.
 - Confirm `feeRecipient` and native USDC address.
 - Do not enable mainnet settlement until the ownership evidence is committed to

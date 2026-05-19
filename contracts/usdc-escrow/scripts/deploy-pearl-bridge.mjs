@@ -14,6 +14,8 @@ import {
   isAddress,
 } from 'ethers';
 
+import { validatePearlBridgeDeploymentReadiness } from './pearl-bridge-readiness.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, '..');
 const WRAPPED_PEARL_ARTIFACT = resolve(PACKAGE_ROOT, 'out/WrappedPearl.sol/WrappedPearl.json');
@@ -46,9 +48,8 @@ try {
   const networkName = process.env.PEARL_BRIDGE_DEPLOY_NETWORK ?? 'galleon';
   const networkConfig = NETWORKS[networkName];
   if (!networkConfig) throw new Error(`Unsupported PEARL_BRIDGE_DEPLOY_NETWORK: ${networkName}`);
-  if (networkConfig.mainnet && process.env.PEARL_BRIDGE_MAINNET_APPROVED !== '1') {
-    throw new Error('Igra mainnet deployment requires PEARL_BRIDGE_MAINNET_APPROVED=1');
-  }
+  validateMainnetEnvironment(networkConfig);
+  const mainnetReadinessManifest = readMainnetReadinessManifest(networkConfig);
   if (networkConfig.name === 'local') anvil = await startLocalAnvil(networkConfig);
 
   const rpcUrl = rpcUrlFor(networkConfig);
@@ -60,10 +61,18 @@ try {
 
   const { signer: deployer, address: deployerAddress } = await deployerSigner(networkConfig, provider);
   const owner = addressEnv('PEARL_BRIDGE_OWNER') ?? deployerAddress;
-  const relayer = addressEnv('PEARL_BRIDGE_RELAYER') ?? nonMainnetDefault(networkConfig, deployerAddress, 'PEARL_BRIDGE_RELAYER');
-  const operator = addressEnv('PEARL_BRIDGE_OPERATOR') ?? nonMainnetDefault(networkConfig, deployerAddress, 'PEARL_BRIDGE_OPERATOR');
+  const relayer = addressEnv('PEARL_BRIDGE_RELAYER') ?? await nonMainnetDefault(networkConfig, provider, 'PEARL_BRIDGE_RELAYER', 1);
+  const operator = addressEnv('PEARL_BRIDGE_OPERATOR') ?? await nonMainnetDefault(networkConfig, provider, 'PEARL_BRIDGE_OPERATOR', 2);
   const finalOwner = addressEnv('PEARL_BRIDGE_FINAL_OWNER');
-  validateMainnetRoles(networkConfig, { owner, relayer, operator, finalOwner });
+  const bridgeCaps = caps();
+  validatePearlBridgeDeploymentReadiness({
+    network: networkConfig,
+    roles: { owner, finalOwner, relayer, operator },
+    caps: bridgeCapsObject(bridgeCaps),
+    mainnetApproved: process.env.PEARL_BRIDGE_MAINNET_APPROVED,
+    mainnetReadyChecklist: process.env.PEARL_BRIDGE_MAINNET_READY_CHECKLIST,
+    readinessManifest: mainnetReadinessManifest,
+  });
 
   const deployerBalance = await provider.getBalance(deployerAddress);
   if (deployerBalance === 0n) throw new Error(`deployer ${deployerAddress} has no native gas balance`);
@@ -81,7 +90,7 @@ try {
     finalOwner: finalOwner ?? null,
     relayer,
     operator,
-    caps: caps().map((value) => value.toString()),
+    caps: bridgeCaps.map((value) => value.toString()),
     transactions: [],
     startedAt: new Date().toISOString(),
   };
@@ -92,7 +101,7 @@ try {
   const wrappedPearlAddress = await wrappedPearl.getAddress();
 
   const bridgeFactory = new ContractFactory(bridgeArtifact.abi, artifactBytecode(bridgeArtifact), deployer);
-  const pearlBridge = await bridgeFactory.deploy(wrappedPearlAddress, caps(), owner, txOverrides);
+  const pearlBridge = await bridgeFactory.deploy(wrappedPearlAddress, bridgeCaps, owner, txOverrides);
   const pearlBridgeReceipt = await waitReceipt(pearlBridge.deploymentTransaction(), 'deploy PearlBridge', evidence);
   const pearlBridgeAddress = await pearlBridge.getAddress();
 
@@ -170,23 +179,36 @@ function addressEnv(name) {
   return value;
 }
 
-function nonMainnetDefault(networkConfig, address, name) {
-  if (!networkConfig.mainnet) return address;
-  throw new Error(`Igra mainnet deployment requires explicit ${name}`);
+async function nonMainnetDefault(networkConfig, provider, name, signerIndex) {
+  if (networkConfig.name === 'local') return provider.getSigner(signerIndex).then((signer) => signer.getAddress());
+  throw new Error(`${networkConfig.name} deployment requires explicit ${name}`);
 }
 
-function validateMainnetRoles(networkConfig, roles) {
+function validateMainnetEnvironment(networkConfig) {
   if (!networkConfig.mainnet) return;
-  if (!roles.finalOwner) throw new Error('Igra mainnet deployment requires PEARL_BRIDGE_FINAL_OWNER');
-  if (roles.finalOwner.toLowerCase() === roles.owner.toLowerCase()) {
-    throw new Error('Igra mainnet final owner must differ from the deployer owner and accept ownership explicitly');
-  }
-  if (roles.relayer.toLowerCase() === roles.operator.toLowerCase()) {
-    throw new Error('Igra mainnet relayer and operator must be separate addresses');
+  if (process.env.PEARL_BRIDGE_MAINNET_APPROVED !== '1') {
+    throw new Error('Igra mainnet deployment requires PEARL_BRIDGE_MAINNET_APPROVED=1');
   }
   if (process.env.PEARL_BRIDGE_MAINNET_READY_CHECKLIST !== '1') {
     throw new Error('Igra mainnet deployment requires PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1');
   }
+  requireAddressEnv('PEARL_BRIDGE_FINAL_OWNER');
+  requireAddressEnv('PEARL_BRIDGE_RELAYER');
+  requireAddressEnv('PEARL_BRIDGE_OPERATOR');
+  if (!process.env.PEARL_BRIDGE_MAINNET_READY_FILE) {
+    throw new Error('Igra mainnet deployment requires PEARL_BRIDGE_MAINNET_READY_FILE');
+  }
+}
+
+function requireAddressEnv(name) {
+  if (!addressEnv(name)) throw new Error(`Igra mainnet deployment requires ${name}`);
+}
+
+function readMainnetReadinessManifest(networkConfig) {
+  if (!networkConfig.mainnet) return undefined;
+  const path = process.env.PEARL_BRIDGE_MAINNET_READY_FILE;
+  const raw = readFileSync(resolve(path), 'utf8');
+  return JSON.parse(raw);
 }
 
 function caps() {
@@ -199,6 +221,18 @@ function caps() {
     bigintEnv('PEARL_BRIDGE_ROLLING_WINDOW_MINT_CAP_GRAINS', 100_000_000n),
     bigintEnv('PEARL_BRIDGE_PILOT_SUPPLY_CAP_GRAINS', 100_000_000n),
   ];
+}
+
+function bridgeCapsObject(values) {
+  return {
+    minDepositGrains: values[0],
+    maxDepositGrains: values[1],
+    minExitGrains: values[2],
+    maxExitGrains: values[3],
+    rollingWindowSeconds: values[4],
+    rollingWindowMintCapGrains: values[5],
+    pilotSupplyCapGrains: values[6],
+  };
 }
 
 function bigintEnv(name, fallback) {

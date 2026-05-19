@@ -172,12 +172,22 @@ contract PearlBridge is Ownable2Step {
 
     function setRelayer(address relayer, bool enabled) external onlyOwner {
         require(relayer != address(0), "relayer required");
+        if (enabled) {
+            require(relayer != owner(), "relayer is owner");
+            require(relayer != pendingOwner(), "relayer is pending owner");
+            require(!operators[relayer], "relayer is operator");
+        }
         relayers[relayer] = enabled;
         emit RelayerUpdated(relayer, enabled);
     }
 
     function setOperator(address operator, bool enabled) external onlyOwner {
         require(operator != address(0), "operator required");
+        if (enabled) {
+            require(operator != owner(), "operator is owner");
+            require(operator != pendingOwner(), "operator is pending owner");
+            require(!relayers[operator], "operator is relayer");
+        }
         operators[operator] = enabled;
         emit OperatorUpdated(operator, enabled);
     }
@@ -203,6 +213,14 @@ contract PearlBridge is Ownable2Step {
 
     function renounceOwnership() public view override onlyOwner {
         revert("renounce disabled");
+    }
+
+    function transferOwnership(address newOwner) public override onlyOwner {
+        if (newOwner != address(0)) {
+            require(!relayers[newOwner], "owner is relayer");
+            require(!operators[newOwner], "owner is operator");
+        }
+        super.transferOwnership(newOwner);
     }
 
     function _consumeMintCapacity(uint256 amountGrains) private {
