@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import type { DeadlineModel, FailureBannerModel, StateBadgeModel, TimelineEventModel } from '../page-models.js';
 
 export type BrandLoaderVariant = 'pearl-pulse' | 'shell-breathe';
@@ -12,12 +12,14 @@ export function BrandLoader({
   variant?: BrandLoaderVariant;
   compact?: boolean;
 }) {
+  const pearlGradientId = useId();
+
   return (
     <span className={`om-loader om-loader--${variant} ${compact ? 'om-loader--compact' : ''}`} role="status" aria-live="polite">
       {variant === 'shell-breathe' ? (
         <svg className="om-loader__shell" viewBox="0 0 140 140" aria-hidden="true">
           <defs>
-            <radialGradient id="om-loader-pearl" cx="35%" cy="35%">
+            <radialGradient id={pearlGradientId} cx="35%" cy="35%">
               <stop offset="0%" stopColor="#ffffff" />
               <stop offset="55%" stopColor="#ece5ff" />
               <stop offset="100%" stopColor="#b69aff" />
@@ -29,7 +31,7 @@ export function BrandLoader({
           <g className="om-loader__shell-top">
             <path d="M14 64 Q70 12 126 64 Q70 56 14 64 Z" />
           </g>
-          <circle className="om-loader__shell-pearl" cx="70" cy="70" r="9" />
+          <circle className="om-loader__shell-pearl" cx="70" cy="70" r="9" fill={`url(#${pearlGradientId})`} />
         </svg>
       ) : (
         <span className="om-loader__pulse" aria-hidden="true">
