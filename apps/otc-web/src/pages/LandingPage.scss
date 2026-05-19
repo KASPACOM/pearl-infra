@@ -26,7 +26,12 @@
     linear-gradient(90deg, rgba(139, 92, 246, 0.08) 1px, transparent 1px),
     linear-gradient(0deg, rgba(139, 92, 246, 0.055) 1px, transparent 1px),
     var(--om-bg);
-  background-size: 68px 68px;
+  background-size:
+    auto,
+    auto,
+    68px 68px,
+    68px 68px,
+    auto;
 }
 
 .landing-hero__scene::after {
