@@ -39,6 +39,7 @@ simnet node and public indexer read API.
 - Signer policy: simnet low-cap 2-of-3 P2TR script-path reserve; two reserve signers required for release
 - Release txid: `84c8559efc60456f87b4ceae889d3c47102c111201a9fa4119de0149aeb21f8a`
 - Indexer classification: `unknown_spend`
+- Required `exit_release` classification for this run: `false`
 - Deployed indexer has current `exit_release` classifier:
   `false`
 
@@ -50,6 +51,9 @@ simnet node and public indexer read API.
   the deployed simnet indexer observed the spend. If the classification above
   is `unknown_spend`, the deployed scanner is older than the repo code that
   classifies `bridge_reserve` spends as `exit_release`.
+- To use this runner as the bridge reserve classifier gate, re-run it with
+  `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`; the command fails unless the deployed
+  indexer classifies the reserve spend as `exit_release`.
 
 Machine-readable evidence is in
 [pearl-multisig-funded-simnet-evidence-20260519.json](./pearl-multisig-funded-simnet-evidence-20260519.json).

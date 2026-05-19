@@ -1,4 +1,4 @@
-import { createPearlP2trMultisigEscrowPayment, createPearlP2trPayment } from '@kaspacom/pearl-script';
+import { createPearlP2trMultisigEscrowPayment, createPearlP2trPayment, normalizeXOnlyPubkey } from '@kaspacom/pearl-script';
 import { validatePearlAddress } from '@kaspacom/pearl-sdk';
 
 import type {
@@ -68,13 +68,14 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
   assertPositiveInteger(input.requiredConfirmations, 'requiredConfirmations');
   assertAddressForNetwork(input.releaseAddress, input.network, 'releaseAddress');
   assertAddressForNetwork(input.refundAddress, input.network, 'refundAddress');
+  const refundLockTime = readMultisigRefundLockTime(input);
 
   const payment = createPearlP2trMultisigEscrowPayment({
     network: input.network,
     buyerPubkey: input.buyerPubkey,
     sellerPubkey: input.sellerPubkey,
     arbiterPubkey: input.arbiterPubkey,
-    refundLockTime: input.refundEligibleAfterHeight ?? input.refundEligibleAfterUnixTime,
+    refundLockTime,
   });
   const releaseTemplate = createTemplate({
     kind: 'release',
@@ -95,7 +96,7 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
     outpoint: input.fundingOutpoint,
     address: input.refundAddress,
     role: 'refund',
-    lockTime: input.refundEligibleAfterHeight ?? input.refundEligibleAfterUnixTime,
+    lockTime: refundLockTime,
     requiredSigners: ['seller'],
     timelockSatisfied: false,
     signingPath: 'taproot_script_path',
@@ -118,9 +119,9 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
       internalKeyPolicy: payment.internalKeyPolicy,
       taprootOutputScriptHex: payment.outputScriptHex,
       signerPubkeys: {
-        buyer: toHex(input.buyerPubkey),
-        seller: toHex(input.sellerPubkey),
-        arbiter: toHex(input.arbiterPubkey),
+        buyer: toXOnlyPubkeyHex(input.buyerPubkey),
+        seller: toXOnlyPubkeyHex(input.sellerPubkey),
+        arbiter: toXOnlyPubkeyHex(input.arbiterPubkey),
       },
       taprootScriptLeaves: payment.leaves.map((leaf) => ({
         kind: leaf.kind,
@@ -193,6 +194,26 @@ function assertPositiveInteger(value: number, field: string): void {
   }
 }
 
+function readMultisigRefundLockTime(input: CreatePearlMultisigEscrowPackageInput): number {
+  const hasHeight = input.refundEligibleAfterHeight !== undefined;
+  const hasUnixTime = input.refundEligibleAfterUnixTime !== undefined;
+  if (hasHeight === hasUnixTime) {
+    throw new Error('multisig escrow requires exactly one refund lock: refundEligibleAfterHeight or refundEligibleAfterUnixTime');
+  }
+  if (hasHeight) {
+    assertPositiveInteger(input.refundEligibleAfterHeight as number, 'refundEligibleAfterHeight');
+    if ((input.refundEligibleAfterHeight as number) >= 500_000_000) {
+      throw new Error('refundEligibleAfterHeight must be below the CLTV timestamp threshold');
+    }
+    return input.refundEligibleAfterHeight as number;
+  }
+  assertPositiveInteger(input.refundEligibleAfterUnixTime as number, 'refundEligibleAfterUnixTime');
+  if ((input.refundEligibleAfterUnixTime as number) < 500_000_000) {
+    throw new Error('refundEligibleAfterUnixTime must be at or above the CLTV timestamp threshold');
+  }
+  return input.refundEligibleAfterUnixTime as number;
+}
+
 function assertAddressForNetwork(address: string, network: CreatePearlEscrowPackageInput['network'], field: string): void {
   const validation = validatePearlAddress(address);
   if (!validation.valid) {
@@ -213,10 +234,6 @@ function addressNetworkMatches(addressNetwork: ReturnType<typeof validatePearlAd
   return addressNetwork === expected;
 }
 
-function toHex(value: string | Uint8Array): string {
-  return typeof value === 'string' ? stripHexPrefix(value) : Buffer.from(value).toString('hex');
-}
-
-function stripHexPrefix(value: string): string {
-  return value.startsWith('0x') ? value.slice(2) : value;
+function toXOnlyPubkeyHex(value: string | Uint8Array): string {
+  return Buffer.from(normalizeXOnlyPubkey(value)).toString('hex');
 }

@@ -825,7 +825,13 @@ blockers visible for planning. See
     on the simnet scanner and record `exit_release` evidence. The live simnet
     read API observed the reserve spend, but the deployed scanner returned
     `unknown_spend` with `unsupported_watch_purpose`; repo code and tests now
-    classify bridge reserve spends as `exit_release`.
+    classify bridge reserve spends as `exit_release`. Re-run
+    `npm run prove:simnet-multisig` with
+    `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1` before checking this item off.
+  - [ ] 11.6.b.1 Keep `exit_release` classification as a reserve-spend shape
+    signal only. Mainnet release authorization still requires bridge-service
+    matching against an approved pending exit by recipient, amount, unique Pearl
+    release txid, clean reconciliation, and cap limits.
   - [ ] 11.6.c Select approved live reserve addresses, signer ownership,
     custody tiers, cap limits, and emergency pause authority before any
     mainnet release path is enabled.

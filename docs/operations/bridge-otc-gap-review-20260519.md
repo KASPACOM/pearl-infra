@@ -63,8 +63,12 @@ These items block a live bridge pilot and any public `wPRL/USDC` pool:
      classified it as `unknown_spend` because that process is older than the
      repo code that classifies `bridge_reserve` spends as `exit_release`.
    - Next action: update/redeploy the simnet scanner, record `exit_release`
-     evidence, then approve live reserve addresses and signer custody before
-     any live exit.
+     evidence with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`, then approve live
+     reserve addresses and signer custody before any live exit.
+   - Important boundary: `exit_release` is not sufficient authorization by
+     itself. The bridge service must still match the spend to an approved
+     pending exit by Pearl recipient, amount, unique release txid, clean
+     reconciliation, and cap limits.
 
 5. Execute an emergency pause drill.
    - The runbook exists, but the live operator drill still needs evidence.

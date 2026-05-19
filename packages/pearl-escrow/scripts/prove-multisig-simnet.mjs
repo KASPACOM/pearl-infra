@@ -21,6 +21,7 @@ const PEARL_RPC_PASS = process.env.PEARL_SIMNET_RPC_PASS;
 const SOURCE_PRIVATE_KEY_HEX = process.env.PEARL_SIMNET_SOURCE_PRIVATE_KEY_HEX;
 const INDEXER_REGISTER_URL = process.env.PEARL_INDEXER_WATCH_URL ?? 'http://65.21.206.46:8088';
 const INDEXER_READ_URL = process.env.PEARL_INDEXER_READ_URL ?? INDEXER_REGISTER_URL;
+const REQUIRE_BRIDGE_EXIT_RELEASE = process.env.PEARL_REQUIRE_BRIDGE_EXIT_RELEASE === '1';
 const NETWORK = getPearlScriptNetwork('simnet');
 
 if (!PEARL_RPC_USER || !PEARL_RPC_PASS || !SOURCE_PRIVATE_KEY_HEX) {
@@ -180,6 +181,7 @@ const evidence = {
     fundingObservation: reserveFunding,
     releaseTxid: reserveReleaseTxid,
     spend: reserveWatch.spends.find((spend) => spend.spendTxid === reserveReleaseTxid),
+    requireExitReleaseClassification: REQUIRE_BRIDGE_EXIT_RELEASE,
     deployedIndexerClassifiesExitRelease: reserveWatch.spends.some((spend) => (
       spend.spendTxid === reserveReleaseTxid && spend.classification === 'exit_release'
     )),
@@ -190,6 +192,9 @@ await mkdir(resolve(REPO_ROOT, 'docs/operations'), { recursive: true });
 await writeFile(OUTPUT_JSON, `${JSON.stringify(evidence, null, 2)}\n`);
 await writeFile(OUTPUT_MD, renderMarkdown(evidence));
 console.log(JSON.stringify(evidence, null, 2));
+if (REQUIRE_BRIDGE_EXIT_RELEASE && !evidence.bridgeReserve.deployedIndexerClassifiesExitRelease) {
+  throw new Error('bridge reserve spend was not classified as exit_release by the deployed indexer');
+}
 
 function createMultisigPackage(input) {
   return createPearlMultisigEscrowPackage({
@@ -530,6 +535,8 @@ simnet node and indexer.
 - Signer policy: ${evidence.bridgeReserve.signerPolicy}
 - Release txid: \`${evidence.bridgeReserve.releaseTxid}\`
 - Indexer classification: \`${evidence.bridgeReserve.spend?.classification}\`
+- Required \`exit_release\` classification for this run:
+  \`${evidence.bridgeReserve.requireExitReleaseClassification}\`
 - Deployed indexer has current \`exit_release\` classifier:
   \`${evidence.bridgeReserve.deployedIndexerClassifiesExitRelease}\`
 

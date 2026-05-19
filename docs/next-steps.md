@@ -45,8 +45,11 @@ Current state after PR #81:
      the same 2-of-3 script-path signer policy.
    - Remaining bridge custody gate: update/redeploy the simnet scanner so the
      observed bridge reserve spend is classified as `exit_release` instead of
-     `unknown_spend`, then record approved live reserve addresses and signer
-     custody.
+     `unknown_spend`, rerun the proof with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`,
+     then record approved live reserve addresses and signer custody.
+   - Treat `exit_release` as classification only; actual release authorization
+     must still come from bridge-service matching against an approved pending
+     exit, unique release txid, clean reconciliation, and cap limits.
 
 4. Complete OTC live evidence.
    - Run the real Base Sepolia `createTrade`, `deposit`, and terminal

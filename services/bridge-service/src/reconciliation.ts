@@ -149,13 +149,15 @@ function reconcileDepositWatch(watch: WatchedBridgeAddressWithHistory): BridgeDe
 function reconcileReserveSpends(watch: WatchedBridgeAddressWithHistory): BridgeReserveSpendRow[] {
   return watch.spends.map((spend) => {
     const amountGrains = readString(spend.classificationData, 'amount_grains');
+    const pearlRecipient = readString(spend.classificationData, 'pearl_recipient');
+    const knownExitRelease = spend.classification === 'exit_release' && amountGrains !== undefined && pearlRecipient !== undefined;
     return {
       reserveId: watch.watchId,
       spendTxid: spend.spendTxid,
       spentOutpoint: spend.spentOutpoint,
       classification: spend.classification,
       ...(amountGrains ? { amountGrains } : {}),
-      unknown: spend.classification === 'unknown' || spend.classification === 'unknown_spend' || amountGrains === undefined,
+      unknown: !knownExitRelease,
     };
   });
 }

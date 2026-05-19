@@ -48,7 +48,7 @@ test('reconciles confirmed deposits, reserves, pending exits, and public proof',
         spendTxid: 'release-1',
         spentOutpoint: 'reserve-funding:0',
         classification: 'exit_release',
-        classificationData: { amount_grains: '100' },
+        classificationData: { amount_grains: '100', pearl_recipient: 'tprl1precipient' },
       }),
     ],
   });
@@ -142,6 +142,38 @@ test('blocks bridge operations on reserve deficit, stale watches, unsafe deposit
   ]);
   assert.equal(snapshot.deposits[0].status, 'unsafe');
   assert.deepEqual(snapshot.deposits[0].blockers, ['deposit_below_min', 'deposit_underpaid']);
+});
+
+test('treats malformed reserve exit_release spends as unknown blockers', () => {
+  const snapshot = createBridgeReconciliationSnapshot({
+    depositWatches: [],
+    reserveWatches: [
+      watch({
+        watchId: 'reserve-malformed-spend',
+        purpose: 'bridge_reserve',
+        observations: [
+          observation({
+            outpoint: 'reserve:0',
+            amountGrains: '300',
+            matchStatus: 'confirmed',
+          }),
+        ],
+        spends: [
+          spend({
+            classification: 'exit_release',
+            classificationData: { amount_grains: '100' },
+          }),
+        ],
+      }),
+    ],
+    exits: [],
+    mintedSupplyGrains: '0',
+    now: NOW,
+  });
+
+  assert.equal(snapshot.knownReserveSpendGrains, '0');
+  assert.equal(snapshot.unknownReserveSpendCount, 1);
+  assert.deepEqual(snapshot.blockers, ['unknown_reserve_spend']);
 });
 
 test('treats multiple live outputs to one bridge deposit address as unsafe', () => {
@@ -243,7 +275,7 @@ function spend(overrides: Partial<WatchedBridgeAddressWithHistory['spends'][numb
     blockHash: 'block-spend',
     height: 120,
     classification: 'exit_release',
-    classificationData: { amount_grains: '100' },
+    classificationData: { amount_grains: '100', pearl_recipient: 'tprl1precipient' },
     observedAt: RECENT,
     ...overrides,
   };
