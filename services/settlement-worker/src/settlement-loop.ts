@@ -124,6 +124,9 @@ export function baseEscrowEventStateFromUsdcTradeState(
 }
 
 function findBaseEscrowStateMismatch(state: UsdcEscrowTradeEventState, trade: OtcTrade): string | undefined {
+  const expectedAmount = parseUsdcToMicros(trade.amountUsdc).toString();
+  const expectedFee = parseUsdcToMicros(trade.feeUsdc).toString();
+  const expectedExpiry = Math.floor(new Date(trade.usdcEscrow.expiresAt).getTime() / 1000);
   if (state.tradeKey !== trade.usdcEscrow.tradeKey) {
     return 'Base escrow trade key mismatch';
   }
@@ -133,15 +136,19 @@ function findBaseEscrowStateMismatch(state: UsdcEscrowTradeEventState, trade: Ot
   if (state.contractAddress.toLowerCase() !== trade.usdcEscrow.contract.toLowerCase()) {
     return 'Base escrow contract mismatch';
   }
+  if (requiresCreatedTerms(state.status) && (!state.buyer || !state.seller || state.feeMicros === undefined || state.expiryUnixSeconds === undefined)) {
+    return 'Base escrow created terms missing';
+  }
   if (state.buyer && state.buyer.toLowerCase() !== trade.buyerUsdcAddress.toLowerCase()) {
     return 'Base escrow buyer mismatch';
   }
   if (state.seller && state.seller.toLowerCase() !== trade.sellerUsdcReceiveAddress.toLowerCase()) {
     return 'Base escrow seller mismatch';
   }
+  if (state.expiryUnixSeconds !== undefined && state.expiryUnixSeconds !== expectedExpiry) {
+    return 'Base escrow expiry mismatch';
+  }
   if (state.status === 'created') {
-    const expectedAmount = parseUsdcToMicros(trade.amountUsdc).toString();
-    const expectedFee = parseUsdcToMicros(trade.feeUsdc).toString();
     if (state.amountMicros !== expectedAmount || state.feeMicros !== expectedFee) {
       return 'Base escrow created terms mismatch';
     }
@@ -160,6 +167,10 @@ function findBaseEscrowStateMismatch(state: UsdcEscrowTradeEventState, trade: Ot
     return 'Base escrow release amount mismatch';
   }
   return undefined;
+}
+
+function requiresCreatedTerms(status: UsdcEscrowTradeEventState['status']): boolean {
+  return status === 'created' || status === 'deposited' || status === 'released' || status === 'refunded';
 }
 
 export class InMemorySettlementWorkerTradeSource implements SettlementWorkerTradeSource {

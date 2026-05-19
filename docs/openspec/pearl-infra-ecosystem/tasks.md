@@ -562,6 +562,13 @@ Loophole tracker after PR #74:
     - [x] Replace fake escrow-address suffixing in automated coverage with real
       xpub-backed unique simnet P2TR allocation and indexer-shaped PRL proof
       projection.
+    - [x] Add a gated live evidence verifier for public OTC proof, Base Sepolia
+      receipts, settlement-worker Base safety projection, and Pearl indexer
+      watch history. See `docs/operations/full-otc-live-evidence.md`.
+    - [x] Harden the live evidence verifier and worker projection to require a
+      complete Base lifecycle (`TradeCreated`, `Deposited`, and exactly one
+      terminal event), matching Base chain ID, created-term fields, and Pearl
+      indexer proof before accepting live evidence.
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
