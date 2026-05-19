@@ -25,6 +25,8 @@ export interface PearlMultisigEscrowLeaf {
   kind: PearlMultisigEscrowLeafKind;
   requiredSigners: readonly ('buyer' | 'seller' | 'arbiter')[];
   scriptHex: string;
+  leafVersion: number;
+  controlBlockHex: string;
   lockTime?: number;
 }
 
@@ -78,15 +80,15 @@ export function createPearlP2trMultisigEscrowPayment(input: {
   if (input.refundLockTime == null) {
     throw new Error('refundLockTime is required for multisig escrow timeout refund leaf');
   }
-  const leaves = [
+  const leavesWithoutControlBlock = [
     createTwoOfTwoLeaf('buyer_seller_release', buyerPubkey, sellerPubkey, ['buyer', 'seller']),
     createTwoOfTwoLeaf('buyer_arbiter_release', buyerPubkey, arbiterPubkey, ['buyer', 'arbiter']),
     createTwoOfTwoLeaf('seller_arbiter_release', sellerPubkey, arbiterPubkey, ['seller', 'arbiter']),
     createTimeoutRefundLeaf(sellerPubkey, input.refundLockTime),
   ];
   const scriptTree: Taptree = [
-    [{ output: Buffer.from(leaves[0].scriptHex, 'hex') }, { output: Buffer.from(leaves[1].scriptHex, 'hex') }],
-    [{ output: Buffer.from(leaves[2].scriptHex, 'hex') }, { output: Buffer.from(leaves[3].scriptHex, 'hex') }],
+    [{ output: Buffer.from(leavesWithoutControlBlock[0].scriptHex, 'hex') }, { output: Buffer.from(leavesWithoutControlBlock[1].scriptHex, 'hex') }],
+    [{ output: Buffer.from(leavesWithoutControlBlock[2].scriptHex, 'hex') }, { output: Buffer.from(leavesWithoutControlBlock[3].scriptHex, 'hex') }],
   ];
   const payment = payments.p2tr({
     internalPubkey: Buffer.from(internalPubkey),
@@ -96,6 +98,7 @@ export function createPearlP2trMultisigEscrowPayment(input: {
   if (!payment.address || !payment.output) {
     throw new Error('failed to construct Pearl P2TR multisig escrow payment');
   }
+  const leaves = leavesWithoutControlBlock.map((leaf) => addControlBlockToLeaf(leaf, internalPubkey, scriptTree, input.network));
   return {
     network: input.network,
     address: payment.address,
@@ -151,7 +154,7 @@ function createTwoOfTwoLeaf(
   firstPubkey: Uint8Array,
   secondPubkey: Uint8Array,
   requiredSigners: PearlMultisigEscrowLeaf['requiredSigners'],
-): PearlMultisigEscrowLeaf {
+): Omit<PearlMultisigEscrowLeaf, 'controlBlockHex'> {
   const output = script.compile([
     Buffer.from(firstPubkey),
     opcodes.OP_CHECKSIG,
@@ -164,10 +167,11 @@ function createTwoOfTwoLeaf(
     kind,
     requiredSigners,
     scriptHex: Buffer.from(output).toString('hex'),
+    leafVersion: 0xc0,
   };
 }
 
-function createTimeoutRefundLeaf(sellerPubkey: Uint8Array, lockTime: number): PearlMultisigEscrowLeaf {
+function createTimeoutRefundLeaf(sellerPubkey: Uint8Array, lockTime: number): Omit<PearlMultisigEscrowLeaf, 'controlBlockHex'> {
   if (!Number.isInteger(lockTime) || lockTime <= 0) {
     throw new Error('refundLockTime must be a positive integer');
   }
@@ -182,6 +186,33 @@ function createTimeoutRefundLeaf(sellerPubkey: Uint8Array, lockTime: number): Pe
     kind: 'seller_timeout_refund',
     requiredSigners: ['seller'],
     scriptHex: Buffer.from(output).toString('hex'),
+    leafVersion: 0xc0,
     lockTime,
+  };
+}
+
+function addControlBlockToLeaf(
+  leaf: Omit<PearlMultisigEscrowLeaf, 'controlBlockHex'>,
+  internalPubkey: Uint8Array,
+  scriptTree: Taptree,
+  network: PearlScriptNetworkName,
+): PearlMultisigEscrowLeaf {
+  const scriptOutput = Buffer.from(leaf.scriptHex, 'hex');
+  const payment = payments.p2tr({
+    internalPubkey: Buffer.from(internalPubkey),
+    scriptTree,
+    redeem: {
+      output: scriptOutput,
+      redeemVersion: leaf.leafVersion,
+    },
+    network: getPearlScriptNetwork(network),
+  });
+  const controlBlock = payment.witness?.[1];
+  if (!controlBlock) {
+    throw new Error(`failed to compute Taproot control block for ${leaf.kind}`);
+  }
+  return {
+    ...leaf,
+    controlBlockHex: Buffer.from(controlBlock).toString('hex'),
   };
 }

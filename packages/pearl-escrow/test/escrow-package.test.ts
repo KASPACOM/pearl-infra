@@ -127,6 +127,8 @@ test('creates a simnet 2-of-3 multisig P2TR escrow package', () => {
     'seller_arbiter_release',
     'seller_timeout_refund',
   ]);
+  assert.equal(escrow.keys.taprootScriptLeaves?.[0]?.leafVersion, 0xc0);
+  assert.match(escrow.keys.taprootScriptLeaves?.[0]?.controlBlockHex ?? '', /^[0-9a-f]+$/);
   assert.equal(escrow.keys.taprootScriptLeaves?.[3]?.lockTime, 144);
 });
 

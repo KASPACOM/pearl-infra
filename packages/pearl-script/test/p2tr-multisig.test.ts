@@ -32,6 +32,9 @@ test('creates a deterministic simnet 2-of-3 Taproot escrow payment', () => {
   assert.equal(payment.leaves[3].lockTime, 144);
   for (const leaf of payment.leaves) {
     assert.match(leaf.scriptHex, /^[0-9a-f]+$/);
+    assert.equal(leaf.leafVersion, 0xc0);
+    assert.match(leaf.controlBlockHex, /^[0-9a-f]+$/);
+    assert.equal((leaf.controlBlockHex.length / 2 - 33) % 32, 0);
   }
 });
 

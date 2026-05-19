@@ -126,6 +126,8 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
         kind: leaf.kind,
         requiredSigners: [...leaf.requiredSigners],
         scriptHex: leaf.scriptHex,
+        leafVersion: leaf.leafVersion,
+        controlBlockHex: leaf.controlBlockHex,
         ...(leaf.lockTime == null ? {} : { lockTime: leaf.lockTime }),
       })),
     },

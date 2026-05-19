@@ -5,7 +5,7 @@
 The repo is now an implementation repo for the Pearl OTC settlement desk and
 the PRL -> Igra bridge track. The original planning/bootstrap phase is complete.
 
-Current state after PR #86:
+Current state after PR #81:
 
 - OTC API, web app, Pearl indexer, settlement worker, signer boundary, admin
   controls, monitoring docs, and dev Oyster deployment scaffolding are merged.
@@ -19,10 +19,6 @@ Current state after PR #86:
   gates.
 - A local-Igra bridge rehearsal exists using real public Pearl simnet deposit
   and release txids.
-- Oysters branding is applied with final asset and edge-case fixes.
-- Generic simnet 2-of-3 P2TR multisig package construction exists, but funded
-  multisig spend evidence is still required before treating custody as
-  live-ready.
 
 ## Immediate Priorities
 
@@ -41,17 +37,16 @@ Current state after PR #86:
    - Select reserve addresses, signer ownership, hot/warm/cold cap limits,
      emergency pause authority, relayer/operator identities, and final
      multisig owner.
-   - EVM dev can enforce deployment and contract gates, but final multisig,
-     relayer/operator signer assignment, reserve custody, and mainnet/pool
-     approval need Sione/ops decisions before any live run.
-   - Explicitly decide whether the first OTC mainnet pilot uses the current
+   - Explicitly decide whether OTC mainnet starts with the current
      coordinator-signed P2TR escrow model or waits for true PRL multisig escrow.
-   - Select and prove the bridge reserve custody construction; reserve watches
-     exist, but live reserve multisig/threshold signing is not implemented yet.
-   - Simnet 2-of-3 P2TR address/package construction now passes locally; the
-     builder uses a BIP341 NUMS internal key and rejects duplicate/invalid
-     signer keys. The next custody proof is a funded simnet release/refund
-     spend observed by the watched-address indexer.
+   - Simnet 2-of-3 P2TR address/package construction now passes locally and
+     has funded spend evidence: OTC release classified as `release`, OTC CLTV
+     refund classified as `refund`, and bridge reserve release spent through
+     the same 2-of-3 script-path signer policy.
+   - Remaining bridge custody gate: update/redeploy the simnet scanner so the
+     observed bridge reserve spend is classified as `exit_release` instead of
+     `unknown_spend`, then record approved live reserve addresses and signer
+     custody.
 
 4. Complete OTC live evidence.
    - Run the real Base Sepolia `createTrade`, `deposit`, and terminal
@@ -69,9 +64,8 @@ Current state after PR #86:
 
 - Do not deploy Igra mainnet bridge contracts until
   `PEARL_BRIDGE_MAINNET_APPROVED=1`,
-  `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`,
-  `PEARL_BRIDGE_MAINNET_READY_FILE`, chain ID `38833`, final owner, relayer,
-  and operator are explicit and all owner/action roles are separated.
+  `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`, chain ID `38833`, final owner,
+  relayer, and operator are explicit.
 - Do not point bridge signing or reserve release at Pearl mainnet during simnet
   rehearsals.
 - Do not seed a `wPRL/USDC` pool until one low-cap bridge entry and one low-cap
