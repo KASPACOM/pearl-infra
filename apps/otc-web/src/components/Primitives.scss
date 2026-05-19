@@ -288,9 +288,10 @@
     border-radius: 8px;
     background: var(--om-surface);
     color: var(--om-ink);
-    font: inherit;
+    font-family: var(--om-mono);
+    font-size: 11px;
     min-height: 42px;
-    padding: 0 12px;
+    padding: 0 8px;
   }
 
   small {
