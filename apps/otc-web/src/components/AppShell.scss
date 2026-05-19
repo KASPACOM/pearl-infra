@@ -122,7 +122,15 @@
   .om-nav {
     order: 3;
     width: 100%;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    overflow: visible;
+
+    a {
+      min-width: 0;
+      padding: 8px 6px;
+      text-align: center;
+    }
   }
 
   .om-main {
