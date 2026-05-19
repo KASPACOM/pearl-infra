@@ -1,13 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { InMemoryUsdcEscrowEventRepository, type UsdcEscrowTradeEventState } from '@kaspacom/usdc-escrow-client';
-import { parsePrlToGrains, type OtcTrade, type TradeEvent, type TradeState } from '@kaspacom/pearl-sdk';
+import { getPearlScriptNetwork } from '@kaspacom/pearl-script';
+import { validatePearlAddress, type OtcTrade, type TradeState } from '@kaspacom/pearl-sdk';
+import {
+  InMemoryUsdcEscrowEventRepository,
+  type UsdcEscrowTradeEvent,
+  type UsdcEscrowTradeEventState,
+} from '@kaspacom/usdc-escrow-client';
+import { BIP32Factory } from 'bip32';
+import * as ecc from 'tiny-secp256k1';
 
-import type { PearlIndexedProof, PearlProofReader } from '../src/pearl-proof-reader.ts';
+import { createConfiguredPearlEscrowAllocator } from '../src/pearl-escrow-allocator.ts';
+import { projectPearlIndexedProof, type PearlIndexedProof, type PearlProofReader } from '../src/pearl-proof-reader.ts';
 import { InMemoryOtcRepository, type OtcRepository } from '../src/repository.ts';
-import { OtcTradeService, type PearlEscrowAllocator, type PearlEscrowWatchRegistrar } from '../src/trade-service.ts';
-import type { OtcApiConfig } from '../src/types.ts';
+import { OtcTradeService, type PearlEscrowWatchRegistrar } from '../src/trade-service.ts';
+import type { OtcApiConfig, UsdcEscrowOnChainTrade } from '../src/types.ts';
+import type { UsdcEscrowReader } from '../src/usdc-escrow-reader.ts';
 
 import {
   baseEscrowEventStateFromUsdcTradeState,
@@ -22,10 +31,10 @@ import {
   type SettlementWorkerTradeSource,
 } from '../../settlement-worker/dist/index.js';
 
+const bip32 = BIP32Factory(ecc);
 const NOW = new Date('2026-05-19T10:00:00.000Z');
 const BUYER_PRL_ADDRESS = 'rprl1pxqu6hcrs6xzg2n60pjf2yruzr637p73zaettvsyzzzu27zvzhvxqt4xql0';
 const SELLER_REFUND_ADDRESS = 'rprl1pxsnlfuungl0kztjj2rmknxjxanhg5jvweuplxzxnuye6p3dj9g5sw0pp8q';
-const ESCROW_ADDRESS = 'rprl1p6j5eqtndefwp2vhp7fpz5cd5eypv9q8jzkk2z2qxwd78h877u5kqm80pw9';
 const FUNDING_TXID = '70fa6854784b7d58e90679416c65b251fd9aa63ba7857431779e6137d42e8436';
 const FUNDING_OUTPOINT = `${FUNDING_TXID}:1`;
 const RELEASE_TXID = 'bfa470eef67c237364650c8bc8a55f8be97574d980ece0758d0f60b967548cf8';
@@ -37,7 +46,11 @@ const SELLER_USDC = '0x4444444444444444444444444444444444444444';
 const config: OtcApiConfig = {
   pearlNetwork: 'simnet',
   pearlEscrowAllocator: 'p2tr_xpub',
-  pearlEscrowDerivationPrefix: 'simnet-e2e',
+  pearlEscrowXpub: bip32
+    .fromSeed(Buffer.alloc(32, 19), getPearlScriptNetwork('simnet'))
+    .neutered()
+    .toBase58(),
+  pearlEscrowDerivationPrefix: '0',
   allowMainnetPearlEscrow: false,
   quoteTtlMs: 5 * 60 * 1000,
   pearlFundingTtlMs: 10 * 60 * 1000,
@@ -52,24 +65,20 @@ const config: OtcApiConfig = {
   supportAlertRateLimitMax: 5,
 };
 
-class StaticSimnetEscrowAllocator implements PearlEscrowAllocator {
-  async allocateEscrow(input: Parameters<PearlEscrowAllocator['allocateEscrow']>[0]): Promise<OtcTrade['pearlEscrow']> {
-    return {
-      network: 'simnet',
-      address: `${ESCROW_ADDRESS}${input.tradeId.slice(-4)}`,
-      expectedAmountGrains: parsePrlToGrains(input.quote.amountPrl).toString(),
-      requiredConfirmations: input.config.pearlEscrowConfirmations,
-      fundingOutpoint: FUNDING_OUTPOINT,
-    };
-  }
-}
-
 class RecordingWatchRegistrar implements PearlEscrowWatchRegistrar {
-  readonly registrations: string[] = [];
+  readonly registrations: {
+    watchId: string;
+    address: string;
+    expectedAmountGrains: string;
+  }[] = [];
 
   async registerPearlEscrowWatch(trade: OtcTrade) {
     const watchId = `otc:${trade.tradeId}:pearl-escrow`;
-    this.registrations.push(watchId);
+    this.registrations.push({
+      watchId,
+      address: trade.pearlEscrow.address,
+      expectedAmountGrains: trade.pearlEscrow.expectedAmountGrains,
+    });
     return {
       watchId,
       address: trade.pearlEscrow.address,
@@ -83,39 +92,136 @@ class RecordingWatchRegistrar implements PearlEscrowWatchRegistrar {
   }
 }
 
-type MutablePearlProof = PearlProofState & {
-  releaseTxid?: string;
-  refundTxid?: string;
-};
+interface MutablePearlWatchHistory {
+  observations: MutablePearlObservation[];
+  spends: MutablePearlSpend[];
+}
 
-class MutablePearlProofs implements PearlProofReader, SettlementPearlProofSource {
-  private readonly states = new Map<string, MutablePearlProof>();
+interface MutablePearlObservation {
+  outpoint: string;
+  blockHash: string;
+  height: number;
+  amountGrains: string;
+  confirmations: number;
+  matchStatus: 'confirmed' | 'spent';
+  observedAt: string;
+}
 
-  set(tradeId: string, state: MutablePearlProof): void {
-    this.states.set(tradeId, state);
+interface MutablePearlSpend {
+  spendTxid: string;
+  spentOutpoint: string;
+  blockHash: string;
+  height: number;
+  classification: 'release' | 'refund';
+  observedAt: string;
+}
+
+class MutableIndexerBackedPearlProofs implements PearlProofReader, SettlementPearlProofSource {
+  private readonly histories = new Map<string, MutablePearlWatchHistory>();
+
+  setConfirmedFunding(trade: OtcTrade): void {
+    this.histories.set(trade.tradeId, {
+      observations: [createFundingObservation(trade, 'confirmed')],
+      spends: [],
+    });
+  }
+
+  setReleaseSpend(trade: OtcTrade): void {
+    this.histories.set(trade.tradeId, {
+      observations: [createFundingObservation(trade, 'spent')],
+      spends: [createSpend('release')],
+    });
+  }
+
+  setRefundSpend(trade: OtcTrade): void {
+    this.histories.set(trade.tradeId, {
+      observations: [createFundingObservation(trade, 'spent')],
+      spends: [createSpend('refund')],
+    });
   }
 
   async getPearlProofState(trade: OtcTrade): Promise<PearlProofState> {
-    return this.states.get(trade.tradeId) ?? {
-      status: 'missing',
-      sourceEventId: `pearl:missing:${trade.tradeId}`,
-      confirmations: 0,
-      observedAt: new Date(0).toISOString(),
+    const history = this.histories.get(trade.tradeId);
+    if (!history) {
+      return {
+        status: 'missing',
+        sourceEventId: `pearl:missing:${trade.tradeId}`,
+        confirmations: 0,
+        observedAt: new Date(0).toISOString(),
+      };
+    }
+    const releaseSpend = history.spends.find((spend) => spend.classification === 'release');
+    if (releaseSpend) {
+      return {
+        status: 'released',
+        sourceEventId: `pearl-spend:${releaseSpend.spendTxid}:${releaseSpend.spentOutpoint}`,
+        txid: releaseSpend.spendTxid,
+        outpoint: releaseSpend.spentOutpoint,
+        confirmations: 2,
+        observedAt: releaseSpend.observedAt,
+      };
+    }
+    const refundSpend = history.spends.find((spend) => spend.classification === 'refund');
+    if (refundSpend) {
+      return {
+        status: 'refunded',
+        sourceEventId: `pearl-spend:${refundSpend.spendTxid}:${refundSpend.spentOutpoint}`,
+        txid: refundSpend.spendTxid,
+        outpoint: refundSpend.spentOutpoint,
+        confirmations: 2,
+        observedAt: refundSpend.observedAt,
+      };
+    }
+    const funding = history.observations.find((observation) => observation.matchStatus === 'confirmed' || observation.matchStatus === 'spent');
+    if (!funding) {
+      return {
+        status: 'missing',
+        sourceEventId: `pearl:missing:${trade.tradeId}`,
+        confirmations: 0,
+        observedAt: new Date(0).toISOString(),
+      };
+    }
+    return {
+      status: 'confirmed',
+      sourceEventId: `pearl-observation:${funding.outpoint}:${funding.matchStatus}`,
+      txid: FUNDING_TXID,
+      outpoint: funding.outpoint,
+      confirmations: funding.confirmations,
+      observedAt: funding.observedAt,
     };
   }
 
   async getPearlIndexedProof(trade: OtcTrade): Promise<PearlIndexedProof> {
-    const state = this.states.get(trade.tradeId);
-    if (!state || state.status === 'missing') {
-      return { escrowConfirmations: 0, events: [] };
-    }
+    return projectPearlIndexedProof(trade, this.histories.get(trade.tradeId) ?? { observations: [], spends: [] });
+  }
+}
 
+class BaseEventBackedUsdcReader implements UsdcEscrowReader {
+  private readonly events: InMemoryUsdcEscrowEventRepository;
+
+  constructor(events: InMemoryUsdcEscrowEventRepository) {
+    this.events = events;
+  }
+
+  async getTrade(tradeKey: string): Promise<UsdcEscrowOnChainTrade> {
+    const state = await this.events.getTradeState(tradeKey);
+    if (!state) {
+      return {
+        buyer: '0x0000000000000000000000000000000000000000',
+        seller: '0x0000000000000000000000000000000000000000',
+        amountMicros: '0',
+        feeMicros: '0',
+        expiryUnixSeconds: 0,
+        status: 'none',
+      };
+    }
     return {
-      ...(state.outpoint ? { escrowOutpoint: state.outpoint } : {}),
-      escrowConfirmations: state.confirmations,
-      ...(state.releaseTxid ? { releaseTxid: state.releaseTxid } : {}),
-      ...(state.refundTxid ? { refundTxid: state.refundTxid } : {}),
-      events: createPearlProofEvents(trade, state),
+      buyer: state.buyer ?? '0x0000000000000000000000000000000000000000',
+      seller: state.seller ?? '0x0000000000000000000000000000000000000000',
+      amountMicros: state.amountMicros ?? '0',
+      feeMicros: state.feeMicros ?? '0',
+      expiryUnixSeconds: state.expiryUnixSeconds ?? 0,
+      status: state.status,
     };
   }
 }
@@ -174,9 +280,26 @@ class UsdcEventStateSource implements SettlementBaseEscrowSource {
   }
 
   async getBaseEscrowState(trade: OtcTrade) {
-    return baseEscrowEventStateFromUsdcTradeState(await this.events.getTradeState(trade.usdcEscrow.tradeKey));
+    return baseEscrowEventStateFromUsdcTradeState(await this.events.getTradeState(trade.usdcEscrow.tradeKey), trade);
   }
 }
+
+test('allocates valid unique simnet P2TR escrow addresses per accepted trade', async () => {
+  const { service, registrar } = createFlow('unique-addresses');
+  const first = await createAcceptedTrade(service, 'unique-addresses-1');
+  const second = await createAcceptedTrade(service, 'unique-addresses-2');
+
+  assert.notEqual(first.tradeId, second.tradeId);
+  assert.notEqual(first.pearlEscrow.address, second.pearlEscrow.address);
+  assert.equal(validatePearlAddress(first.pearlEscrow.address).valid, true);
+  assert.equal(validatePearlAddress(first.pearlEscrow.address).network, 'simnet');
+  assert.equal(validatePearlAddress(second.pearlEscrow.address).valid, true);
+  assert.equal(validatePearlAddress(second.pearlEscrow.address).network, 'simnet');
+  assert.deepEqual(
+    registrar.registrations.map((registration) => registration.address),
+    [first.pearlEscrow.address, second.pearlEscrow.address],
+  );
+});
 
 test('full happy path covers quote, accept, wallet-funded PRL proof, Base deposit, worker release, and public proof', async () => {
   const flow = createFlow('release');
@@ -184,43 +307,24 @@ test('full happy path covers quote, accept, wallet-funded PRL proof, Base deposi
 
   const trade = await createAcceptedTrade(service, 'release');
   assert.equal(registrar.registrations.length, 1);
-  assert.match(trade.pearlEscrow.address, /^rprl1/);
+  assert.equal(validatePearlAddress(trade.pearlEscrow.address).valid, true);
+  assert.equal(registrar.registrations[0]?.address, trade.pearlEscrow.address);
 
   const createIntent = await service.prepareUsdcCreateTrade(trade.tradeId, {
     idempotencyKey: 'create-base-trade-release',
     actor: 'settlement-worker',
   });
-  pearl.set(trade.tradeId, {
-    status: 'confirmed',
-    sourceEventId: `pearl-observation:${FUNDING_OUTPOINT}:confirmed`,
-    txid: FUNDING_TXID,
-    outpoint: FUNDING_OUTPOINT,
-    confirmations: 3,
-    observedAt: '2026-05-19T10:03:00.000Z',
-  });
+  pearl.setConfirmedFunding(trade);
   await service.transitionTrade(trade.tradeId, 'pearl_escrow_seen', `pearl-seen:${FUNDING_OUTPOINT}`);
   await service.transitionTrade(trade.tradeId, 'pearl_escrow_confirmed', `pearl-confirmed:${FUNDING_OUTPOINT}`);
   await service.transitionTrade(trade.tradeId, 'usdc_escrow_pending', 'base:create:0xcreate');
 
+  await baseEvents.ingestEvents([createBaseTradeCreatedEvent(createIntent)]);
+  const verification = await service.verifyUsdcEscrowTerms(trade.tradeId);
+  assert.equal(verification.verified, true);
+  assert.equal(verification.depositAllowed, true);
+  assert.deepEqual(verification.mismatches, []);
   await baseEvents.ingestEvents([
-    {
-      network: 'base_sepolia',
-      chainId: 84532,
-      contractAddress: BASE_CONTRACT,
-      tradeKey: createIntent.tradeKey,
-      eventName: 'TradeCreated',
-      txHash: '0xcreate',
-      logIndex: 0,
-      blockNumber: 100,
-      blockHash: '0xblockcreate',
-      confirmations: 12,
-      observedAt: '2026-05-19T10:04:00.000Z',
-      buyer: createIntent.buyer,
-      seller: createIntent.seller,
-      amountMicros: createIntent.amountMicros,
-      feeMicros: createIntent.feeMicros,
-      expiryUnixSeconds: createIntent.expiryUnixSeconds,
-    },
     {
       network: 'base_sepolia',
       chainId: 84532,
@@ -246,15 +350,7 @@ test('full happy path covers quote, accept, wallet-funded PRL proof, Base deposi
   assert.equal(first.decisions[0]?.action, 'prepare_prl_release');
   assert.equal(first.preparedActions[0]?.metadata?.adapter, 'signer');
 
-  pearl.set(trade.tradeId, {
-    status: 'released',
-    sourceEventId: `pearl-spend:${RELEASE_TXID}:${FUNDING_OUTPOINT}`,
-    txid: RELEASE_TXID,
-    outpoint: FUNDING_OUTPOINT,
-    releaseTxid: RELEASE_TXID,
-    confirmations: 2,
-    observedAt: '2026-05-19T10:08:00.000Z',
-  });
+  pearl.setReleaseSpend(trade);
   const second = await runSettlementWorkerIteration(createWorker(flow, signer, broadcaster), new Date('2026-05-19T10:09:00.000Z'));
   assert.equal(second.decisions[0]?.action, 'prepare_usdc_release');
   assert.equal(second.preparedActions[0]?.metadata?.adapter, 'broadcaster');
@@ -301,37 +397,20 @@ test('refund path covers accepted quote, wallet-funded PRL, missing Base deposit
     actor: 'settlement-worker',
   });
 
-  pearl.set(trade.tradeId, {
-    status: 'confirmed',
-    sourceEventId: `pearl-observation:${FUNDING_OUTPOINT}:confirmed:refund`,
-    txid: FUNDING_TXID,
-    outpoint: FUNDING_OUTPOINT,
-    confirmations: 3,
-    observedAt: '2026-05-19T10:03:00.000Z',
-  });
+  pearl.setConfirmedFunding(trade);
   await service.transitionTrade(trade.tradeId, 'pearl_escrow_seen', `pearl-seen-refund:${FUNDING_OUTPOINT}`);
   await service.transitionTrade(trade.tradeId, 'pearl_escrow_confirmed', `pearl-confirmed-refund:${FUNDING_OUTPOINT}`);
   await service.transitionTrade(trade.tradeId, 'usdc_escrow_pending', 'base:create-refund:0xcreate');
   await baseEvents.ingestEvents([
-    {
-      network: 'base_sepolia',
-      chainId: 84532,
-      contractAddress: BASE_CONTRACT,
-      tradeKey: createIntent.tradeKey,
-      eventName: 'TradeCreated',
+    createBaseTradeCreatedEvent(createIntent, {
       txHash: '0xcreate-refund',
-      logIndex: 0,
       blockNumber: 200,
       blockHash: '0xblockcreaterefund',
-      confirmations: 12,
-      observedAt: '2026-05-19T10:04:00.000Z',
-      buyer: createIntent.buyer,
-      seller: createIntent.seller,
-      amountMicros: createIntent.amountMicros,
-      feeMicros: createIntent.feeMicros,
-      expiryUnixSeconds: createIntent.expiryUnixSeconds,
-    },
+    }),
   ]);
+  const verification = await service.verifyUsdcEscrowTerms(trade.tradeId);
+  assert.equal(verification.verified, true);
+  assert.equal(verification.depositAllowed, true);
   await projectBaseStateToTrade(repository, trade.tradeId, await baseEvents.getTradeState(createIntent.tradeKey));
 
   const signer = new InMemorySettlementSignerAdapter();
@@ -342,15 +421,7 @@ test('refund path covers accepted quote, wallet-funded PRL, missing Base deposit
   assert.equal(first.decisions[0]?.action, 'prepare_prl_refund');
   assert.equal(first.preparedActions[0]?.metadata?.adapter, 'signer');
 
-  pearl.set(trade.tradeId, {
-    status: 'refunded',
-    sourceEventId: `pearl-spend:${REFUND_TXID}:${FUNDING_OUTPOINT}`,
-    txid: REFUND_TXID,
-    outpoint: FUNDING_OUTPOINT,
-    refundTxid: REFUND_TXID,
-    confirmations: 2,
-    observedAt: '2026-05-19T10:22:00.000Z',
-  });
+  pearl.setRefundSpend(trade);
   const second = await runSettlementWorkerIteration(
     createWorker(flow, signer, new InMemorySettlementBroadcasterAdapter()),
     new Date('2026-05-19T10:23:00.000Z'),
@@ -369,20 +440,21 @@ function createFlow(suffix: string): {
   service: OtcTradeService;
   repository: InMemoryOtcRepository;
   registrar: RecordingWatchRegistrar;
-  pearl: MutablePearlProofs;
+  pearl: MutableIndexerBackedPearlProofs;
   baseEvents: InMemoryUsdcEscrowEventRepository;
   decisions: InMemorySettlementDecisionRepository;
 } {
   const repository = new InMemoryOtcRepository();
   const registrar = new RecordingWatchRegistrar();
-  const pearl = new MutablePearlProofs();
+  const pearl = new MutableIndexerBackedPearlProofs();
   const baseEvents = new InMemoryUsdcEscrowEventRepository();
   const decisions = new InMemorySettlementDecisionRepository();
+  const flowConfig = { ...config, pearlEscrowDerivationPrefix: '0' };
   const service = new OtcTradeService(
     repository,
-    { ...config, pearlEscrowDerivationPrefix: `simnet-e2e-${suffix}` },
-    new StaticSimnetEscrowAllocator(),
-    undefined,
+    flowConfig,
+    createConfiguredPearlEscrowAllocator(flowConfig, repository),
+    new BaseEventBackedUsdcReader(baseEvents),
     () => NOW,
     registrar,
     pearl,
@@ -464,50 +536,60 @@ async function projectBaseStateToTrade(
   });
 }
 
-function createPearlProofEvents(trade: OtcTrade, state: MutablePearlProof): TradeEvent[] {
-  const events: TradeEvent[] = [];
-  if (state.outpoint && ['seen', 'confirmed', 'released', 'refunded'].includes(state.status)) {
-    events.push({
-      tradeId: trade.tradeId,
-      fromState: trade.state,
-      toState: state.status === 'seen' ? 'pearl_escrow_seen' : 'pearl_escrow_confirmed',
-      source: 'pearl_indexer',
-      sourceEventId: `pearl-observation:${state.outpoint}:${state.status}`,
-      txHash: FUNDING_TXID,
-      outpoint: state.outpoint,
-      confirmations: state.confirmations,
-      observedAt: '2026-05-19T10:03:00.000Z',
-      metadata: {
-        match_status: state.status === 'released' || state.status === 'refunded' ? 'spent' : state.status,
-      },
-    });
-  }
-  if (state.status === 'released' && state.releaseTxid) {
-    events.push(createPearlSpendEvent(trade, state, state.releaseTxid, 'release_pending', 'release'));
-  }
-  if (state.status === 'refunded' && state.refundTxid) {
-    events.push(createPearlSpendEvent(trade, state, state.refundTxid, 'refund_pending', 'refund'));
-  }
-  return events;
+function createBaseTradeCreatedEvent(
+  intent: {
+    tradeKey: string;
+    buyer: string;
+    seller: string;
+    amountMicros: string;
+    feeMicros: string;
+    expiryUnixSeconds: number;
+  },
+  overrides: Partial<UsdcEscrowTradeEvent> = {},
+): UsdcEscrowTradeEvent {
+  return {
+    network: 'base_sepolia',
+    chainId: 84532,
+    contractAddress: BASE_CONTRACT,
+    tradeKey: intent.tradeKey,
+    eventName: 'TradeCreated',
+    txHash: '0xcreate',
+    logIndex: 0,
+    blockNumber: 100,
+    blockHash: '0xblockcreate',
+    confirmations: 12,
+    observedAt: '2026-05-19T10:04:00.000Z',
+    buyer: intent.buyer,
+    seller: intent.seller,
+    amountMicros: intent.amountMicros,
+    feeMicros: intent.feeMicros,
+    expiryUnixSeconds: intent.expiryUnixSeconds,
+    ...overrides,
+  } as UsdcEscrowTradeEvent;
 }
 
-function createPearlSpendEvent(
-  trade: OtcTrade,
-  state: MutablePearlProof,
-  txHash: string,
-  toState: TradeState,
-  classification: string,
-): TradeEvent {
+function createFundingObservation(trade: OtcTrade, matchStatus: MutablePearlObservation['matchStatus']): MutablePearlObservation {
   return {
-    tradeId: trade.tradeId,
-    fromState: trade.state,
-    toState,
-    source: 'pearl_indexer',
-    sourceEventId: `pearl-spend:${txHash}:${state.outpoint ?? FUNDING_OUTPOINT}`,
-    txHash,
-    outpoint: state.outpoint,
-    confirmations: state.confirmations,
-    observedAt: state.observedAt,
-    metadata: { classification },
+    outpoint: FUNDING_OUTPOINT,
+    blockHash: '08ab482659c15c3a06414a0050e21be0927e40aad6725ea52b91bd87bf1c4a80',
+    height: 186,
+    amountGrains: trade.pearlEscrow.expectedAmountGrains,
+    confirmations: 3,
+    matchStatus,
+    observedAt: '2026-05-19T10:03:00.000Z',
+  };
+}
+
+function createSpend(classification: MutablePearlSpend['classification']): MutablePearlSpend {
+  const release = classification === 'release';
+  return {
+    spendTxid: release ? RELEASE_TXID : REFUND_TXID,
+    spentOutpoint: FUNDING_OUTPOINT,
+    blockHash: release
+      ? '853f5db63398cef269ecac553d4c768e09e0941384a8e3bb7e524a23c56f979f'
+      : 'refundblockhash',
+    height: release ? 188 : 189,
+    classification,
+    observedAt: release ? '2026-05-19T10:08:00.000Z' : '2026-05-19T10:22:00.000Z',
   };
 }

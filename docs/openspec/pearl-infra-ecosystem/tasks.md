@@ -525,6 +525,9 @@ Loophole tracker after admin FE wiring:
       unique simnet escrow watch registration, wallet-funded PRL proof facts,
       Base deposit/release event projection, settlement-worker PRL
       release/refund decisions, and public proof projection.
+    - [x] Fail closed on Base event state mismatches before preparing PRL
+      release: chain, contract, buyer, seller, fee, and funded amount must
+      match the accepted trade.
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
