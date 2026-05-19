@@ -233,6 +233,9 @@ Current delegation queue after PR #76:
 - Bridge ops/custody owner: complete `10.11.3` by selecting live reserve
   addresses, signer policy, hot/warm/cold reserve caps, monitoring alerts, and
   an emergency pause drill.
+- Bridge mainnet-prep owner: Pearl testnet liquidity is unavailable, so prepare
+  Igra mainnet deployment tooling behind explicit chain/approval/role gates and
+  keep Pearl proof testing on simnet until mainnet custody is approved.
 - Threshold authorization owner: scope `10.13.1` through `10.13.3` for
   federation membership, signer custody, threshold/FROST-style authorization,
   and public reserve proof snapshots.
@@ -743,6 +746,9 @@ Loophole tracker after PR #74:
   - [ ] 10.11.3 Add hot-wallet reserve tier cap checks, monitoring alerts, and an emergency pause drill once live reserve addresses and signer policy are selected.
   - [x] 10.11.4 Add reserve-deficit, stale-indexer, unknown-spend, quorum-failure, and cap-near-limit alerts.
   - [x] 10.11.5 Record a pilot runbook for pause, unpause, stuck mint, stuck exit, release-tx mismatch, and reserve-deficit response.
+  - [x] 10.11.6 Add guarded Igra bridge deployment tooling for `WrappedPearl`/`PearlBridge` with chain ID checks, mainnet approval gates, explicit relayer/operator/final-owner requirements, Igra legacy gas pricing, and deployment evidence output.
+    - 2026-05-19: Added `npm --workspace @kaspacom/prl-usdc-escrow-contracts run deploy:pearl-bridge` and local validation evidence in `contracts/usdc-escrow/deployments/local-pearl-bridge-20260519141615.json`. Mainnet deployment is prepared but blocked unless `PEARL_BRIDGE_MAINNET_APPROVED=1`, `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`, chain ID `38833`, final owner, relayer, and operator are explicit.
+    - 2026-05-19: Attempted Galleon deployment through the configured `IGRA_RPC_URL` (`38836`), but the RPC rejected the deployment before broadcast because the underlying Kaspa transaction fee was below standardness minimum. Evidence and next fix path are in `docs/operations/bridge-galleon-deploy-attempt-20260519.md`; Igra mainnet stays blocked until Galleon deployment succeeds or a replacement deploy path is proven.
 - [ ] 10.12 After bridge entry/exit pilot passes, create `wPRL/USDC` pool plan with initial liquidity, price assumptions, and max bridge exposure approval.
   - [ ] 10.12.1 Do not seed a `wPRL/USDC` pool until one low-cap entry and one low-cap exit have passed with public proof and clean reserve reconciliation.
   - [ ] 10.12.2 Define pool initial liquidity source, max bridge exposure, LP ownership, withdrawal authority, and emergency liquidity removal procedure.

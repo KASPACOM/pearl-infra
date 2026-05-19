@@ -128,9 +128,27 @@ It writes JSON evidence under
 expected revert selectors/reasons, checks, and final balances. The script never
 writes private keys or raw RPC URLs.
 
+## Pearl Bridge Deployment
+
+Bridge deployment tooling for `WrappedPearl` and `PearlBridge` is available via:
+
+```bash
+npm run deploy:pearl-bridge:local
+npm run deploy:pearl-bridge
+```
+
+The deploy script supports `local`, `galleon`, and `igra-mainnet`, writes
+evidence JSON under `deployments/`, uses Igra legacy gas pricing on non-local
+networks, and refuses Igra mainnet unless explicit approval and role/ownership
+gates are set. See `docs/operations/bridge-mainnet-readiness.md`.
+
+Local validation evidence is recorded in
+`deployments/local-pearl-bridge-20260519141615.json`.
+
 ## Mainnet Gate
 
-No Base mainnet deployment script is included. Mainnet stays disabled until:
+Base mainnet deployment for the OTC USDC escrow remains disabled. Igra bridge
+mainnet tooling exists but is guarded. Mainnet settlement stays disabled until:
 
 - contract review is complete;
 - ownership is transferred to the approved multisig;
