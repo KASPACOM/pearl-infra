@@ -27,6 +27,20 @@ prepares manual-review decisions before any mint or Pearl release is signed.
   proof data without exposing custody internals. Public proof rows include
   canonical event IDs, event hashes, and relayer attestation counts when those
   fields are present in bridge metadata.
+- `InMemoryBridgeStateRepository` and `JsonFileBridgeStateRepository` persist
+  reconciliation snapshots, mirrored Igra events, exit rows, and admin decisions
+  idempotently for pilot operation and local rehearsals.
+- `mirrorIgraBridgeEvent`, `bridgeExitFromIgraEvent`, and
+  `applyExitLifecycleEvent` normalize `PearlBridge` logs into durable bridge
+  state.
+- `matchReserveSpendToExit` matches Pearl reserve spends to pending exits by
+  amount and recipient, and routes mismatches, duplicate release txids, or
+  unknown spends to manual review.
+- `createBridgeHttpServer` exposes read-only proof/status routes and
+  bearer-gated admin decision routes for pilot operators.
+- `evaluateBridgePilotAlerts` emits reserve-deficit, stale-watch,
+  unknown-spend, quorum-failure, and cap-near-limit alerts from the current
+  reconciliation state.
 
 ## Invariants
 
@@ -45,6 +59,11 @@ prepares manual-review decisions before any mint or Pearl release is signed.
 - Public proofs include enough state for users to see deposit status, exit
   status, reserve backing, event hashes, and quorum counts, but not private
   operator notes or credentials.
+- Igra event mirrors are idempotent by `(chainId, txHash, logIndex)`.
+- Admin decisions are idempotent by explicit idempotency key or a stable hash of
+  the decision fields.
+- A Pearl release txid that has already been used is a hard blocker for any
+  second reserve-spend match.
 
 ## KAT-Aligned Controls
 
@@ -70,10 +89,13 @@ boundary after the pilot proves reserve accounting and event mirroring.
 
 ## Still Needed
 
-- Poll the Igra bridge contract events once the EVM contract interface is final.
-- Persist bridge deposit requests, exit requests, approvals, and decisions.
-- Wire the `bridge_exit_requests` table writer and reserve-spend classifier.
-- Add HTTP/admin routes for operator approval, manual review, and public proof.
+- Wire the Igra event mirror to a real RPC/event poller and persist to Postgres
+  instead of the JSON pilot store.
+- Wire reserve-spend matching into the live Pearl indexer spend scanner and
+  `bridge_exit_requests` table.
+- Add frontend proof pages after the bridge API shape is stable.
+- Select live reserve addresses, signer policy, and hot/warm/cold cap limits,
+  then run the emergency pause drill.
 - Replace plain relayer attestations with threshold/FROST release authorization
   once the federation membership and signer custody design are final.
 - Run a simnet bridge rehearsal with real Pearl txids and local Igra receipts.
