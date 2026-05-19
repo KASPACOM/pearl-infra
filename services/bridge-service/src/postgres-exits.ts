@@ -41,6 +41,20 @@ export class PgBridgeExitRequestRepository implements BridgeExitRequestRepositor
 
   async upsertExitRequest(exit: BridgeExitRequest): Promise<{ exit: BridgeExitRequest; created: boolean }> {
     return this.client.withTransaction(async (tx) => {
+      if (exit.pearlReleaseTxid) {
+        const releaseConflict = await tx.query<{ exit_id: string }>(
+          `SELECT exit_id
+             FROM bridge_exit_requests
+            WHERE pearl_release_txid = $1
+              AND exit_id <> $2
+            LIMIT 1`,
+          [exit.pearlReleaseTxid, exit.exitId],
+        );
+        if ((releaseConflict.rowCount ?? 0) > 0) {
+          throw new Error(`Pearl release txid already belongs to exit ${releaseConflict.rows[0].exit_id}`);
+        }
+      }
+
       const existing = await tx.query<BridgeExitRow>(
         `SELECT igra_burn_txid, igra_burn_log_index, igra_burn_block, igra_chain_id,
                 exit_id, requested_amount_grains, pearl_recipient, status,
@@ -71,13 +85,14 @@ export class PgBridgeExitRequestRepository implements BridgeExitRequestRepositor
                pearl_recipient = EXCLUDED.pearl_recipient,
                status = CASE
                  WHEN bridge_exit_requests.status IN ('released', 'refunded', 'cancelled')
-                      AND EXCLUDED.status = 'pending'
+                   THEN bridge_exit_requests.status
+                 WHEN bridge_exit_requests.status = 'processed' AND EXCLUDED.status = 'pending'
                    THEN bridge_exit_requests.status
                  ELSE EXCLUDED.status
                END,
-               pearl_release_txid = COALESCE(EXCLUDED.pearl_release_txid, bridge_exit_requests.pearl_release_txid),
-               pearl_release_block = COALESCE(EXCLUDED.pearl_release_block, bridge_exit_requests.pearl_release_block),
-               released_at = COALESCE(EXCLUDED.released_at, bridge_exit_requests.released_at),
+               pearl_release_txid = COALESCE(bridge_exit_requests.pearl_release_txid, EXCLUDED.pearl_release_txid),
+               pearl_release_block = COALESCE(bridge_exit_requests.pearl_release_block, EXCLUDED.pearl_release_block),
+               released_at = COALESCE(bridge_exit_requests.released_at, EXCLUDED.released_at),
                metadata = bridge_exit_requests.metadata || EXCLUDED.metadata,
                updated_at = EXCLUDED.updated_at
          RETURNING igra_burn_txid, igra_burn_log_index, igra_burn_block, igra_chain_id,
@@ -164,7 +179,7 @@ export class PgIgraBridgeCheckpointStore implements IgraBridgePollerCheckpointSt
       `INSERT INTO indexer_state (key, value, updated_at)
        VALUES ($1, $2, now())
        ON CONFLICT (key) DO UPDATE
-         SET value = EXCLUDED.value,
+         SET value = GREATEST(indexer_state.value::bigint, EXCLUDED.value::bigint)::text,
              updated_at = now()`,
       [this.key, String(nextBlock)],
     );

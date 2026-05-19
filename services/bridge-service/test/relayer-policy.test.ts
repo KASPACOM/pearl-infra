@@ -201,6 +201,31 @@ test('prepares exit release only when reconciliation is clean and approval exist
   assert.equal(approved.metadata?.relayerAttestations, 2);
 });
 
+test('waits for Pearl reserve-spend confirmation after Igra exit is processed', () => {
+  const exit = exitRequest({
+    status: 'processed',
+    pearlReleaseTxid: 'operator-reported-release',
+  });
+  const reconciliation = createBridgeReconciliationSnapshot({
+    depositWatches: [],
+    reserveWatches: [reserveWatch('1000')],
+    exits: [exit],
+    mintedSupplyGrains: '500',
+    now: new Date('2026-05-18T18:00:00.000Z'),
+  });
+
+  const decision = decideExitRelease({
+    exit,
+    reconciliation,
+    limits,
+    attestationQuorum: approvedExitQuorum(exit),
+    manualApprovalId: 'approval-exit-1',
+  });
+
+  assert.equal(decision.action, 'wait');
+  assert.match(decision.reason, /waiting for Pearl reserve spend/);
+});
+
 test('blocks exit release on failed quorum before release preparation', () => {
   const exit = exitRequest({ requestedAmountGrains: '200' });
   const reconciliation = createBridgeReconciliationSnapshot({

@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyReserveSpendMatchesToExits } from '../dist/reserve-spend-applier.js';
+import {
+  applyReserveSpendMatchesToExits,
+  applyReserveWatchSpendMatchesToExits,
+  reserveSpendsFromWatches,
+} from '../dist/reserve-spend-applier.js';
 import { InMemoryBridgeStateRepository } from '../src/repository.ts';
-import type { BridgeAddressSpend, BridgeExitRequest } from '../src/types.ts';
+import type { BridgeAddressSpend, BridgeExitRequest, WatchedBridgeAddressWithHistory } from '../src/types.ts';
 
 test('marks matching Pearl reserve spends as released exits', async () => {
   const repo = new InMemoryBridgeStateRepository();
@@ -24,6 +28,26 @@ test('marks matching Pearl reserve spends as released exits', async () => {
   assert.equal(updated?.metadata?.pearl_release_spent_outpoint, 'reserve:0');
 });
 
+test('replays already applied Pearl reserve spends idempotently', async () => {
+  const repo = new InMemoryBridgeStateRepository();
+  await repo.upsertExitRequest(exit({
+    status: 'released',
+    pearlReleaseTxid: 'release_tx',
+    pearlReleaseBlock: 150,
+    releasedAt: '2026-05-19T00:10:00.000Z',
+  }));
+
+  const [result] = await applyReserveSpendMatchesToExits({
+    repository: repo,
+    spends: [spend()],
+    now: new Date('2026-05-19T00:20:00.000Z'),
+  });
+
+  const updated = await repo.findExitRequest('exit-1');
+  assert.equal(result.status, 'matched_exit_release');
+  assert.equal(updated?.releasedAt, '2026-05-19T00:10:00.000Z');
+});
+
 test('keeps mismatch and unknown Pearl reserve spends as manual-review blockers', async () => {
   const repo = new InMemoryBridgeStateRepository();
   await repo.upsertExitRequest(exit());
@@ -41,6 +65,28 @@ test('keeps mismatch and unknown Pearl reserve spends as manual-review blockers'
   assert.equal(results[1].status, 'unknown_spend');
   assert.deepEqual(results[1].blockers, ['unknown_reserve_spend']);
   assert.equal((await repo.findExitRequest('exit-1'))?.status, 'pending');
+});
+
+test('applies live bridge reserve watch spends and ignores non-reserve watches', async () => {
+  const repo = new InMemoryBridgeStateRepository();
+  await repo.upsertExitRequest(exit());
+
+  const results = await applyReserveWatchSpendMatchesToExits({
+    repository: repo,
+    reserveWatches: [
+      watch({ purpose: 'bridge_deposit', spends: [spend({ spendTxid: 'deposit_spend' })] }),
+      watch({ purpose: 'bridge_reserve', spends: [spend()] }),
+    ],
+    now: new Date('2026-05-19T00:10:00.000Z'),
+  });
+
+  assert.deepEqual(reserveSpendsFromWatches([
+    watch({ purpose: 'bridge_deposit', spends: [spend({ spendTxid: 'deposit_spend' })] }),
+    watch({ purpose: 'bridge_reserve', spends: [spend()] }),
+  ]).map((candidate) => candidate.spendTxid), ['release_tx']);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, 'matched_exit_release');
+  assert.equal((await repo.findExitRequest('exit-1'))?.status, 'released');
 });
 
 function spend(overrides: Partial<BridgeAddressSpend> = {}): BridgeAddressSpend {
@@ -68,6 +114,23 @@ function exit(overrides: Partial<BridgeExitRequest> = {}): BridgeExitRequest {
     status: 'pending',
     createdAt: '2026-05-19T00:00:00.000Z',
     updatedAt: '2026-05-19T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function watch(overrides: Partial<WatchedBridgeAddressWithHistory> = {}): WatchedBridgeAddressWithHistory {
+  return {
+    watchId: 'watch-1',
+    purpose: 'bridge_reserve',
+    network: 'simnet',
+    address: 'tprl1reserve',
+    requiredConfirmations: 1,
+    status: 'active',
+    metadata: {},
+    createdAt: '2026-05-19T00:00:00.000Z',
+    updatedAt: '2026-05-19T00:00:00.000Z',
+    observations: [],
+    spends: [],
     ...overrides,
   };
 }

@@ -60,8 +60,9 @@ test('applies processed and refunded lifecycle events to existing exit rows', ()
     payload: {},
   }), new Date('2026-05-19T00:06:00.000Z'));
 
-  assert.equal(processed.status, 'released');
+  assert.equal(processed.status, 'processed');
   assert.equal(processed.pearlReleaseTxid, 'release_tx');
   assert.equal(processed.pearlReleaseBlock, 99);
+  assert.equal(processed.releasedAt, undefined);
   assert.equal(refunded.status, 'refunded');
 });

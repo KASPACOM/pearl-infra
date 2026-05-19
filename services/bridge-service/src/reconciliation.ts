@@ -63,7 +63,7 @@ export function createBridgeReconciliationSnapshot(input: BridgeReconciliationIn
       .filter((spend) => !spend.unknown && spend.amountGrains !== undefined)
       .map((spend) => spend.amountGrains as string),
   );
-  const pendingExits = input.exits.filter((exit) => exit.status === 'pending');
+  const pendingExits = input.exits.filter((exit) => exit.status === 'pending' || exit.status === 'processed');
   const pendingExitGrains = sumStrings(pendingExits.map((exit) => exit.requestedAmountGrains));
   const reserveAvailable = confirmedReserveGrains - knownReserveSpendGrains - pendingExitGrains;
   const mintedSupply = BigInt(input.mintedSupplyGrains);

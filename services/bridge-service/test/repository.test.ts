@@ -21,6 +21,7 @@ test('stores bridge snapshots, events, exits, and admin decisions idempotently i
 
   assert.equal((await repo.upsertExitRequest(exitRequest({ status: 'pending' }))).created, true);
   assert.equal((await repo.upsertExitRequest(exitRequest({ status: 'released', pearlReleaseTxid: 'release_tx' }))).created, false);
+  assert.equal((await repo.upsertExitRequest(exitRequest({ status: 'refunded', pearlReleaseTxid: 'conflict_tx' }))).created, false);
   assert.equal((await repo.findExitRequest('exit-1'))?.status, 'released');
   assert.equal((await repo.findExitRequest('exit-1'))?.pearlReleaseTxid, 'release_tx');
 
