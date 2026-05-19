@@ -243,10 +243,11 @@ Current delegation queue after PR #76:
   rehearsal, covering ownership transfer, operator/relayer permissions, cap
   semantics, pause behavior, replay protection, exit liabilities, deployment
   scripts, and verification evidence.
-- OTC evidence owner: finish the remaining live slice of `9.8.10.c`, `9.3.9`,
-  and `9.8.11`: replace simulated Base events with real Base Sepolia txids and
-  run the PRL signing/broadcast boundary with real txids before any mainnet PRL
-  path opens.
+- OTC evidence owner: finish the remaining live slice of `9.8.10.c`: replace
+  simulated Base events with real Base Sepolia txids, then run the PRL
+  signing/broadcast boundary with real txids. Pearl testnet2 is no longer a
+  mandatory gate because there is no usable faucet/liquidity; after simnet,
+  the next live gate is explicitly approved low-cap mainnet.
 - Base ops owner: finish `9.6.7`; keep `9.6.9` blocked until explicit Base
   mainnet approval.
 - Oyster/prod ops owner: finish `9.10.6.b`, `9.10.8.d`, `9.10.9.b`, and
@@ -302,7 +303,10 @@ Current delegation queue after PR #76:
   can coexist with replacement canonical blocks at the same height, and startup
   resumes from an unfinished detached fork point. Also handle pearld verbosity
   `2` blocks returning full transactions under `rawtx`.
-- [ ] 9.3.9 Run a testnet2 integration ingest once testnet PRL/access is available.
+- [x] 9.3.9 Document that testnet2 integration ingest is not currently
+  actionable because no usable Pearl testnet faucet/liquidity is available.
+  Keep the adapter compatible with testnet2, but do not block the bridge/OTC
+  path on it.
 
 ### 9.4 Frontend Checkout
 
@@ -486,8 +490,10 @@ Loophole tracker after PR #74:
   coverage exists, but mainnet PRL paths remain blocked until the remaining
   `9.8.10.c` live slice replaces simulated Base events with real Base Sepolia
   txids and a real PRL signing/broadcast path.
-- [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
-  production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
+- [x] Testnet2 Pearl + Base Sepolia end-to-end evidence is not a required gate
+  right now because no usable Pearl testnet faucet/liquidity is available. The
+  replacement launch gate is: finish simnet evidence, then run explicitly
+  approved low-cap mainnet with public proof and clean reconciliation.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
   no release/refund/sign/broadcast actions, and admin list/detail, filters,
   note/manual-review actions, failed alert-delivery replay, and the public
@@ -576,8 +582,13 @@ Loophole tracker after PR #74:
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
-- [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
-  txids before any mainnet PRL code path is enabled.
+- [x] 9.8.11 Replace the unavailable testnet2 escrow-run gate with the
+  simnet-to-low-cap-mainnet path.
+  - No usable Pearl testnet faucet/liquidity is available, so testnet2 cannot
+    be a mandatory blocker. Before any broad mainnet rollout, complete the
+    remaining simnet proof, require explicit mainnet approval, run only low-cap
+    mainnet PRL paths, record real Pearl mainnet and Base/Igra txids, and keep
+    public proof plus reserve reconciliation clean.
 - [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
   prove no release action is exposed to users or operators.
   - Rendered RFQ, accept, checkout, public proof, and admin shell screens are
@@ -786,8 +797,11 @@ blockers visible for planning. See
 - [ ] 11.7 Complete the OTC full-flow live evidence run with real Base Sepolia
   `createTrade`, `deposit`, and terminal `release` or `refund` receipts plus a
   real PRL signing/broadcast path.
-- [ ] 11.8 Record a testnet2 escrow run with real Pearl and Base Sepolia txids
-  before enabling any mainnet PRL code path.
+- [x] 11.8 Replace the testnet2 escrow-run blocker with the approved
+  simnet-to-low-cap-mainnet path.
+  - No usable Pearl testnet faucet/liquidity exists. After simnet proof, the
+    next gate is explicitly approved low-cap mainnet with real Pearl mainnet
+    and Base/Igra txids, public proof, and clean reconciliation.
 - [ ] 11.9 Finish production Oyster release: prod secrets, prod image path,
   prod DNS, and prod `/healthz`, quote, support-alert, admin-auth smoke checks.
 - [ ] 11.10 Replace shared bearer-token admin auth with a real operator

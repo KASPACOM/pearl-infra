@@ -90,9 +90,12 @@ These items block a full production-grade Pearl OTC settlement release:
    - Next action: use a non-Oyster raw signer path or extend Oyster before
      enabling mainnet PRL release/refund code paths.
 
-4. Record a testnet2 escrow run.
-   - Mainnet PRL paths remain blocked until real Pearl and Base Sepolia txids
-     are recorded on the intended pre-mainnet network.
+4. Move from simnet to explicitly approved low-cap mainnet.
+   - Pearl testnet2 is not a mandatory blocker because there is no usable
+     faucet/liquidity.
+   - Next action: finish the remaining simnet proof, then run only low-cap
+     mainnet PRL paths with explicit approval, real txids, public proof, and
+     clean reconciliation.
 
 5. Finish production Oyster deployment.
    - Dev API/web are deployed and smoked.
@@ -123,8 +126,8 @@ Do not seed `wPRL/USDC` liquidity until all of these are true:
    simnet deposit/release txids.
 3. Custody policy PR: reserve addresses, signer tiers, emergency pause drill,
    and cap policy.
-4. OTC live-evidence PR: real Base Sepolia receipts plus PRL signer/broadcast
-   evidence.
+4. Low-cap mainnet proof PR: real Pearl mainnet and Base/Igra txids after
+   explicit approval, with public proof and clean reconciliation.
 5. Bridge proof UI PR: public bridge deposit/exit/reserve proof pages.
 6. Prod Oyster release PR: prod secrets, prod image path, prod DNS, and smoke
    evidence.

@@ -57,8 +57,10 @@ Expected fields in each secret:
 
 ## Mainnet Gate
 
-The public `oyster.kaspa.com` environment is intentionally configured as
-`PEARL_NETWORK=testnet2` and `BASE_USDC_ESCROW_NETWORK=base_sepolia` until the
-mainnet checklist gates are complete. Do not change it to Pearl mainnet or Base
-mainnet until the live run evidence, Base ownership acceptance, and explicit
-mainnet approval items are closed.
+The public `oyster.kaspa.com` environment stays non-mainnet until the mainnet
+checklist gates are complete. Pearl testnet2 is not a mandatory blocker while
+there is no usable faucet/liquidity; after simnet proof, the next PRL path is an
+explicitly approved low-cap mainnet run with real txids, public proof, and clean
+reconciliation. Do not change it to Pearl mainnet or Base mainnet until the live
+run evidence, Base ownership acceptance, and explicit mainnet approval items
+are closed.

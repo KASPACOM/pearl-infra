@@ -42,7 +42,9 @@ Current state after PR #81:
    - Run the real Base Sepolia `createTrade`, `deposit`, and terminal
      `release` or `refund` leg.
    - Pair it with real PRL signing/broadcast evidence and the live proof
-     verifier.
+     verifier. Because no usable Pearl testnet faucet/liquidity exists, the
+     live PRL evidence path after simnet is explicitly approved low-cap
+     mainnet.
 
 5. Finish production Oyster release.
    - Populate prod secrets, execute prod image path, configure prod DNS, and
@@ -58,8 +60,9 @@ Current state after PR #81:
   rehearsals.
 - Do not seed a `wPRL/USDC` pool until one low-cap bridge entry and one low-cap
   bridge exit have public proof and clean reserve reconciliation.
-- Do not enable mainnet PRL release/refund code paths until the testnet2 escrow
-  run records real Pearl and Base Sepolia txids.
+- Do not enable broad mainnet PRL release/refund code paths from testnet
+  assumptions. Finish simnet proof first, then run only explicitly approved
+  low-cap mainnet with real txids, public proof, and clean reconciliation.
 
 ## Detailed Gap Map
 
