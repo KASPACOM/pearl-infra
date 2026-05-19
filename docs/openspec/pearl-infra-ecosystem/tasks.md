@@ -481,6 +481,14 @@ Loophole tracker after admin FE wiring:
     spend classification.
   - [ ] 9.8.10.c Complete the full quote -> accept -> wallet-funded PRL ->
     Base deposit -> settlement-worker release/refund -> public proof path.
+    - [x] Add automated full-flow coverage in
+      `services/otc-api/test/full-otc-flow.test.ts` for quote acceptance,
+      unique simnet escrow watch registration, wallet-funded PRL proof facts,
+      Base deposit/release event projection, settlement-worker PRL
+      release/refund decisions, and public proof projection.
+    - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
+      non-Oyster raw signer path, or update Oyster once arbitrary raw tx
+      signing is implemented.
 - [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
   txids before any mainnet PRL code path is enabled.
 - [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
