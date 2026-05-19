@@ -90,9 +90,12 @@ These items block a full production-grade Pearl OTC settlement release:
    - Current implementation derives one P2TR escrow address per trade from an
      xpub and uses a policy-gated coordinator signer. It is not the final
      non-custodial 2-of-3 buyer/seller/arbiter multisig design.
-   - Next action: either approve this constrained custody model for a low-cap
-     pilot, or implement Taproot script/MuSig/FROST-style multisig before
-     mainnet OTC trades.
+   - 2026-05-19 update: simnet 2-of-3 P2TR address/package construction now
+     passes in `packages/pearl-script` and `packages/pearl-escrow`; see
+     `docs/operations/pearl-multisig-simnet-evidence-20260519.md`.
+   - Next action: prove a funded simnet multisig release/refund spend through
+     `pearld` and the watched-address indexer, then decide whether low-cap
+     mainnet uses this path or the constrained coordinator path.
 
 3. Replace the remaining simulated Base leg in live evidence.
    - The checker can verify receipts, but the evidence needs actual Base

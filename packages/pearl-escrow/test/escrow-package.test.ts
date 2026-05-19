@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createPearlEscrowPackage } from '../dist/index.js';
+import { createPearlP2trPayment } from '@kaspacom/pearl-script';
+import * as ecc from 'tiny-secp256k1';
+
+import { createPearlEscrowPackage, createPearlMultisigEscrowPackage } from '../dist/index.js';
 
 const INTERNAL_PUBKEY = '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
 const BUYER_TESTNET_ADDRESS = 'tprl1pet7ep3czdu9k4wvdlz2fp5p8x2yp7t6ttyqg2c6cmh0lgeuu9lasga5cef';
@@ -82,3 +85,55 @@ test('rejects invalid amount and confirmation inputs', () => {
     /expectedAmountGrains must be a positive integer string/,
   );
 });
+
+test('creates a simnet 2-of-3 multisig P2TR escrow package', () => {
+  const buyerAddress = createSimnetAddress('05');
+  const sellerRefundAddress = createSimnetAddress('06');
+  const escrow = createPearlMultisigEscrowPackage({
+    tradeId: 'trade-multisig-simnet',
+    network: 'simnet',
+    internalPubkey: xOnlyPublicKey('01'),
+    buyerPubkey: xOnlyPublicKey('02'),
+    sellerPubkey: xOnlyPublicKey('03'),
+    arbiterPubkey: xOnlyPublicKey('04'),
+    expectedAmountGrains: '250000000',
+    requiredConfirmations: 2,
+    releaseAddress: buyerAddress,
+    refundAddress: sellerRefundAddress,
+    refundEligibleAfterHeight: 144,
+    createdAt: '2026-05-19T16:00:00.000Z',
+  });
+
+  assert.equal(escrow.tradeId, 'trade-multisig-simnet');
+  assert.equal(escrow.network, 'simnet');
+  assert.match(escrow.escrowAddress, /^rprl1p/);
+  assert.equal(escrow.releaseTemplate.signingPolicy.path, 'taproot_script_path');
+  assert.deepEqual(escrow.releaseTemplate.signingPolicy.requiredSigners, ['buyer', 'seller']);
+  assert.equal(escrow.refundTemplate.signingPolicy.path, 'taproot_script_path');
+  assert.deepEqual(escrow.refundTemplate.signingPolicy.requiredSigners, ['seller']);
+  assert.equal(escrow.refundTemplate.lockTime, 144);
+  assert.equal(escrow.keys.signerPubkeys.buyer, xOnlyPublicKey('02'));
+  assert.equal(escrow.keys.signerPubkeys.seller, xOnlyPublicKey('03'));
+  assert.equal(escrow.keys.signerPubkeys.arbiter, xOnlyPublicKey('04'));
+  assert.deepEqual(escrow.keys.taprootScriptLeaves?.map((leaf) => leaf.kind), [
+    'buyer_seller_release',
+    'buyer_arbiter_release',
+    'seller_arbiter_release',
+    'seller_timeout_refund',
+  ]);
+  assert.equal(escrow.keys.taprootScriptLeaves?.[3]?.lockTime, 144);
+});
+
+function createSimnetAddress(seed: string): string {
+  return createPearlP2trPayment({
+    network: 'simnet',
+    internalPubkey: xOnlyPublicKey(seed),
+  }).address;
+}
+
+function xOnlyPublicKey(seed: string): string {
+  const privateKey = Buffer.from(seed.padStart(64, '0'), 'hex');
+  const publicKey = ecc.pointFromScalar(privateKey, true);
+  if (!publicKey) throw new Error(`invalid private key fixture: ${seed}`);
+  return Buffer.from(publicKey).subarray(1).toString('hex');
+}

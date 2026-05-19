@@ -36,6 +36,14 @@ export interface PearlEscrowKeyMetadata {
   internalPubkeyHex: string;
   taprootOutputScriptHex: string;
   signerPubkeys: Partial<Record<PearlEscrowSignerRole, string>>;
+  taprootScriptLeaves?: PearlEscrowTaprootScriptLeaf[];
+}
+
+export interface PearlEscrowTaprootScriptLeaf {
+  kind: string;
+  requiredSigners: PearlEscrowSignerRole[];
+  scriptHex: string;
+  lockTime?: number;
 }
 
 export interface PearlEscrowPackage {
@@ -172,4 +180,11 @@ export interface CreatePearlEscrowPackageInput {
   signerPubkeys?: Partial<Record<PearlEscrowSignerRole, string>>;
   createdAt?: string;
   allowMainnet?: boolean;
+}
+
+export interface CreatePearlMultisigEscrowPackageInput extends Omit<CreatePearlEscrowPackageInput, 'internalPubkey' | 'signerPubkeys'> {
+  internalPubkey: string | Uint8Array;
+  buyerPubkey: string | Uint8Array;
+  sellerPubkey: string | Uint8Array;
+  arbiterPubkey: string | Uint8Array;
 }

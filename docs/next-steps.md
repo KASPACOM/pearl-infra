@@ -41,6 +41,9 @@ Current state after PR #81:
      coordinator-signed P2TR escrow model or waits for true PRL multisig escrow.
    - Select and prove the bridge reserve custody construction; reserve watches
      exist, but live reserve multisig/threshold signing is not implemented yet.
+   - Simnet 2-of-3 P2TR address/package construction now passes locally; the
+     next custody proof is a funded simnet release/refund spend observed by the
+     watched-address indexer.
 
 4. Complete OTC live evidence.
    - Run the real Base Sepolia `createTrade`, `deposit`, and terminal

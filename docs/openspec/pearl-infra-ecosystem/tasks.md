@@ -796,10 +796,19 @@ blockers visible for planning. See
     `PEARL_ESCROW_XPUB` and signs through a policy-gated coordinator signer.
     It is not the final non-custodial 2-of-3 buyer/seller/arbiter Taproot
     multisig design.
+  - [x] 11.5.a Add simnet 2-of-3 P2TR escrow address/package construction with
+    buyer/seller/arbiter script-path leaves and timeout-refund metadata. See
+    `docs/operations/pearl-multisig-simnet-evidence-20260519.md`.
+  - [ ] 11.5.b Prove a funded simnet multisig release/refund spend through
+    `pearld` and the watched-address indexer before treating multisig custody
+    as live-ready.
 - [ ] 11.6 Select and prove bridge reserve custody.
   - The bridge service can watch reserve addresses and reconcile reserve
     spends, but live Pearl reserve addresses, multisig/threshold construction,
     and release signing custody are not implemented or approved yet.
+  - The generic 2-of-3 P2TR custody builder can produce a reserve address, but
+    the bridge-specific reserve signer policy and funded spend proof remain
+    open.
 - [ ] 11.7 Execute and record an emergency pause/unpause drill against the
   deployed low-cap bridge path.
 - [ ] 11.8 Add bridge proof-page/frontend support for deposit status, exit
