@@ -28,14 +28,24 @@ export interface PearlEscrowTxTemplate {
   signingPolicy: {
     path: 'taproot_key_path' | 'taproot_script_path';
     requiredSigners: PearlEscrowSignerRole[];
+    alternativeSignerSets?: PearlEscrowSignerRole[][];
     timelockSatisfied?: boolean;
   };
 }
 
 export interface PearlEscrowKeyMetadata {
   internalPubkeyHex: string;
+  internalKeyPolicy?: 'bip341_nums_script_path_only';
   taprootOutputScriptHex: string;
   signerPubkeys: Partial<Record<PearlEscrowSignerRole, string>>;
+  taprootScriptLeaves?: PearlEscrowTaprootScriptLeaf[];
+}
+
+export interface PearlEscrowTaprootScriptLeaf {
+  kind: string;
+  requiredSigners: PearlEscrowSignerRole[];
+  scriptHex: string;
+  lockTime?: number;
 }
 
 export interface PearlEscrowPackage {
@@ -172,4 +182,11 @@ export interface CreatePearlEscrowPackageInput {
   signerPubkeys?: Partial<Record<PearlEscrowSignerRole, string>>;
   createdAt?: string;
   allowMainnet?: boolean;
+}
+
+export interface CreatePearlMultisigEscrowPackageInput extends Omit<CreatePearlEscrowPackageInput, 'internalPubkey' | 'signerPubkeys'> {
+  internalPubkey?: never;
+  buyerPubkey: string | Uint8Array;
+  sellerPubkey: string | Uint8Array;
+  arbiterPubkey: string | Uint8Array;
 }

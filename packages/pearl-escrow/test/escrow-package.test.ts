@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createPearlEscrowPackage } from '../dist/index.js';
+import { BIP341_NUMS_INTERNAL_PUBKEY_HEX, createPearlP2trPayment } from '@kaspacom/pearl-script';
+import { Transaction } from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
+
+import { createPearlEscrowPackage, createPearlEscrowUnsignedTx, createPearlMultisigEscrowPackage } from '../dist/index.js';
 
 const INTERNAL_PUBKEY = '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
 const BUYER_TESTNET_ADDRESS = 'tprl1pet7ep3czdu9k4wvdlz2fp5p8x2yp7t6ttyqg2c6cmh0lgeuu9lasga5cef';
@@ -82,3 +86,105 @@ test('rejects invalid amount and confirmation inputs', () => {
     /expectedAmountGrains must be a positive integer string/,
   );
 });
+
+test('creates a simnet 2-of-3 multisig P2TR escrow package', () => {
+  const buyerAddress = createSimnetAddress('05');
+  const sellerRefundAddress = createSimnetAddress('06');
+  const escrow = createPearlMultisigEscrowPackage({
+    tradeId: 'trade-multisig-simnet',
+    network: 'simnet',
+    buyerPubkey: xOnlyPublicKey('02'),
+    sellerPubkey: xOnlyPublicKey('03'),
+    arbiterPubkey: xOnlyPublicKey('04'),
+    expectedAmountGrains: '250000000',
+    requiredConfirmations: 2,
+    releaseAddress: buyerAddress,
+    refundAddress: sellerRefundAddress,
+    refundEligibleAfterHeight: 144,
+    createdAt: '2026-05-19T16:00:00.000Z',
+  });
+
+  assert.equal(escrow.tradeId, 'trade-multisig-simnet');
+  assert.equal(escrow.network, 'simnet');
+  assert.match(escrow.escrowAddress, /^rprl1p/);
+  assert.equal(escrow.keys.internalPubkeyHex, BIP341_NUMS_INTERNAL_PUBKEY_HEX);
+  assert.equal(escrow.keys.internalKeyPolicy, 'bip341_nums_script_path_only');
+  assert.equal(escrow.releaseTemplate.signingPolicy.path, 'taproot_script_path');
+  assert.deepEqual(escrow.releaseTemplate.signingPolicy.requiredSigners, ['buyer', 'seller']);
+  assert.deepEqual(escrow.releaseTemplate.signingPolicy.alternativeSignerSets, [
+    ['buyer', 'arbiter'],
+    ['seller', 'arbiter'],
+  ]);
+  assert.equal(escrow.refundTemplate.signingPolicy.path, 'taproot_script_path');
+  assert.deepEqual(escrow.refundTemplate.signingPolicy.requiredSigners, ['seller']);
+  assert.equal(escrow.refundTemplate.lockTime, 144);
+  assert.equal(escrow.keys.signerPubkeys.buyer, xOnlyPublicKey('02'));
+  assert.equal(escrow.keys.signerPubkeys.seller, xOnlyPublicKey('03'));
+  assert.equal(escrow.keys.signerPubkeys.arbiter, xOnlyPublicKey('04'));
+  assert.deepEqual(escrow.keys.taprootScriptLeaves?.map((leaf) => leaf.kind), [
+    'buyer_seller_release',
+    'buyer_arbiter_release',
+    'seller_arbiter_release',
+    'seller_timeout_refund',
+  ]);
+  assert.equal(escrow.keys.taprootScriptLeaves?.[3]?.lockTime, 144);
+});
+
+test('rejects duplicate multisig escrow role keys', () => {
+  assert.throws(
+    () =>
+      createPearlMultisigEscrowPackage({
+        tradeId: 'trade-duplicate-multisig',
+        network: 'simnet',
+        buyerPubkey: xOnlyPublicKey('02'),
+        sellerPubkey: xOnlyPublicKey('02'),
+        arbiterPubkey: xOnlyPublicKey('04'),
+        expectedAmountGrains: '250000000',
+        requiredConfirmations: 2,
+        releaseAddress: createSimnetAddress('05'),
+        refundAddress: createSimnetAddress('06'),
+        refundEligibleAfterHeight: 144,
+      }),
+    /must be distinct/,
+  );
+});
+
+test('creates multisig refund unsigned tx with CLTV locktime and non-final sequence', () => {
+  const escrow = createPearlMultisigEscrowPackage({
+    tradeId: 'trade-multisig-refund-tx',
+    network: 'simnet',
+    buyerPubkey: xOnlyPublicKey('02'),
+    sellerPubkey: xOnlyPublicKey('03'),
+    arbiterPubkey: xOnlyPublicKey('04'),
+    expectedAmountGrains: '250000000',
+    requiredConfirmations: 2,
+    releaseAddress: createSimnetAddress('05'),
+    refundAddress: createSimnetAddress('06'),
+    fundingOutpoint: `${'11'.repeat(32)}:0`,
+    refundEligibleAfterHeight: 144,
+  });
+  const tx = createPearlEscrowUnsignedTx({
+    escrow,
+    kind: 'refund',
+    feeGrains: '1000',
+  });
+  const parsed = Transaction.fromHex(tx.unsignedTxHex);
+
+  assert.equal(tx.lockTime, 144);
+  assert.equal(parsed.locktime, 144);
+  assert.equal(parsed.ins[0].sequence, Transaction.DEFAULT_SEQUENCE - 1);
+});
+
+function createSimnetAddress(seed: string): string {
+  return createPearlP2trPayment({
+    network: 'simnet',
+    internalPubkey: xOnlyPublicKey(seed),
+  }).address;
+}
+
+function xOnlyPublicKey(seed: string): string {
+  const privateKey = Buffer.from(seed.padStart(64, '0'), 'hex');
+  const publicKey = ecc.pointFromScalar(privateKey, true);
+  if (!publicKey) throw new Error(`invalid private key fixture: ${seed}`);
+  return Buffer.from(publicKey).subarray(1).toString('hex');
+}
