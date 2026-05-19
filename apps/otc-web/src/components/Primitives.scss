@@ -1,3 +1,132 @@
+.om-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--om-muted);
+  font-family: var(--om-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.om-loader--compact {
+  color: inherit;
+}
+
+.om-loader__pulse {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+
+  span {
+    position: absolute;
+    border-radius: 50%;
+  }
+
+  span:nth-child(1),
+  span:nth-child(2) {
+    inset: 0;
+    background: rgba(139, 92, 246, 0.28);
+    animation: om-ripple 1.8s ease-out infinite;
+  }
+
+  span:nth-child(2) {
+    animation-delay: 0.6s;
+  }
+
+  span:nth-child(3) {
+    inset: 25%;
+    background: radial-gradient(circle at 38% 32%, #fff 0%, #d4c5ff 52%, var(--om-accent) 100%);
+    box-shadow: 0 0 18px rgba(139, 92, 246, 0.58);
+    animation: om-pulse 1.8s ease-in-out infinite;
+  }
+}
+
+.om-loader__shell {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+
+  path {
+    fill: var(--om-accent);
+  }
+}
+
+.om-loader__shell-bottom {
+  opacity: 0.86;
+  transform-origin: 60px 60px;
+  animation: om-shell-open-reverse 2.4s ease-in-out infinite;
+}
+
+.om-loader__shell-top {
+  transform-origin: 60px 60px;
+  animation: om-shell-open 2.4s ease-in-out infinite;
+}
+
+.om-loader__shell-pearl {
+  fill: #fff;
+  transform-origin: 60px 60px;
+  animation: om-pearl-reveal 2.4s ease-in-out infinite;
+}
+
+@keyframes om-ripple {
+  0% {
+    opacity: 0.78;
+    transform: scale(0.35);
+  }
+  78%,
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+
+@keyframes om-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes om-shell-open {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  45%,
+  60% {
+    transform: rotate(-12deg) translateY(-4px);
+  }
+}
+
+@keyframes om-shell-open-reverse {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  45%,
+  60% {
+    transform: rotate(8deg) translateY(4px);
+  }
+}
+
+@keyframes om-pearl-reveal {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.65);
+  }
+  45%,
+  60% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+
 .om-badge {
   display: inline-flex;
   align-items: center;
@@ -195,6 +324,10 @@
   color: var(--om-muted);
   padding: 28px;
   text-align: center;
+
+  .om-loader {
+    width: 100%;
+  }
 }
 
 @media (max-width: 940px) {

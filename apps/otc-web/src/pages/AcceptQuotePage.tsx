@@ -4,7 +4,7 @@ import type { OtcQuote } from '@kaspacom/pearl-sdk';
 import { createClientRequestId, createOtcClient } from '../api.js';
 import { demoQuote, demoTrade, DEMO_NOW } from '../demo-data.js';
 import { buildAcceptQuotePageModel } from '../page-models.js';
-import { Field } from '../components/Primitives.js';
+import { BrandLoader, Field } from '../components/Primitives.js';
 import { getBrowserPathname, getBrowserSearch, getQuoteIdFromPath, getQuoteRoleFromSearch } from '../routing.js';
 
 export function AcceptQuotePage() {
@@ -53,7 +53,11 @@ export function AcceptQuotePage() {
         <div className="om-page-title">
           <span>Accept quote</span>
           <h1>{quoteId}</h1>
-          <p>{loadError ? `Quote data unavailable: ${loadError}` : 'Loading server-authoritative quote terms...'}</p>
+          {loadError ? (
+            <p>{`Quote data unavailable: ${loadError}`}</p>
+          ) : (
+            <BrandLoader label="Loading server-authoritative quote terms..." variant="shell-breathe" />
+          )}
         </div>
       </section>
     );
@@ -129,7 +133,7 @@ export function AcceptQuotePage() {
           )}
 
           <button className="om-button om-button--primary" type="button" disabled={status === 'submitting'} onClick={accept}>
-            {status === 'submitting' ? 'Allocating escrows...' : 'Accept and continue'}
+            {status === 'submitting' ? <BrandLoader compact label="Allocating escrows..." /> : 'Accept and continue'}
           </button>
           {status === 'accepted' ? <a href={`/trades/${tradeId}`}>Open checkout for {tradeId}</a> : null}
           {error ? <p className="om-form-error">{error}</p> : null}

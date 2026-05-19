@@ -1,26 +1,32 @@
 :root {
   color-scheme: dark;
-  --om-bg: #080a12;
-  --om-surface: #111522;
-  --om-surface-2: #171d2e;
-  --om-surface-3: #202842;
-  --om-ink: #f4f0ff;
-  --om-muted: #a8abc0;
-  --om-line: #2b324c;
-  --om-accent: #9b5cff;
-  --om-accent-soft: #22183b;
-  --om-accent-line: #7346c8;
-  --om-ok: #6fe3a3;
-  --om-ok-soft: #0f2b21;
-  --om-ok-line: #2f7d55;
-  --om-warn: #f4c96a;
-  --om-warn-soft: #322812;
-  --om-warn-line: #8b6d26;
-  --om-danger: #ff887a;
-  --om-danger-soft: #35191c;
-  --om-danger-line: #8b3f42;
-  --om-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --om-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --om-bg: #07060a;
+  --om-bg-2: #0d0b14;
+  --om-surface: #14111d;
+  --om-surface-2: #1b1726;
+  --om-surface-3: #241c35;
+  --om-ink: #f8f6ff;
+  --om-ink-2: #e9e6f1;
+  --om-muted: #a39db3;
+  --om-muted-2: #6d6781;
+  --om-line: #2a2637;
+  --om-line-strong: #3d3552;
+  --om-accent: #8b5cf6;
+  --om-accent-2: #b69aff;
+  --om-accent-soft: rgba(139, 92, 246, 0.16);
+  --om-accent-line: rgba(139, 92, 246, 0.48);
+  --om-ok: #22c55e;
+  --om-ok-soft: rgba(34, 197, 94, 0.12);
+  --om-ok-line: rgba(34, 197, 94, 0.42);
+  --om-warn: #d4a92b;
+  --om-warn-soft: rgba(212, 169, 43, 0.12);
+  --om-warn-line: rgba(212, 169, 43, 0.42);
+  --om-danger: #ef4444;
+  --om-danger-soft: rgba(239, 68, 68, 0.12);
+  --om-danger-line: rgba(239, 68, 68, 0.42);
+  --om-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --om-serif: "Instrument Serif", Georgia, serif;
+  --om-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 * {
@@ -30,11 +36,14 @@
 body {
   margin: 0;
   background:
-    linear-gradient(180deg, rgba(18, 22, 36, 0.92), rgba(8, 10, 18, 1) 320px),
+    radial-gradient(circle at 18% -8%, rgba(139, 92, 246, 0.18), transparent 30%),
+    linear-gradient(180deg, rgba(20, 17, 29, 0.96), rgba(7, 6, 10, 1) 340px),
     var(--om-bg);
   color: var(--om-ink);
   font-family: var(--om-font);
   font-size: 14px;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -70,7 +79,7 @@ a {
 
   h1 {
     margin: 5px 0 8px;
-    font-size: clamp(28px, 4vw, 44px);
+    font-size: 42px;
     line-height: 1.05;
   }
 
@@ -84,7 +93,7 @@ a {
   border: 1px solid var(--om-line);
   border-radius: 8px;
   background: var(--om-surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.28);
   padding: 18px;
 
   h2 {
@@ -104,6 +113,7 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   min-height: 40px;
   border: 1px solid var(--om-line);
   border-radius: 8px;
@@ -120,11 +130,17 @@ a {
   }
 }
 
+@media (max-width: 640px) {
+  .om-page-title h1 {
+    font-size: 32px;
+  }
+}
+
 .om-button--primary {
   border-color: var(--om-accent);
   background: var(--om-accent);
   box-shadow: 0 12px 30px rgba(155, 92, 255, 0.28);
-  color: #12091f;
+  color: #10091c;
 }
 
 .om-form-error {

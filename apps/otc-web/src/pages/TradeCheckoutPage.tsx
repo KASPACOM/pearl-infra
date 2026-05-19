@@ -5,7 +5,7 @@ import { createOtcClient } from '../api.js';
 import { prepareEscrowDepositCall } from '../base-escrow-client.js';
 import { demoProof, demoTrade, DEMO_NOW } from '../demo-data.js';
 import { buildTradeCheckoutPageModel, type UsdcVerificationModel } from '../page-models.js';
-import { DataRow, DeadlineStrip, FailureBanner, StateBadge, Timeline } from '../components/Primitives.js';
+import { BrandLoader, DataRow, DeadlineStrip, FailureBanner, StateBadge, Timeline } from '../components/Primitives.js';
 import { getBrowserPathname, getTradeIdFromPath } from '../routing.js';
 
 export function TradeCheckoutPage() {
@@ -55,9 +55,13 @@ export function TradeCheckoutPage() {
             <h1>{routeTradeId ?? 'Loading trade'}</h1>
           </div>
         </div>
-        <p className="checkout-page__notice">
-          {loadError ? `Trade data unavailable: ${loadError}` : 'Loading server-authoritative trade state...'}
-        </p>
+        <div className="checkout-page__notice">
+          {loadError ? (
+            `Trade data unavailable: ${loadError}`
+          ) : (
+            <BrandLoader label="Loading server-authoritative trade state..." variant="shell-breathe" />
+          )}
+        </div>
       </section>
     );
   }

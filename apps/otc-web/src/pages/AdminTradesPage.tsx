@@ -20,7 +20,7 @@ import {
   type OtcSideEffect,
   type SupportAlertSeverity,
 } from '../otc-api-client.js';
-import { DataRow, StateBadge } from '../components/Primitives.js';
+import { BrandLoader, DataRow, StateBadge } from '../components/Primitives.js';
 import { buildStateBadge } from '../page-models.js';
 import { getAdminTradeIdFromPath, getBrowserPathname } from '../routing.js';
 
@@ -465,7 +465,11 @@ export function AdminTradesPage() {
               Next
             </button>
           </div>
-          {listStatus === 'loading' ? <div className="om-empty">Loading live admin trades...</div> : null}
+          {listStatus === 'loading' ? (
+            <div className="om-empty">
+              <BrandLoader label="Loading live admin trades..." />
+            </div>
+          ) : null}
           {listStatus === 'ready' && rowModels.length === 0 ? <div className="om-empty">No trades match the current filters.</div> : null}
           {rowModels.length > 0 ? (
             <table>
@@ -520,7 +524,11 @@ export function AdminTradesPage() {
 
         <aside className="om-panel admin-detail">
           <span className="om-kicker">Selected trade</span>
-          {detailStatus === 'loading' ? <div className="om-empty">Loading debug detail...</div> : null}
+          {detailStatus === 'loading' ? (
+            <div className="om-empty">
+              <BrandLoader label="Loading debug detail..." />
+            </div>
+          ) : null}
           {detail ? (
             <>
               <h2>{detail.trade.tradeId}</h2>

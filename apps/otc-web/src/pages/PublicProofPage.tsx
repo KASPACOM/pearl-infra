@@ -4,7 +4,7 @@ import type { PublicTradeProof } from '@kaspacom/pearl-sdk';
 import { createOtcClient } from '../api.js';
 import { demoProof, DEMO_NOW } from '../demo-data.js';
 import { buildPublicProofPageModel } from '../page-models.js';
-import { DataRow, DeadlineStrip, FailureBanner, StateBadge, Timeline } from '../components/Primitives.js';
+import { BrandLoader, DataRow, DeadlineStrip, FailureBanner, StateBadge, Timeline } from '../components/Primitives.js';
 import { getBrowserPathname, getTradeIdFromPath } from '../routing.js';
 
 export function PublicProofPage() {
@@ -43,9 +43,13 @@ export function PublicProofPage() {
             <h1>{routeTradeId ?? 'Loading proof'}</h1>
           </div>
         </header>
-        <p className="proof-page__notice">
-          {loadError ? `Proof data unavailable: ${loadError}` : 'Loading server-authoritative proof...'}
-        </p>
+        <div className="proof-page__notice">
+          {loadError ? (
+            `Proof data unavailable: ${loadError}`
+          ) : (
+            <BrandLoader label="Loading server-authoritative proof..." variant="shell-breathe" />
+          )}
+        </div>
       </article>
     );
   }
