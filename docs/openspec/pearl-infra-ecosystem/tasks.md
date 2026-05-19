@@ -243,10 +243,11 @@ Current delegation queue after PR #76:
   rehearsal, covering ownership transfer, operator/relayer permissions, cap
   semantics, pause behavior, replay protection, exit liabilities, deployment
   scripts, and verification evidence.
-- OTC evidence owner: finish the remaining live slice of `9.8.10.c`, `9.3.9`,
-  and `9.8.11`: replace simulated Base events with real Base Sepolia txids and
-  run the PRL signing/broadcast boundary with real txids before any mainnet PRL
-  path opens.
+- OTC evidence owner: finish the remaining live slice of `9.8.10.c`: replace
+  simulated Base events with real Base Sepolia txids, then run the PRL
+  signing/broadcast boundary with real txids. Pearl testnet2 is no longer a
+  mandatory gate because there is no usable faucet/liquidity; after simnet,
+  the next live gate is explicitly approved low-cap mainnet.
 - Base ops owner: finish `9.6.7`; keep `9.6.9` blocked until explicit Base
   mainnet approval.
 - Oyster/prod ops owner: finish `9.10.6.b`, `9.10.8.d`, `9.10.9.b`, and
@@ -302,7 +303,10 @@ Current delegation queue after PR #76:
   can coexist with replacement canonical blocks at the same height, and startup
   resumes from an unfinished detached fork point. Also handle pearld verbosity
   `2` blocks returning full transactions under `rawtx`.
-- [ ] 9.3.9 Run a testnet2 integration ingest once testnet PRL/access is available.
+- [x] 9.3.9 Document that testnet2 integration ingest is not currently
+  actionable because no usable Pearl testnet faucet/liquidity is available.
+  Keep the adapter compatible with testnet2, but do not block the bridge/OTC
+  path on it.
 
 ### 9.4 Frontend Checkout
 
@@ -486,8 +490,10 @@ Loophole tracker after PR #74:
   coverage exists, but mainnet PRL paths remain blocked until the remaining
   `9.8.10.c` live slice replaces simulated Base events with real Base Sepolia
   txids and a real PRL signing/broadcast path.
-- [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
-  production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
+- [x] Testnet2 Pearl + Base Sepolia end-to-end evidence is not a required gate
+  right now because no usable Pearl testnet faucet/liquidity is available. The
+  replacement launch gate is: finish simnet evidence, then run explicitly
+  approved low-cap mainnet with public proof and clean reconciliation.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
   no release/refund/sign/broadcast actions, and admin list/detail, filters,
   note/manual-review actions, failed alert-delivery replay, and the public
@@ -576,8 +582,13 @@ Loophole tracker after PR #74:
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
-- [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
-  txids before any mainnet PRL code path is enabled.
+- [x] 9.8.11 Replace the unavailable testnet2 escrow-run gate with the
+  simnet-to-low-cap-mainnet path.
+  - No usable Pearl testnet faucet/liquidity is available, so testnet2 cannot
+    be a mandatory blocker. Before any broad mainnet rollout, complete the
+    remaining simnet proof, require explicit mainnet approval, run only low-cap
+    mainnet PRL paths, record real Pearl mainnet and Base/Igra txids, and keep
+    public proof plus reserve reconciliation clean.
 - [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
   prove no release action is exposed to users or operators.
   - Rendered RFQ, accept, checkout, public proof, and admin shell screens are
@@ -756,3 +767,48 @@ Loophole tracker after PR #74:
   - [ ] 10.13.1 Finalize federation membership, relayer independence requirements, signer custody boundaries, and quorum threshold.
   - [ ] 10.13.2 Replace plain relayer attestations with threshold/FROST-style release authorization or an equivalent reviewed threshold-signing boundary.
   - [ ] 10.13.3 Add public reserve proof snapshots and an audit endpoint for reserve addresses, confirmed reserves, pending exits, minted supply, and cap usage.
+
+## 11. Bridge/OTC Pearl-Side Remaining Work After PR #81
+
+This section is a roll-up view after PR #81 merged. The detailed owning tasks
+remain in sections 9 and 10; this keeps the current Pearl-side bridge/OTC
+blockers visible for planning. See
+`docs/operations/bridge-otc-gap-review-20260519.md`.
+
+- [x] 11.1 Record the post-#81 bridge/OTC gap review and split remaining work
+  by bridge, OTC, pool, and shared Pearl infra blockers.
+- [ ] 11.2 Resolve the Galleon/Igra deployment path for `WrappedPearl` and
+  `PearlBridge`.
+  - PR #81 proved local deployment and mainnet refusal gates. The 2026-05-19
+    Galleon attempt failed before broadcast on the underlying Kaspa standardness
+    fee. Next proof must either raise the accepted fee/gas path or replace the
+    deploy route and record evidence.
+- [ ] 11.3 Repeat the bridge rehearsal with freshly-created writable Pearl
+  simnet deposit/release txids.
+  - Current bridge rehearsal uses real public simnet txids. The next confidence
+    gate is a newly-created wallet-funded deposit and release controlled during
+    the run.
+- [ ] 11.4 Select and document live reserve addresses, signer policy,
+  hot/warm/cold reserve tiers, cap limits, and emergency pause authority.
+- [ ] 11.5 Execute and record an emergency pause/unpause drill against the
+  deployed low-cap bridge path.
+- [ ] 11.6 Add bridge proof-page/frontend support for deposit status, exit
+  status, reserve backing, blockers, event hashes, quorum counts, and cap usage.
+- [ ] 11.7 Complete the OTC full-flow live evidence run with real Base Sepolia
+  `createTrade`, `deposit`, and terminal `release` or `refund` receipts plus a
+  real PRL signing/broadcast path.
+- [x] 11.8 Replace the testnet2 escrow-run blocker with the approved
+  simnet-to-low-cap-mainnet path.
+  - No usable Pearl testnet faucet/liquidity exists. After simnet proof, the
+    next gate is explicitly approved low-cap mainnet with real Pearl mainnet
+    and Base/Igra txids, public proof, and clean reconciliation.
+- [ ] 11.9 Finish production Oyster release: prod secrets, prod image path,
+  prod DNS, and prod `/healthz`, quote, support-alert, admin-auth smoke checks.
+- [ ] 11.10 Replace shared bearer-token admin auth with a real operator
+  identity/session layer before broader support rollout.
+- [ ] 11.11 Produce the `wPRL/USDC` pool plan only after one low-cap bridge
+  entry and one low-cap bridge exit have public proof and clean reserve
+  reconciliation.
+- [ ] 11.12 Finalize the post-pilot federation/threshold-signing design:
+  federation membership, relayer independence, custody boundary, quorum
+  threshold, and threshold/FROST-style release authorization or equivalent.

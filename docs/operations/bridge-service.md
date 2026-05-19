@@ -99,6 +99,9 @@ boundary after the pilot proves reserve accounting and event mirroring.
 
 ## Still Needed
 
+- Resolve the live Igra deployment path after the Galleon fee-standardness
+  blocker recorded in
+  `docs/operations/bridge-galleon-deploy-attempt-20260519.md`.
 - Add frontend proof pages after the bridge API shape is stable.
 - Select live reserve addresses, signer policy, and hot/warm/cold cap limits,
   then run the emergency pause drill.
@@ -112,3 +115,5 @@ boundary after the pilot proves reserve accounting and event mirroring.
   no-Pearl-testnet path: prepare guarded Igra mainnet deployment tooling, but
   keep Pearl proof/reconciliation tests on simnet until mainnet custody is
   explicitly approved.
+- Use `docs/operations/bridge-otc-gap-review-20260519.md` for the current
+  Pearl-side bridge/OTC blocker roll-up and recommended next PR order.

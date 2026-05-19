@@ -108,6 +108,9 @@ Latest evidence:
 - `docs/operations/bridge-simnet-rehearsal-evidence-20260519.md`
 - `docs/operations/bridge-simnet-rehearsal-evidence-20260519.json`
 
+Remaining bridge/OTC blockers and the recommended PR order are tracked in
+`docs/operations/bridge-otc-gap-review-20260519.md`.
+
 ## Live Igra Testnet Option
 
 The configured operator RPC currently points to Galleon chain `38836`. A Galleon
