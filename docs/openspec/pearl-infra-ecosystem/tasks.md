@@ -174,9 +174,16 @@ Merged implementation checkpoints:
 - PR #74 — hardened full OTC flow coverage with xpub-backed unique simnet P2TR
   escrow allocation, indexer-shaped PRL proof projection, and fail-closed Base
   event term validation before PRL release preparation.
+- PR #75 — synced the implementation checklist after PR #74 and refreshed the
+  remaining owner queue.
+- PR #76 — hardened bridge live indexing after strategy review: `ExitProcessed`
+  now remains a liability as `processed` until Pearl release spend confirmation,
+  Igra polling is replay-safe and address-validated, checkpoints are monotonic,
+  and Postgres enforces unique exit IDs plus unique release txids.
 
-Review snapshot after PR #74: PRs #71-#74 are merged, and no feature/code PRs
-remain open against `dev` before this checklist sync.
+Review snapshot after PR #76: PRs #71-#76 are merged into `dev`. Bridge live
+indexing is code-complete for the current mocked/local proof layer, with real
+bridge confidence now gated by `10.8.10` simnet rehearsal evidence.
 
 Current Pearl OTC code/workflow status:
 
@@ -210,12 +217,12 @@ Current Pearl OTC code/workflow status:
   notes, manual-review notes, failed alert-delivery replay, and the public
   support/error alert form, while settlement execution controls stay absent.
 
-Current delegation queue after PR #74:
+Current delegation queue after PR #76:
 
 - Bridge events/indexer owner: `10.8.7.b`, `10.8.8.b`, and `10.8.9.b` are now
-  covered by the bridge-service Igra RPC poller, checkpoint store, Postgres
-  exit repository, and reserve-spend applier. Next bridge evidence task is
-  `10.8.10` simnet rehearsal.
+  covered by the hardened bridge-service Igra RPC poller, monotonic checkpoint
+  store, Postgres exit repository, and reserve-spend applier. Next bridge
+  evidence task is `10.8.10` simnet rehearsal.
 - Bridge FE owner: implement `10.10.5` proof-page/frontend models for deposit
   status, exit status, reserve backing, blockers, public audit fields, event
   hashes, and quorum counts.
