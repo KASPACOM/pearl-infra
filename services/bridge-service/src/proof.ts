@@ -97,7 +97,7 @@ export function createBridgePublicProof(input: {
       ...(readNumber(exit.metadata, 'relayer_quorum_required') !== undefined
         ? { relayerQuorumRequired: readNumber(exit.metadata, 'relayer_quorum_required') }
         : {}),
-      blockers: exit.status === 'pending' && input.reconciliation.blockers.length > 0
+      blockers: (exit.status === 'pending' || exit.status === 'processed') && input.reconciliation.blockers.length > 0
         ? input.reconciliation.blockers
         : [],
     })),

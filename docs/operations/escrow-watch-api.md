@@ -200,7 +200,7 @@ Migration `002_watched_addresses.sql` therefore also creates `bridge_exit_reques
 | `exit_id` | `TEXT` | contract-emitted identifier the bridge service deduplicates on |
 | `requested_amount_grains` | `NUMERIC(40,0)` | |
 | `pearl_recipient` | `TEXT` | P2TR address the user wants PRL at |
-| `status` | `TEXT` | `pending` \| `released` \| `refunded` \| `cancelled` \| `unknown` |
+| `status` | `TEXT` | `pending` \| `processed` \| `released` \| `refunded` \| `cancelled` \| `unknown` |
 | `pearl_release_txid` | `TEXT NULL` | populated when the spend scanner matches |
 | `pearl_release_block` | `BIGINT NULL` | |
 | `released_at` | `TIMESTAMPTZ NULL` | |

@@ -62,6 +62,9 @@ export function decideExitRelease(input: ExitReleaseDecisionInput): BridgeRelaye
   if (input.exit.status === 'released' && input.exit.pearlReleaseTxid) {
     return decision('mark_exit_released', 'Pearl release already recorded for exit', sourceIds);
   }
+  if (input.exit.status === 'processed' && input.exit.pearlReleaseTxid) {
+    return decision('wait', 'Igra exit is processed; waiting for Pearl reserve spend confirmation', sourceIds);
+  }
   if (input.exit.status !== 'pending') {
     return decision('wait', `exit is not pending: ${input.exit.status}`, sourceIds);
   }

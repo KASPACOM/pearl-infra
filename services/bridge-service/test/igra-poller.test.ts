@@ -56,6 +56,63 @@ test('polls Igra logs, checkpoints blocks, persists events, and mirrors exit row
   assert.equal((await repo.findExitRequest(EXIT_ID))?.requestedAmountGrains, '100000000');
 });
 
+test('replays duplicate persisted events into exits before checkpointing', async () => {
+  const eventRepo = new InMemoryBridgeStateRepository();
+  const exitRepo = new InMemoryBridgeStateRepository();
+  const checkpoint = new InMemoryIgraBridgeCheckpointStore();
+  const log = exitRequestedLog({ blockNumber: '0x64', logIndex: '0x0' });
+  const existingEvent = decodePearlBridgeLog(log, 19416, new Date('2026-05-19T00:00:00.000Z'));
+  await eventRepo.saveIgraEvent(existingEvent);
+  const poller = new IgraBridgeEventPoller({
+    client: new FakeIgraClient(100, [log]),
+    bridgeAddress: '0x2222222222222222222222222222222222222222',
+    chainId: 19416,
+    eventRepository: eventRepo,
+    exitRepository: exitRepo,
+    checkpointStore: checkpoint,
+    startBlock: 100,
+  });
+
+  const result = await poller.pollOnce(new Date('2026-05-19T00:01:00.000Z'));
+
+  assert.equal(result.eventsSaved, 0);
+  assert.equal(result.exitsTouched, 1);
+  assert.equal((await exitRepo.findExitRequest(EXIT_ID))?.status, 'pending');
+  assert.equal(await checkpoint.loadNextBlock(100), 101);
+});
+
+test('rejects logs returned for a different bridge address', async () => {
+  const poller = new IgraBridgeEventPoller({
+    client: new FakeIgraClient(100, [exitRequestedLog({ address: '0x3333333333333333333333333333333333333333' })]),
+    bridgeAddress: '0x2222222222222222222222222222222222222222',
+    chainId: 19416,
+    eventRepository: new InMemoryBridgeStateRepository(),
+    exitRepository: new InMemoryBridgeStateRepository(),
+    checkpointStore: new InMemoryIgraBridgeCheckpointStore(),
+    startBlock: 100,
+  });
+
+  await assert.rejects(
+    () => poller.pollOnce(),
+    /Igra log address mismatch/,
+  );
+});
+
+test('validates poller range options before live polling', () => {
+  const base = {
+    client: new FakeIgraClient(100, []),
+    bridgeAddress: '0x2222222222222222222222222222222222222222',
+    chainId: 19416,
+    eventRepository: new InMemoryBridgeStateRepository(),
+    exitRepository: new InMemoryBridgeStateRepository(),
+    checkpointStore: new InMemoryIgraBridgeCheckpointStore(),
+    startBlock: 100,
+  };
+
+  assert.throws(() => new IgraBridgeEventPoller({ ...base, confirmations: -1 }), /confirmations/);
+  assert.throws(() => new IgraBridgeEventPoller({ ...base, maxBlockRange: 0 }), /maxBlockRange/);
+});
+
 class FakeIgraClient implements IgraLogClient {
   private readonly latest: number;
   private readonly logs: IgraRpcLog[];
@@ -74,7 +131,7 @@ class FakeIgraClient implements IgraLogClient {
   }
 }
 
-function exitRequestedLog(): IgraRpcLog {
+function exitRequestedLog(overrides: Partial<IgraRpcLog> = {}): IgraRpcLog {
   return {
     address: '0x2222222222222222222222222222222222222222',
     topics: [
@@ -86,6 +143,7 @@ function exitRequestedLog(): IgraRpcLog {
     blockNumber: '0x7b',
     transactionHash: '0xBURN',
     logIndex: '0x7',
+    ...overrides,
   };
 }
 

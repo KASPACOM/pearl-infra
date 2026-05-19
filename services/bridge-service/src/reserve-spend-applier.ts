@@ -1,6 +1,6 @@
 import type { BridgeExitRequestRepository } from './repository.js';
 import { matchReserveSpendToExit, type ReserveSpendMatch } from './reserve-spend-matcher.js';
-import type { BridgeAddressSpend, BridgeExitRequest } from './types.js';
+import type { BridgeAddressSpend, BridgeExitRequest, WatchedBridgeAddressWithHistory } from './types.js';
 
 export interface ApplyReserveSpendMatchResult {
   spendTxid: string;
@@ -49,6 +49,16 @@ export async function applyReserveSpendMatchesToExits(input: {
       });
       continue;
     }
+    if (existing.status === 'released' && existing.pearlReleaseTxid === spend.spendTxid) {
+      results.push({
+        spendTxid: spend.spendTxid,
+        status: match.status,
+        exitId: match.exitId,
+        blockers: [],
+        updatedExit: existing,
+      });
+      continue;
+    }
 
     const updated: BridgeExitRequest = {
       ...existing,
@@ -76,4 +86,22 @@ export async function applyReserveSpendMatchesToExits(input: {
   }
 
   return results;
+}
+
+export function reserveSpendsFromWatches(watches: readonly WatchedBridgeAddressWithHistory[]): BridgeAddressSpend[] {
+  return watches
+    .filter((watch) => watch.purpose === 'bridge_reserve')
+    .flatMap((watch) => watch.spends);
+}
+
+export async function applyReserveWatchSpendMatchesToExits(input: {
+  repository: BridgeExitRequestRepository;
+  reserveWatches: readonly WatchedBridgeAddressWithHistory[];
+  now?: Date;
+}): Promise<ApplyReserveSpendMatchResult[]> {
+  return applyReserveSpendMatchesToExits({
+    repository: input.repository,
+    spends: reserveSpendsFromWatches(input.reserveWatches),
+    now: input.now,
+  });
 }
