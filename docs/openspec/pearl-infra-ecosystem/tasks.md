@@ -602,11 +602,17 @@ Loophole tracker after admin FE wiring:
 - [ ] 10.8.6 Expose reconciliation views for confirmed reserves, pending deposits, pending exits, minted `wPRL` supply, reserve surplus/deficit, stale requests, and unknown reserve spends.
   - [x] 10.8.6.a Add bridge-service reconciliation snapshot for reserves, known spends, pending exits, minted supply, surplus/deficit, stale watches, and unknown reserve-spend blockers.
   - [x] 10.8.6.b Add canonical event IDs, event hashes, relayer attestation counts, and quorum requirements to public bridge proof projections.
-  - [ ] 10.8.6.c Persist reconciliation snapshots so operators can compare reserve health across blocks, not only read the latest in-memory projection.
-  - [ ] 10.8.6.d Wire the persisted snapshot source into an admin/read-only API.
+  - [x] 10.8.6.c Persist reconciliation snapshots so operators can compare reserve health across blocks, not only read the latest in-memory projection.
+  - [x] 10.8.6.d Wire the persisted snapshot source into an admin/read-only API.
 - [ ] 10.8.7 Poll Igra `PearlBridge` events and mirror deposit claims, exit requests, processed exits, refunds, cap changes, pause changes, relayer changes, and operator changes.
+  - [x] 10.8.7.a Add Igra event mirror helpers for all `PearlBridge` event types keyed by `(chainId, txHash, logIndex)`.
+  - [ ] 10.8.7.b Connect the mirror helpers to a real Igra RPC/event poller and checkpointed block cursor.
 - [ ] 10.8.8 Write Igra exit events into `bridge_exit_requests` with idempotent upsert semantics keyed by `(igra_burn_txid, igra_burn_log_index)`.
+  - [x] 10.8.8.a Convert mirrored `ExitRequested` events into idempotent bridge exit rows in the bridge-state repository.
+  - [ ] 10.8.8.b Back the exit mirror with Postgres `bridge_exit_requests` writes in the live service.
 - [ ] 10.8.9 Classify Pearl reserve spends against mirrored exits, mark exact release txids once, and route mismatches or unknown spends to manual review.
+  - [x] 10.8.9.a Add reserve-spend matcher for exact exit release matches, amount mismatch, recipient mismatch, duplicate release txid, and unknown spend blockers.
+  - [ ] 10.8.9.b Wire reserve-spend matching into the live Pearl spend scanner and update `bridge_exit_requests` on exact matches.
 - [ ] 10.8.10 Run a bridge simnet rehearsal with real Pearl deposit txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve reconciliation evidence.
 - [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
   - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.
@@ -620,15 +626,15 @@ Loophole tracker after admin FE wiring:
 - [ ] 10.10 Add bridge API/proof contracts for deposit status, exit status, reserve backing, and public audit trail.
   - [x] 10.10.1 Add bridge public proof DTOs for deposit status, exit status, reserve backing, blockers, and public audit fields.
   - [x] 10.10.2 Extend bridge public proof contracts with canonical event IDs, event hashes, relayer attestation counts, quorum requirements, and reserve-backing blockers.
-  - [ ] 10.10.3 Add public `GET /bridge/deposits/:depositId`, `GET /bridge/exits/:exitId`, and `GET /bridge/proof` routes backed by persisted bridge state.
-  - [ ] 10.10.4 Add operator/admin routes for manual approval, rejection, replay, pause recommendation, and decision audit reads.
+  - [x] 10.10.3 Add public `GET /bridge/deposits/:depositId`, `GET /bridge/exits/:exitId`, and `GET /bridge/proof` routes backed by persisted bridge state.
+  - [x] 10.10.4 Add operator/admin routes for manual approval, rejection, replay, pause recommendation, and decision audit reads.
   - [ ] 10.10.5 Add proof-page/frontend model support only after the API shape is stable.
 - [ ] 10.11 Add low-cap pilot gates: min/max amounts, rolling window caps, hot-wallet cap, monitoring, and emergency pause test.
   - [x] 10.11.1 Add service-side low-cap pilot gates for deposit min/max, max exit, supply cap, rolling mint cap, and reserve-available checks.
   - [x] 10.11.2 Require clean reserves, relayer quorum, finality, and manual operator approval before prepare actions.
   - [ ] 10.11.3 Add hot-wallet reserve tier cap checks, monitoring alerts, and an emergency pause drill once live reserve addresses and signer policy are selected.
-  - [ ] 10.11.4 Add reserve-deficit, stale-indexer, unknown-spend, quorum-failure, and cap-near-limit alerts.
-  - [ ] 10.11.5 Record a pilot runbook for pause, unpause, stuck mint, stuck exit, release-tx mismatch, and reserve-deficit response.
+  - [x] 10.11.4 Add reserve-deficit, stale-indexer, unknown-spend, quorum-failure, and cap-near-limit alerts.
+  - [x] 10.11.5 Record a pilot runbook for pause, unpause, stuck mint, stuck exit, release-tx mismatch, and reserve-deficit response.
 - [ ] 10.12 After bridge entry/exit pilot passes, create `wPRL/USDC` pool plan with initial liquidity, price assumptions, and max bridge exposure approval.
   - [ ] 10.12.1 Do not seed a `wPRL/USDC` pool until one low-cap entry and one low-cap exit have passed with public proof and clean reserve reconciliation.
   - [ ] 10.12.2 Define pool initial liquidity source, max bridge exposure, LP ownership, withdrawal authority, and emergency liquidity removal procedure.

@@ -117,3 +117,57 @@ export interface BridgeRelayerDecision {
   sourceIds: string[];
   metadata?: Record<string, string | number | boolean | null>;
 }
+
+export interface BridgeReconciliationSnapshotRecord {
+  snapshotId: string;
+  snapshot: unknown;
+  observedAt: string;
+  createdAt: string;
+}
+
+export type IgraBridgeEventType =
+  | 'deposit_claimed'
+  | 'exit_requested'
+  | 'exit_processed'
+  | 'exit_refunded'
+  | 'caps_updated'
+  | 'entry_paused'
+  | 'exit_request_paused'
+  | 'exit_processing_paused'
+  | 'relayer_updated'
+  | 'operator_updated';
+
+export interface IgraBridgeEvent {
+  eventId: string;
+  eventType: IgraBridgeEventType;
+  txHash: string;
+  logIndex: number;
+  blockNumber: number;
+  chainId: number;
+  payload: Record<string, string | number | boolean | null>;
+  observedAt: string;
+}
+
+export type BridgeApprovalKind = 'mint' | 'exit_release' | 'rejection' | 'pause_recommendation' | 'replay';
+
+export interface BridgeAdminDecision {
+  decisionId: string;
+  kind: BridgeApprovalKind;
+  targetId: string;
+  actor: string;
+  reason: string;
+  idempotencyKey: string;
+  metadata: Record<string, string | number | boolean | null>;
+  createdAt: string;
+}
+
+export type BridgeAlertSeverity = 'info' | 'warning' | 'critical';
+
+export interface BridgePilotAlert {
+  alertId: string;
+  severity: BridgeAlertSeverity;
+  code: string;
+  message: string;
+  sourceIds: string[];
+  metadata?: Record<string, string | number | boolean | null>;
+}
