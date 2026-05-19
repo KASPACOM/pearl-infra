@@ -22,7 +22,7 @@ export interface FundingMatch {
   classification: FundingClassification;
 }
 
-export type OtcEscrowSpendClassification = 'release' | 'refund' | 'unknown_spend';
+export type SpendClassification = 'release' | 'refund' | 'exit_release' | 'unknown_spend';
 
 export interface SpendMatch {
   watchId: string;
@@ -205,7 +205,11 @@ export function classifySpend(input: {
   spendTxid: string;
   spentOutpoint: string;
   spendingOutputs: PearlBlockOutput[];
-}): { classification: OtcEscrowSpendClassification; classificationData: Record<string, unknown> } {
+}): { classification: SpendClassification; classificationData: Record<string, unknown> } {
+  if (input.watch.purpose === 'bridge_reserve') {
+    return classifyBridgeReserveSpend(input.watch, input.spentOutpoint, input.spendingOutputs);
+  }
+
   if (input.watch.purpose !== 'otc_escrow') {
     return {
       classification: 'unknown_spend',
@@ -286,12 +290,57 @@ function readNumberMetadata(watch: WatchedAddress, key: string): number | undefi
 function classifyByExpectedTxid(
   watch: WatchedAddress,
   spendTxid: string,
-): OtcEscrowSpendClassification | undefined {
+): SpendClassification | undefined {
   if (readStringMetadata(watch, 'release_txid') === spendTxid) return 'release';
   if (readStringMetadata(watch, 'pearl_release_txid') === spendTxid) return 'release';
   if (readStringMetadata(watch, 'refund_txid') === spendTxid) return 'refund';
   if (readStringMetadata(watch, 'pearl_refund_txid') === spendTxid) return 'refund';
   return undefined;
+}
+
+function classifyBridgeReserveSpend(
+  watch: WatchedAddress,
+  spentOutpoint: string,
+  outputs: PearlBlockOutput[],
+): { classification: SpendClassification; classificationData: Record<string, unknown> } {
+  const changeAddresses = new Set(
+    [
+      watch.address,
+      readStringMetadata(watch, 'reserve_address'),
+      readStringMetadata(watch, 'change_address'),
+      readStringMetadata(watch, 'reserve_change_address'),
+    ].filter((address): address is string => Boolean(address)),
+  );
+  const externalOutputs = outputs.filter((output) => {
+    const address = output.scriptPubKey.address;
+    return address && !changeAddresses.has(address);
+  });
+  if (externalOutputs.length !== 1) {
+    return {
+      classification: 'unknown_spend',
+      classificationData: {
+        reason: externalOutputs.length === 0 ? 'no_external_release_output' : 'ambiguous_external_release_outputs',
+        spentOutpoint,
+        externalOutputCount: externalOutputs.length,
+      },
+    };
+  }
+
+  const output = externalOutputs[0];
+  return {
+    classification: 'exit_release',
+    classificationData: {
+      matchedBy: 'single_external_reserve_output',
+      amount_grains: output.amountGrains,
+      pearl_recipient: output.scriptPubKey.address,
+      output: {
+        txid: output.txid,
+        vout: output.vout,
+        address: output.scriptPubKey.address,
+        amountGrains: output.amountGrains,
+      },
+    },
+  };
 }
 
 function outputMatchesExpected(
