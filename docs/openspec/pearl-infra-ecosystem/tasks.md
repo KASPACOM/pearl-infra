@@ -316,18 +316,25 @@ Current delegation queue after rendered OTC web screens:
   - See `docs/operations/otc-deployment-env-contract.md`.
 - [x] 9.6.3 Add monitoring checks for node lag, indexer lag, failed broadcasts, and stale escrow watches.
   - See `docs/operations/otc-monitoring.md`.
-- [ ] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
-  - [x] 9.6.4.a Record partial simnet node/indexer evidence: `65.21.206.46`
-    runs simnet `pearld` at public RPC `http://65.21.206.46:18556`
-    with RPC auth required, and simnet watched-address API at
+- [x] 9.6.4 Record one simnet escrow run before enabling any mainnet PRL code path.
+  - [x] 9.6.4.a Record PRL-side simnet evidence in
+    `docs/operations/pearl-simnet-escrow-evidence-20260518.md`, covering real
+    simnet funding detection plus signed release and refund transactions mined
+    by `pearld` and classified by the indexer.
+  - [x] 9.6.4.b Record external simnet node/indexer access: `65.21.206.46`
+    runs simnet `pearld` at public RPC `http://65.21.206.46:18556` with RPC
+    auth required, and simnet watched-address API at
     `http://65.21.206.46:18088`.
-  - [x] 9.6.4.b Record simnet watch evidence for
+  - [x] 9.6.4.c Record simnet watch evidence for
     `simnet-e2e-1779131665`: height `145`, `144` observed outputs,
     `464964.66624540` observed PRL, `458505.41336571` unspent observed
     PRL, and `2` recorded spends.
-  - [ ] 9.6.4.c Run a wallet-backed simnet escrow path with oyster wallet
-    addresses. Current evidence mined fake simnet PRL directly to the fixture
-    escrow address and is indexer-observed balance, not wallet balance.
+  - [x] 9.6.4.d Run a wallet-backed simnet escrow path with oyster wallet
+    addresses. Evidence is recorded in
+    `docs/operations/pearl-wallet-backed-simnet-evidence-20260519.md`: Oyster
+    funded a unique watched escrow address, then spent the exact escrow outpoint
+    to the buyer release address; the indexer classified funding as `on_time`
+    and the spend as `release`.
 - [x] 9.6.5 Record one Base Sepolia escrow run before enabling any Base mainnet contract path.
   - Native Base Sepolia USDC lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`.
   - Mock-token lifecycle evidence remains recorded in `contracts/usdc-escrow/deployments/base-sepolia-mock-run.json` as secondary isolated proof.
@@ -402,8 +409,9 @@ Loophole tracker after admin FE wiring:
   storage in the worker runtime, and no live broadcast from the signer path.
 - [x] Implicit deployment config and weak ops alerts — canonical env contracts,
   secret names, deployment gates, and monitoring thresholds are documented.
-- [ ] No full simnet escrow evidence yet — blocks mainnet PRL paths until
-  `9.6.4` and `9.8.10` are recorded.
+- [ ] No full OTC simnet escrow evidence yet — PRL-side simnet release/refund
+  evidence is recorded for `9.6.4`, but mainnet PRL paths remain blocked until
+  `9.8.10` records quote, Base, worker, and proof coverage.
 - [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
   production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
@@ -468,8 +476,11 @@ Loophole tracker after admin FE wiring:
   proof.
   - [x] 9.8.10.a Record live simnet watched-address evidence for the fixture
     escrow address via the external read-only indexer API.
-  - [ ] 9.8.10.b Complete the full quote -> accept -> wallet-funded PRL ->
-    Base deposit -> release/refund -> proof path.
+  - [x] 9.8.10.b Record wallet-funded PRL-side simnet evidence with Oyster,
+    unique escrow address, watched-address detection, release spend, and indexer
+    spend classification.
+  - [ ] 9.8.10.c Complete the full quote -> accept -> wallet-funded PRL ->
+    Base deposit -> settlement-worker release/refund -> public proof path.
 - [ ] 9.8.11 Record a testnet2 escrow run with real Pearl and Base Sepolia
   txids before any mainnet PRL code path is enabled.
 - [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
