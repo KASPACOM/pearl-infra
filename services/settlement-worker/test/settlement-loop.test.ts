@@ -8,6 +8,7 @@ import {
 import type { OtcTrade } from '@kaspacom/pearl-sdk';
 
 import {
+  baseEscrowEventStateFromUsdcTradeState,
   InMemorySettlementBroadcasterAdapter,
   InMemorySettlementDecisionRepository,
   InMemorySettlementSignerAdapter,
@@ -174,6 +175,102 @@ test('worker loop fails closed and does not prepare actions for unsafe Base stat
   assert.equal(signer.preparedActions.length, 0);
   assert.equal(trade.state, 'failed_manual_review');
   assert.equal(trades.manualReviews.length, 1);
+});
+
+test('worker loop fails closed when Base event state mismatches trade terms', async () => {
+  const baseEvents = new InMemoryUsdcEscrowEventRepository();
+  await baseEvents.ingestEvents([
+    baseEvent({
+      eventName: 'TradeCreated',
+      txHash: '0xcreate',
+      logIndex: 0,
+      buyer: '0x1111111111111111111111111111111111111111',
+      seller: '0x2222222222222222222222222222222222222222',
+      amountMicros: '85000000',
+      feeMicros: '0',
+      expiryUnixSeconds: 1_779_000_000,
+    }),
+    baseEvent({
+      eventName: 'Deposited',
+      txHash: '0xdeposit',
+      logIndex: 1,
+      payer: '0x1111111111111111111111111111111111111111',
+      amountMicros: '1',
+    }),
+  ]);
+
+  const trade = tradeFixture({ state: 'usdc_escrow_confirmed' });
+  const trades = new InMemorySettlementWorkerTradeSource([trade]);
+  const signer = new InMemorySettlementSignerAdapter();
+  const result = await runSettlementWorkerIteration(
+    {
+      trades,
+      pearl: new StaticSettlementPearlProofSource(
+        new Map([
+          [
+            trade.tradeId,
+            {
+              status: 'confirmed' as const,
+              sourceEventId: 'pearl:funding:tx4:0',
+              confirmations: 6,
+              observedAt: '2026-05-18T12:30:00.000Z',
+            },
+          ],
+        ]),
+      ),
+      base: new StaticSettlementBaseEscrowSource(
+        new Map([[TRADE_KEY, (await baseEvents.getTradeState(TRADE_KEY))!]]),
+      ),
+      decisions: new InMemorySettlementDecisionRepository(),
+      signer,
+      broadcaster: new InMemorySettlementBroadcasterAdapter(),
+    },
+    NOW,
+  );
+
+  assert.equal(result.decisions[0]?.action, 'manual_review');
+  assert.equal(result.decisions[0]?.reason, 'Base escrow observation is unsafe: stale');
+  assert.equal(result.preparedActions.length, 0);
+  assert.equal(signer.preparedActions.length, 0);
+  assert.equal(trade.state, 'failed_manual_review');
+  assert.equal(trades.manualReviews.length, 1);
+});
+
+test('Base event projection marks contract, buyer, seller, fee, and amount mismatches unsafe', async () => {
+  const baseEvents = new InMemoryUsdcEscrowEventRepository();
+  await baseEvents.ingestEvents([
+    baseEvent({
+      eventName: 'TradeCreated',
+      txHash: '0xcreate',
+      logIndex: 0,
+      buyer: '0x1111111111111111111111111111111111111111',
+      seller: '0x2222222222222222222222222222222222222222',
+      amountMicros: '85000000',
+      feeMicros: '0',
+      expiryUnixSeconds: 1_779_000_000,
+    }),
+    baseEvent({
+      eventName: 'Deposited',
+      txHash: '0xdeposit',
+      logIndex: 1,
+      payer: '0x1111111111111111111111111111111111111111',
+      amountMicros: '85000000',
+    }),
+  ]);
+  const state = (await baseEvents.getTradeState(TRADE_KEY))!;
+  const trade = tradeFixture({ state: 'usdc_escrow_confirmed' });
+
+  assert.equal(baseEscrowEventStateFromUsdcTradeState({ ...state, contractAddress: '0x9999999999999999999999999999999999999999' }, trade).status, 'stale');
+  assert.equal(baseEscrowEventStateFromUsdcTradeState({ ...state, buyer: '0x9999999999999999999999999999999999999999' }, trade).status, 'stale');
+  assert.equal(baseEscrowEventStateFromUsdcTradeState({ ...state, seller: '0x9999999999999999999999999999999999999999' }, trade).status, 'stale');
+  assert.equal(baseEscrowEventStateFromUsdcTradeState({ ...state, feeMicros: '1' }, trade).status, 'stale');
+  assert.equal(baseEscrowEventStateFromUsdcTradeState({ ...state, amountMicros: '1' }, trade).status, 'stale');
+  assert.equal(baseEscrowEventStateFromUsdcTradeState({
+    ...state,
+    status: 'released',
+    sellerAmountMicros: '1',
+    feeAmountMicros: '0',
+  }, trade).status, 'stale');
 });
 
 function baseEvent(overrides: Partial<UsdcEscrowTradeEvent>): UsdcEscrowTradeEvent {
