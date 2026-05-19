@@ -3,16 +3,25 @@
   --om-bg: #07060a;
   --om-bg-2: #0d0b14;
   --om-surface: #14111d;
-  --om-surface-2: #1b1726;
-  --om-surface-3: #241c35;
-  --om-ink: #f8f6ff;
+  --om-surface-2: #1a1626;
+  --om-surface-3: #1a1626;
+  --om-ink: #ffffff;
   --om-ink-2: #e9e6f1;
   --om-muted: #a39db3;
   --om-muted-2: #6d6781;
-  --om-line: #2a2637;
-  --om-line-strong: #3d3552;
+  --om-line: #251f33;
+  --om-line-strong: #2e2742;
+  --om-pp-50: #f6f3ff;
+  --om-pp-100: #ece5ff;
+  --om-pp-200: #d4c5ff;
+  --om-pp-300: #b69aff;
+  --om-pp-400: #9b7dff;
   --om-accent: #8b5cf6;
-  --om-accent-2: #b69aff;
+  --om-accent-2: var(--om-pp-300);
+  --om-pp-600: #7c3aed;
+  --om-pp-700: #6d28d9;
+  --om-pp-800: #4c1d95;
+  --om-pp-900: #2e1065;
   --om-accent-soft: rgba(139, 92, 246, 0.16);
   --om-accent-line: rgba(139, 92, 246, 0.48);
   --om-ok: #22c55e;
@@ -37,7 +46,7 @@ body {
   margin: 0;
   background:
     radial-gradient(circle at 18% -8%, rgba(139, 92, 246, 0.18), transparent 30%),
-    linear-gradient(180deg, rgba(20, 17, 29, 0.96), rgba(7, 6, 10, 1) 340px),
+    linear-gradient(180deg, rgba(13, 11, 20, 0.96), rgba(7, 6, 10, 1) 340px),
     var(--om-bg);
   color: var(--om-ink);
   font-family: var(--om-font);
@@ -93,7 +102,7 @@ a {
   border: 1px solid var(--om-line);
   border-radius: 8px;
   background: var(--om-surface);
-  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.22);
   padding: 18px;
 
   h2 {
@@ -140,7 +149,7 @@ a {
   border-color: var(--om-accent);
   background: var(--om-accent);
   box-shadow: 0 12px 30px rgba(155, 92, 255, 0.28);
-  color: #10091c;
+  color: #07060a;
 }
 
 .om-form-error {

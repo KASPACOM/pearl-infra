@@ -29,7 +29,7 @@ export function AppShell({
           <span className="om-brand__mark" aria-hidden="true" />
           <span>
             <strong>Oysters Market</strong>
-            <small>Private market access</small>
+            <small>Private PRL settlement</small>
           </span>
         </a>
         <span className="om-env">{environment}</span>
@@ -40,7 +40,7 @@ export function AppShell({
             </a>
           ))}
         </nav>
-        <div className="om-operator">PRL Settlement Desk</div>
+        <div className="om-operator">Support desk</div>
       </header>
       <main className="om-main">{children}</main>
     </div>
