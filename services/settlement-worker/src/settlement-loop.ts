@@ -1,4 +1,4 @@
-import type { OtcTrade, TradeState } from '@kaspacom/pearl-sdk';
+import { parseUsdcToMicros, type OtcTrade, type TradeState } from '@kaspacom/pearl-sdk';
 import type { UsdcEscrowTradeEventState } from '@kaspacom/usdc-escrow-client';
 
 import { createSettlementSnapshot, recordSettlementDecision } from './decision-engine.js';
@@ -92,6 +92,7 @@ export async function executeSettlementDecision(
 
 export function baseEscrowEventStateFromUsdcTradeState(
   state: UsdcEscrowTradeEventState | undefined,
+  trade?: OtcTrade,
 ): BaseEscrowEventState {
   if (!state) {
     return {
@@ -99,6 +100,17 @@ export function baseEscrowEventStateFromUsdcTradeState(
       sourceEventId: 'base:none',
       confirmations: 0,
       observedAt: new Date(0).toISOString(),
+    };
+  }
+  const mismatch = trade ? findBaseEscrowStateMismatch(state, trade) : undefined;
+  if (mismatch) {
+    return {
+      status: 'stale',
+      sourceEventId: state.sourceEventId,
+      txHash: state.txHash,
+      confirmations: state.confirmations,
+      observedAt: state.observedAt,
+      reason: mismatch,
     };
   }
 
@@ -109,6 +121,45 @@ export function baseEscrowEventStateFromUsdcTradeState(
     confirmations: state.confirmations,
     observedAt: state.observedAt,
   };
+}
+
+function findBaseEscrowStateMismatch(state: UsdcEscrowTradeEventState, trade: OtcTrade): string | undefined {
+  if (state.tradeKey !== trade.usdcEscrow.tradeKey) {
+    return 'Base escrow trade key mismatch';
+  }
+  if (state.chainId !== trade.usdcEscrow.chainId) {
+    return 'Base escrow chain mismatch';
+  }
+  if (state.contractAddress.toLowerCase() !== trade.usdcEscrow.contract.toLowerCase()) {
+    return 'Base escrow contract mismatch';
+  }
+  if (state.buyer && state.buyer.toLowerCase() !== trade.buyerUsdcAddress.toLowerCase()) {
+    return 'Base escrow buyer mismatch';
+  }
+  if (state.seller && state.seller.toLowerCase() !== trade.sellerUsdcReceiveAddress.toLowerCase()) {
+    return 'Base escrow seller mismatch';
+  }
+  if (state.status === 'created') {
+    const expectedAmount = parseUsdcToMicros(trade.amountUsdc).toString();
+    const expectedFee = parseUsdcToMicros(trade.feeUsdc).toString();
+    if (state.amountMicros !== expectedAmount || state.feeMicros !== expectedFee) {
+      return 'Base escrow created terms mismatch';
+    }
+  }
+  if (state.feeMicros !== undefined && state.feeMicros !== parseUsdcToMicros(trade.feeUsdc).toString()) {
+    return 'Base escrow fee mismatch';
+  }
+  if (['deposited', 'released', 'refunded'].includes(state.status) && state.amountMicros !== trade.usdcEscrow.expectedAmountMicros) {
+    return 'Base escrow funded amount mismatch';
+  }
+  if (
+    state.status === 'released' &&
+    (state.sellerAmountMicros !== parseUsdcToMicros(trade.amountUsdc).toString() ||
+      state.feeAmountMicros !== parseUsdcToMicros(trade.feeUsdc).toString())
+  ) {
+    return 'Base escrow release amount mismatch';
+  }
+  return undefined;
 }
 
 export class InMemorySettlementWorkerTradeSource implements SettlementWorkerTradeSource {
@@ -159,7 +210,7 @@ export class StaticSettlementBaseEscrowSource implements SettlementBaseEscrowSou
   constructor(private readonly statesByTradeKey: ReadonlyMap<string, UsdcEscrowTradeEventState>) {}
 
   async getBaseEscrowState(trade: OtcTrade): Promise<BaseEscrowEventState> {
-    return baseEscrowEventStateFromUsdcTradeState(this.statesByTradeKey.get(trade.usdcEscrow.tradeKey));
+    return baseEscrowEventStateFromUsdcTradeState(this.statesByTradeKey.get(trade.usdcEscrow.tradeKey), trade);
   }
 }
 
