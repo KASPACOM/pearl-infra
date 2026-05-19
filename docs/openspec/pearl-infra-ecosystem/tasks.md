@@ -790,25 +790,35 @@ blockers visible for planning. See
     the run.
 - [ ] 11.4 Select and document live reserve addresses, signer policy,
   hot/warm/cold reserve tiers, cap limits, and emergency pause authority.
-- [ ] 11.5 Execute and record an emergency pause/unpause drill against the
+- [ ] 11.5 Decide whether the first mainnet OTC pilot uses the current
+  coordinator-signed P2TR escrow model or waits for true PRL multisig escrow.
+  - Current code derives one P2TR escrow address per trade from
+    `PEARL_ESCROW_XPUB` and signs through a policy-gated coordinator signer.
+    It is not the final non-custodial 2-of-3 buyer/seller/arbiter Taproot
+    multisig design.
+- [ ] 11.6 Select and prove bridge reserve custody.
+  - The bridge service can watch reserve addresses and reconcile reserve
+    spends, but live Pearl reserve addresses, multisig/threshold construction,
+    and release signing custody are not implemented or approved yet.
+- [ ] 11.7 Execute and record an emergency pause/unpause drill against the
   deployed low-cap bridge path.
-- [ ] 11.6 Add bridge proof-page/frontend support for deposit status, exit
+- [ ] 11.8 Add bridge proof-page/frontend support for deposit status, exit
   status, reserve backing, blockers, event hashes, quorum counts, and cap usage.
-- [ ] 11.7 Complete the OTC full-flow live evidence run with real Base Sepolia
+- [ ] 11.9 Complete the OTC full-flow live evidence run with real Base Sepolia
   `createTrade`, `deposit`, and terminal `release` or `refund` receipts plus a
   real PRL signing/broadcast path.
-- [x] 11.8 Replace the testnet2 escrow-run blocker with the approved
+- [x] 11.10 Replace the testnet2 escrow-run blocker with the approved
   simnet-to-low-cap-mainnet path.
   - No usable Pearl testnet faucet/liquidity exists. After simnet proof, the
     next gate is explicitly approved low-cap mainnet with real Pearl mainnet
     and Base/Igra txids, public proof, and clean reconciliation.
-- [ ] 11.9 Finish production Oyster release: prod secrets, prod image path,
+- [ ] 11.11 Finish production Oyster release: prod secrets, prod image path,
   prod DNS, and prod `/healthz`, quote, support-alert, admin-auth smoke checks.
-- [ ] 11.10 Replace shared bearer-token admin auth with a real operator
+- [ ] 11.12 Replace shared bearer-token admin auth with a real operator
   identity/session layer before broader support rollout.
-- [ ] 11.11 Produce the `wPRL/USDC` pool plan only after one low-cap bridge
+- [ ] 11.13 Produce the `wPRL/USDC` pool plan only after one low-cap bridge
   entry and one low-cap bridge exit have public proof and clean reserve
   reconciliation.
-- [ ] 11.12 Finalize the post-pilot federation/threshold-signing design:
+- [ ] 11.14 Finalize the post-pilot federation/threshold-signing design:
   federation membership, relayer independence, custody boundary, quorum
   threshold, and threshold/FROST-style release authorization or equivalent.
