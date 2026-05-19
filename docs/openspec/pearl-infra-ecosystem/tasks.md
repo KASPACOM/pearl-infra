@@ -226,9 +226,10 @@ Current delegation queue after PR #76:
 - Bridge FE owner: implement `10.10.5` proof-page/frontend models for deposit
   status, exit status, reserve backing, blockers, public audit fields, event
   hashes, and quorum counts.
-- Bridge rehearsal owner: execute `10.8.10` with real simnet Pearl deposit
-  txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve
-  reconciliation evidence.
+- Bridge rehearsal owner: `10.8.10` now has local-Igra rehearsal evidence
+  using real public Pearl simnet deposit/release txids. Before any pilot, repeat
+  with freshly-created writable Pearl simnet txids once `pearld`/wallet
+  credentials are available.
 - Bridge ops/custody owner: complete `10.11.3` by selecting live reserve
   addresses, signer policy, hot/warm/cold reserve caps, monitoring alerts, and
   an emergency pause drill.
@@ -711,7 +712,9 @@ Loophole tracker after PR #74:
   - [x] 10.8.9.a Add reserve-spend matcher for exact exit release matches, amount mismatch, recipient mismatch, duplicate release txid, and unknown spend blockers.
   - [x] 10.8.9.b Wire reserve-spend matching into the live Pearl spend scanner and update `bridge_exit_requests` on exact matches.
     - 2026-05-19 hardening: Igra `ExitProcessed` is treated as `processed`, not `released`; it remains an exit liability until the Pearl reserve spend scanner observes and matches the actual release txid.
-- [ ] 10.8.10 Run a bridge simnet rehearsal with real Pearl deposit txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve reconciliation evidence.
+- [x] 10.8.10 Run a bridge simnet rehearsal with real Pearl deposit txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve reconciliation evidence.
+  - 2026-05-19: Added `npm --workspace @kaspacom/bridge-service run rehearse:simnet-bridge`, which builds the bridge contracts, deploys fresh local `WrappedPearl`/`PearlBridge` receipts on Anvil chain `19416`, claims real public Pearl simnet deposit txid `442ea8d4fe37cb58e7946bec2cae7a9b3197e751188b3bdf0c143a6edc374164:0`, mirrors the Igra exit request/process logs through the bridge poller, matches real Pearl release txid `22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1`, and records clean reserve reconciliation evidence in `docs/operations/bridge-simnet-rehearsal-evidence-20260519.md`.
+  - [ ] 10.8.10.a Repeat the rehearsal with freshly-created writable Pearl simnet deposit/release txids once `pearld`/wallet credentials are available; this is the remaining pre-pilot live-infra confidence gate.
 - [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
   - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.
   - [x] 10.9.2 Harden bridge relayer guardrails after PR #65 strategy review:

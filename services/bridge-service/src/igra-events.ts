@@ -63,7 +63,7 @@ export function applyExitLifecycleEvent(existing: BridgeExitRequest, event: Igra
     return {
       ...existing,
       status: 'processed',
-      pearlReleaseTxid,
+      pearlReleaseTxid: normalizePearlTxid(pearlReleaseTxid),
       pearlReleaseBlock: readNumber(event.payload, 'pearlReleaseBlock'),
       updatedAt: now.toISOString(),
       metadata: {
@@ -141,6 +141,12 @@ function readNumber(payload: Record<string, string | number | boolean | null>, k
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
   return undefined;
+}
+
+function normalizePearlTxid(txid: string): string {
+  const normalized = txid.toLowerCase();
+  if (/^0x[0-9a-f]{64}$/.test(normalized)) return normalized.slice(2);
+  return normalized;
 }
 
 function stableJson(value: unknown): string {

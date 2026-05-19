@@ -16,13 +16,15 @@ export function matchReserveSpendToExit(input: {
 
   const amountGrains = readString(input.spend.classificationData, 'amount_grains');
   const pearlRecipient = readString(input.spend.classificationData, 'pearl_recipient');
+  const spendTxid = normalizePearlTxid(input.spend.spendTxid);
   const candidates = input.exits.filter((exit) => exit.status === 'pending' || exit.status === 'processed' || exit.status === 'released');
   const exact = candidates.find((exit) => (
     exit.requestedAmountGrains === amountGrains &&
     (pearlRecipient === undefined || exit.pearlRecipient === pearlRecipient)
   ));
   if (exact) {
-    if (exact.status === 'processed' && exact.pearlReleaseTxid && exact.pearlReleaseTxid !== input.spend.spendTxid) {
+    const exactReleaseTxid = exact.pearlReleaseTxid ? normalizePearlTxid(exact.pearlReleaseTxid) : undefined;
+    if (exact.status === 'processed' && exactReleaseTxid && exactReleaseTxid !== spendTxid) {
       return {
         spendTxid: input.spend.spendTxid,
         status: 'duplicate_release_txid',
@@ -31,7 +33,7 @@ export function matchReserveSpendToExit(input: {
       };
     }
     if (exact.status === 'released') {
-      if (exact.pearlReleaseTxid === input.spend.spendTxid) {
+      if (exactReleaseTxid === spendTxid) {
         return {
           spendTxid: input.spend.spendTxid,
           status: 'matched_exit_release',
@@ -47,7 +49,7 @@ export function matchReserveSpendToExit(input: {
       };
     }
     const usedReleaseTxids = input.usedReleaseTxids ?? new Set<string>();
-    if (usedReleaseTxids.has(input.spend.spendTxid)) {
+    if (hasNormalizedTxid(usedReleaseTxids, spendTxid) && exactReleaseTxid !== spendTxid) {
       return {
         spendTxid: input.spend.spendTxid,
         status: 'duplicate_release_txid',
@@ -78,6 +80,13 @@ export function matchReserveSpendToExit(input: {
   return unknownSpend(input.spend, 'unknown_reserve_spend');
 }
 
+function hasNormalizedTxid(txids: ReadonlySet<string>, txid: string): boolean {
+  for (const used of txids) {
+    if (normalizePearlTxid(used) === txid) return true;
+  }
+  return false;
+}
+
 function unknownSpend(spend: BridgeAddressSpend, blocker: string): ReserveSpendMatch {
   return {
     spendTxid: spend.spendTxid,
@@ -91,4 +100,10 @@ function readString(metadata: Record<string, unknown> | null | undefined, key: s
   if (typeof value === 'string' && value.length > 0) return value;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return undefined;
+}
+
+function normalizePearlTxid(txid: string): string {
+  const normalized = txid.toLowerCase();
+  if (/^0x[0-9a-f]{64}$/.test(normalized)) return normalized.slice(2);
+  return normalized;
 }
