@@ -59,6 +59,18 @@ test('rejects Pearl reserve spend that conflicts with operator processed txid', 
   assert.deepEqual(result.blockers, ['processed_release_txid_mismatch']);
 });
 
+test('matches Pearl spend txids against bytes32 Igra release txids', () => {
+  const releaseTxid = '22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1';
+  const result = matchReserveSpendToExit({
+    spend: spend({ spendTxid: releaseTxid }),
+    exits: [exit({ status: 'processed', pearlReleaseTxid: `0x${releaseTxid}` })],
+    usedReleaseTxids: new Set([`0x${releaseTxid}`]),
+  });
+
+  assert.equal(result.status, 'matched_exit_release');
+  assert.equal(result.exitId, 'exit-1');
+});
+
 test('does not match non-release reserve spend classifications to exits', () => {
   const result = matchReserveSpendToExit({
     spend: spend({ classification: 'consolidation' }),

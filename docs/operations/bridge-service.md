@@ -104,4 +104,7 @@ boundary after the pilot proves reserve accounting and event mirroring.
   then run the emergency pause drill.
 - Replace plain relayer attestations with threshold/FROST release authorization
   once the federation membership and signer custody design are final.
-- Run a simnet bridge rehearsal with real Pearl txids and local Igra receipts.
+- Repeat the bridge rehearsal with freshly-created Pearl simnet txids once
+  writable `pearld`/wallet credentials are available. The local-Igra rehearsal
+  using public real Pearl simnet txids is recorded in
+  `docs/operations/bridge-simnet-rehearsal-evidence-20260519.md`.

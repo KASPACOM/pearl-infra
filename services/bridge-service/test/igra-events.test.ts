@@ -66,3 +66,32 @@ test('applies processed and refunded lifecycle events to existing exit rows', ()
   assert.equal(processed.releasedAt, undefined);
   assert.equal(refunded.status, 'refunded');
 });
+
+test('normalizes bytes32 Pearl release txids from Igra processed events', () => {
+  const requested = bridgeExitFromIgraEvent(mirrorIgraBridgeEvent({
+    eventType: 'exit_requested',
+    txHash: '0xburn',
+    logIndex: 0,
+    blockNumber: 123,
+    chainId: 19416,
+    payload: {
+      exitId: 'exit-1',
+      amountGrains: '100',
+      pearlRecipient: 'tprl1recipient',
+    },
+  }))!;
+  const releaseTxid = '22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1';
+  const processed = applyExitLifecycleEvent(requested, mirrorIgraBridgeEvent({
+    eventType: 'exit_processed',
+    txHash: '0xprocess',
+    logIndex: 0,
+    blockNumber: 124,
+    chainId: 19416,
+    payload: {
+      pearlReleaseTxid: `0x${releaseTxid.toUpperCase()}`,
+      pearlReleaseBlock: 99,
+    },
+  }));
+
+  assert.equal(processed.pearlReleaseTxid, releaseTxid);
+});
