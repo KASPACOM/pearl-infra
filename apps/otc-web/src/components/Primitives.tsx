@@ -15,14 +15,21 @@ export function BrandLoader({
   return (
     <span className={`om-loader om-loader--${variant} ${compact ? 'om-loader--compact' : ''}`} role="status" aria-live="polite">
       {variant === 'shell-breathe' ? (
-        <svg className="om-loader__shell" viewBox="0 0 120 120" aria-hidden="true">
+        <svg className="om-loader__shell" viewBox="0 0 140 140" aria-hidden="true">
+          <defs>
+            <radialGradient id="om-loader-pearl" cx="35%" cy="35%">
+              <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="55%" stopColor="#ece5ff" />
+              <stop offset="100%" stopColor="#b69aff" />
+            </radialGradient>
+          </defs>
           <g className="om-loader__shell-bottom">
-            <path d="M18 62 Q60 96 102 62 Q60 72 18 62 Z" />
+            <path d="M14 76 Q70 126 126 76 Q70 86 14 76 Z" />
           </g>
           <g className="om-loader__shell-top">
-            <path d="M18 60 Q60 18 102 60 Q60 50 18 60 Z" />
+            <path d="M14 64 Q70 12 126 64 Q70 56 14 64 Z" />
           </g>
-          <circle className="om-loader__shell-pearl" cx="60" cy="60" r="5" />
+          <circle className="om-loader__shell-pearl" cx="70" cy="70" r="9" />
         </svg>
       ) : (
         <span className="om-loader__pulse" aria-hidden="true">
