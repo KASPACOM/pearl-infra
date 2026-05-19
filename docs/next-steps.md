@@ -5,7 +5,7 @@
 The repo is now an implementation repo for the Pearl OTC settlement desk and
 the PRL -> Igra bridge track. The original planning/bootstrap phase is complete.
 
-Current state after PR #81:
+Current state after PR #86:
 
 - OTC API, web app, Pearl indexer, settlement worker, signer boundary, admin
   controls, monitoring docs, and dev Oyster deployment scaffolding are merged.
@@ -19,6 +19,10 @@ Current state after PR #81:
   gates.
 - A local-Igra bridge rehearsal exists using real public Pearl simnet deposit
   and release txids.
+- Oysters branding is applied with final asset and edge-case fixes.
+- Generic simnet 2-of-3 P2TR multisig package construction exists, but funded
+  multisig spend evidence is still required before treating custody as
+  live-ready.
 
 ## Immediate Priorities
 
@@ -37,7 +41,10 @@ Current state after PR #81:
    - Select reserve addresses, signer ownership, hot/warm/cold cap limits,
      emergency pause authority, relayer/operator identities, and final
      multisig owner.
-   - Explicitly decide whether OTC mainnet starts with the current
+   - EVM dev can enforce deployment and contract gates, but final multisig,
+     relayer/operator signer assignment, reserve custody, and mainnet/pool
+     approval need Sione/ops decisions before any live run.
+   - Explicitly decide whether the first OTC mainnet pilot uses the current
      coordinator-signed P2TR escrow model or waits for true PRL multisig escrow.
    - Select and prove the bridge reserve custody construction; reserve watches
      exist, but live reserve multisig/threshold signing is not implemented yet.
@@ -62,8 +69,9 @@ Current state after PR #81:
 
 - Do not deploy Igra mainnet bridge contracts until
   `PEARL_BRIDGE_MAINNET_APPROVED=1`,
-  `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`, chain ID `38833`, final owner,
-  relayer, and operator are explicit.
+  `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`,
+  `PEARL_BRIDGE_MAINNET_READY_FILE`, chain ID `38833`, final owner, relayer,
+  and operator are explicit and all owner/action roles are separated.
 - Do not point bridge signing or reserve release at Pearl mainnet during simnet
   rehearsals.
 - Do not seed a `wPRL/USDC` pool until one low-cap bridge entry and one low-cap

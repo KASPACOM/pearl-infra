@@ -41,6 +41,12 @@ The script deploys:
 It writes deployment evidence under
 `contracts/usdc-escrow/deployments/<network>-pearl-bridge-<run-id>.json`.
 
+`PearlBridge` itself also rejects owner/relayer/operator role collapse: an
+address cannot be both owner or pending owner and relayer/operator, and cannot
+be both relayer and operator. Local Anvil deployment uses separate default
+signers for relayer and operator. Galleon and Igra mainnet require explicit
+role addresses.
+
 ## Environment Contract
 
 | Variable | Required | Notes |
@@ -54,6 +60,7 @@ It writes deployment evidence under
 | `PEARL_BRIDGE_OPERATOR` | mainnet | Operator address. Must be explicit and separate from relayer on mainnet. |
 | `PEARL_BRIDGE_MAINNET_APPROVED` | mainnet | Must be `1`; otherwise mainnet deployment aborts. |
 | `PEARL_BRIDGE_MAINNET_READY_CHECKLIST` | mainnet | Must be `1`; confirms this runbook/checklist is complete. |
+| `PEARL_BRIDGE_MAINNET_READY_FILE` | mainnet | Path to a reviewed JSON readiness manifest. Must match the exact final owner, relayer, and operator env addresses. Use `docs/operations/bridge-mainnet-readiness.example.json` as the template. |
 | `PEARL_BRIDGE_GAS_PRICE_WEI` | optional | Legacy Igra gas price override. Defaults to `2000000000001`. Raise if Galleon/mainnet rejects a deployment for minimum fee. |
 | `PEARL_BRIDGE_*_GRAINS` | optional | Pilot caps: min/max deposit, min/max exit, rolling cap, supply cap. |
 
@@ -74,14 +81,27 @@ The deployment script refuses `PEARL_BRIDGE_DEPLOY_NETWORK=igra-mainnet` unless:
 - RPC chain ID is exactly `38833`;
 - `PEARL_BRIDGE_MAINNET_APPROVED=1`;
 - `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`;
-- `PEARL_BRIDGE_FINAL_OWNER` is set and differs from the deployer owner;
-- `PEARL_BRIDGE_RELAYER` and `PEARL_BRIDGE_OPERATOR` are explicit and separate.
+- `PEARL_BRIDGE_MAINNET_READY_FILE` points to a JSON manifest that confirms
+  approval, owner type, bridge admin policy, reserve policy, signer separation,
+  and low-cap pilot approval;
+- `PEARL_BRIDGE_FINAL_OWNER` is set;
+- setup owner, final owner, relayer, and operator are all separate addresses;
+- final owner, relayer, and operator in the manifest exactly match the
+  deployment environment;
+- pilot cap environment values pass the same min/max, rolling-cap, and supply-cap
+  relationships enforced by `PearlBridge`.
+
+This means the EVM deployer/setup owner can initialize the bridge and start
+two-step ownership transfer, but it cannot also be the live relayer or
+operator. The final owner/multisig cannot also be either live action role.
 
 Operationally, mainnet remains blocked until:
 
 - one low-cap entry and one low-cap exit pass using Pearl simnet proof and clean
   reserve reconciliation;
 - the final owner/multisig address is selected;
+- the relayer and operator signer addresses are selected and held by separate
+  people/systems;
 - reserve addresses, signer policy, hot/warm/cold limits, and pause drill are
   recorded;
 - a deployment evidence JSON is committed after the live run;
