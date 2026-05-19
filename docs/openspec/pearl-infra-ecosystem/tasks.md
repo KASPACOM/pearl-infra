@@ -756,3 +756,45 @@ Loophole tracker after PR #74:
   - [ ] 10.13.1 Finalize federation membership, relayer independence requirements, signer custody boundaries, and quorum threshold.
   - [ ] 10.13.2 Replace plain relayer attestations with threshold/FROST-style release authorization or an equivalent reviewed threshold-signing boundary.
   - [ ] 10.13.3 Add public reserve proof snapshots and an audit endpoint for reserve addresses, confirmed reserves, pending exits, minted supply, and cap usage.
+
+## 11. Bridge/OTC Pearl-Side Remaining Work After PR #81
+
+This section is a roll-up view after PR #81 merged. The detailed owning tasks
+remain in sections 9 and 10; this keeps the current Pearl-side bridge/OTC
+blockers visible for planning. See
+`docs/operations/bridge-otc-gap-review-20260519.md`.
+
+- [x] 11.1 Record the post-#81 bridge/OTC gap review and split remaining work
+  by bridge, OTC, pool, and shared Pearl infra blockers.
+- [ ] 11.2 Resolve the Galleon/Igra deployment path for `WrappedPearl` and
+  `PearlBridge`.
+  - PR #81 proved local deployment and mainnet refusal gates. The 2026-05-19
+    Galleon attempt failed before broadcast on the underlying Kaspa standardness
+    fee. Next proof must either raise the accepted fee/gas path or replace the
+    deploy route and record evidence.
+- [ ] 11.3 Repeat the bridge rehearsal with freshly-created writable Pearl
+  simnet deposit/release txids.
+  - Current bridge rehearsal uses real public simnet txids. The next confidence
+    gate is a newly-created wallet-funded deposit and release controlled during
+    the run.
+- [ ] 11.4 Select and document live reserve addresses, signer policy,
+  hot/warm/cold reserve tiers, cap limits, and emergency pause authority.
+- [ ] 11.5 Execute and record an emergency pause/unpause drill against the
+  deployed low-cap bridge path.
+- [ ] 11.6 Add bridge proof-page/frontend support for deposit status, exit
+  status, reserve backing, blockers, event hashes, quorum counts, and cap usage.
+- [ ] 11.7 Complete the OTC full-flow live evidence run with real Base Sepolia
+  `createTrade`, `deposit`, and terminal `release` or `refund` receipts plus a
+  real PRL signing/broadcast path.
+- [ ] 11.8 Record a testnet2 escrow run with real Pearl and Base Sepolia txids
+  before enabling any mainnet PRL code path.
+- [ ] 11.9 Finish production Oyster release: prod secrets, prod image path,
+  prod DNS, and prod `/healthz`, quote, support-alert, admin-auth smoke checks.
+- [ ] 11.10 Replace shared bearer-token admin auth with a real operator
+  identity/session layer before broader support rollout.
+- [ ] 11.11 Produce the `wPRL/USDC` pool plan only after one low-cap bridge
+  entry and one low-cap bridge exit have public proof and clean reserve
+  reconciliation.
+- [ ] 11.12 Finalize the post-pilot federation/threshold-signing design:
+  federation membership, relayer independence, custody boundary, quorum
+  threshold, and threshold/FROST-style release authorization or equivalent.
