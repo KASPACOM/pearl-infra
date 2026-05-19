@@ -62,10 +62,9 @@ export function applyExitLifecycleEvent(existing: BridgeExitRequest, event: Igra
     if (!pearlReleaseTxid) throw new Error('exit_processed event requires pearlReleaseTxid');
     return {
       ...existing,
-      status: 'released',
+      status: 'processed',
       pearlReleaseTxid,
       pearlReleaseBlock: readNumber(event.payload, 'pearlReleaseBlock'),
-      releasedAt: now.toISOString(),
       updatedAt: now.toISOString(),
       metadata: {
         ...(existing.metadata ?? {}),

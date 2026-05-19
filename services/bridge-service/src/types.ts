@@ -75,7 +75,7 @@ export interface WatchedBridgeAddressWithHistory extends WatchedBridgeAddress {
   spends: BridgeAddressSpend[];
 }
 
-export type BridgeExitStatus = 'pending' | 'released' | 'refunded' | 'cancelled' | 'unknown';
+export type BridgeExitStatus = 'pending' | 'processed' | 'released' | 'refunded' | 'cancelled' | 'unknown';
 
 export interface BridgeExitRequest {
   exitId: string;

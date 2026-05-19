@@ -68,6 +68,8 @@ prepares manual-review decisions before any mint or Pearl release is signed.
   status, reserve backing, event hashes, and quorum counts, but not private
   operator notes or credentials.
 - Igra event mirrors are idempotent by `(chainId, txHash, logIndex)`.
+- Igra `ExitProcessed` marks an exit `processed`, not `released`; it stays in
+  pending exit liabilities until the Pearl reserve spend is indexed and matched.
 - Admin decisions are idempotent by explicit idempotency key or a stable hash of
   the decision fields.
 - A Pearl release txid that has already been used is a hard blocker for any

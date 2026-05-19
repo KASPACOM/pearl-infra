@@ -73,6 +73,8 @@ export class IgraBridgeEventPoller {
   constructor(options: IgraBridgeEventPollerOptions) {
     assertPositiveInteger(options.chainId, 'chainId');
     assertPositiveInteger(options.startBlock, 'startBlock');
+    if (options.confirmations !== undefined) assertNonNegativeInteger(options.confirmations, 'confirmations');
+    if (options.maxBlockRange !== undefined) assertPositiveInteger(options.maxBlockRange, 'maxBlockRange');
     this.options = {
       confirmations: 0,
       maxBlockRange: 1_000,
@@ -106,11 +108,13 @@ export class IgraBridgeEventPoller {
 
     let eventsSaved = 0;
     let exitsTouched = 0;
-    for (const log of logs) {
+    for (const log of sortLogs(logs)) {
+      if (normalizeAddress(log.address) !== this.options.bridgeAddress) {
+        throw new Error(`Igra log address mismatch: expected ${this.options.bridgeAddress}, got ${log.address}`);
+      }
       const event = decodePearlBridgeLog(log, this.options.chainId, now);
       const saved = await this.options.eventRepository.saveIgraEvent(event);
-      if (!saved.created) continue;
-      eventsSaved += 1;
+      if (saved.created) eventsSaved += 1;
       const applied = await applyIgraBridgeEventToExitRepository(this.options.exitRepository, event, now);
       if (applied.action === 'exit_created' || applied.action === 'exit_updated') exitsTouched += 1;
     }
@@ -194,6 +198,14 @@ export function decodePearlBridgeLog(log: IgraRpcLog, chainId: number, now = new
     chainId,
     payload,
     observedAt: now.toISOString(),
+  });
+}
+
+function sortLogs(logs: readonly IgraRpcLog[]): IgraRpcLog[] {
+  return [...logs].sort((left, right) => {
+    const blockDelta = hexToNumber(left.blockNumber, 'blockNumber') - hexToNumber(right.blockNumber, 'blockNumber');
+    if (blockDelta !== 0) return blockDelta;
+    return hexToNumber(left.logIndex, 'logIndex') - hexToNumber(right.logIndex, 'logIndex');
   });
 }
 

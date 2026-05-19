@@ -666,12 +666,15 @@ Loophole tracker after admin FE wiring:
 - [x] 10.8.7 Poll Igra `PearlBridge` events and mirror deposit claims, exit requests, processed exits, refunds, cap changes, pause changes, relayer changes, and operator changes.
   - [x] 10.8.7.a Add Igra event mirror helpers for all `PearlBridge` event types keyed by `(chainId, txHash, logIndex)`.
   - [x] 10.8.7.b Connect the mirror helpers to a real Igra RPC/event poller and checkpointed block cursor.
+    - 2026-05-19 hardening: the poller now sorts returned logs, validates log address, replays already-persisted events into exit projections before checkpointing, and stores Postgres checkpoints monotonically so overlapping pollers cannot rewind the cursor.
 - [x] 10.8.8 Write Igra exit events into `bridge_exit_requests` with idempotent upsert semantics keyed by `(igra_burn_txid, igra_burn_log_index)`.
   - [x] 10.8.8.a Convert mirrored `ExitRequested` events into idempotent bridge exit rows in the bridge-state repository.
   - [x] 10.8.8.b Back the exit mirror with Postgres `bridge_exit_requests` writes in the live service.
+    - 2026-05-19 hardening: mirrored exits preserve terminal rows, preserve processed rows against stale pending replays, and enforce unique `exit_id` plus unique non-null Pearl release txids through migration `005_bridge_exit_uniqueness.sql`.
 - [x] 10.8.9 Classify Pearl reserve spends against mirrored exits, mark exact release txids once, and route mismatches or unknown spends to manual review.
   - [x] 10.8.9.a Add reserve-spend matcher for exact exit release matches, amount mismatch, recipient mismatch, duplicate release txid, and unknown spend blockers.
   - [x] 10.8.9.b Wire reserve-spend matching into the live Pearl spend scanner and update `bridge_exit_requests` on exact matches.
+    - 2026-05-19 hardening: Igra `ExitProcessed` is treated as `processed`, not `released`; it remains an exit liability until the Pearl reserve spend scanner observes and matches the actual release txid.
 - [ ] 10.8.10 Run a bridge simnet rehearsal with real Pearl deposit txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve reconciliation evidence.
 - [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
   - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.

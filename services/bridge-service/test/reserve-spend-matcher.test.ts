@@ -38,6 +38,37 @@ test('routes unknown, amount mismatch, recipient mismatch, and duplicate release
   }).status, 'duplicate_release_txid');
 });
 
+test('allows idempotent replay of an already matched release spend', () => {
+  const result = matchReserveSpendToExit({
+    spend: spend({ spendTxid: 'release_tx' }),
+    exits: [exit({ status: 'released', pearlReleaseTxid: 'release_tx' })],
+    usedReleaseTxids: new Set(['release_tx']),
+  });
+
+  assert.equal(result.status, 'matched_exit_release');
+  assert.equal(result.exitId, 'exit-1');
+});
+
+test('rejects Pearl reserve spend that conflicts with operator processed txid', () => {
+  const result = matchReserveSpendToExit({
+    spend: spend({ spendTxid: 'different_release_tx' }),
+    exits: [exit({ status: 'processed', pearlReleaseTxid: 'operator_reported_release_tx' })],
+  });
+
+  assert.equal(result.status, 'duplicate_release_txid');
+  assert.deepEqual(result.blockers, ['processed_release_txid_mismatch']);
+});
+
+test('does not match non-release reserve spend classifications to exits', () => {
+  const result = matchReserveSpendToExit({
+    spend: spend({ classification: 'consolidation' }),
+    exits: [exit()],
+  });
+
+  assert.equal(result.status, 'unknown_spend');
+  assert.deepEqual(result.blockers, ['reserve_spend_not_exit_release']);
+});
+
 function spend(overrides: Partial<BridgeAddressSpend> = {}): BridgeAddressSpend {
   return {
     spendTxid: 'release_tx',

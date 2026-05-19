@@ -210,9 +210,15 @@ function emptyState(): BridgeStateFile {
 }
 
 function mergeExit(existing: BridgeExitRequest, next: BridgeExitRequest): BridgeExitRequest {
+  const keepTerminal = existing.status === 'released' || existing.status === 'refunded' || existing.status === 'cancelled';
+  const keepProcessed = existing.status === 'processed' && next.status === 'pending';
   return {
     ...existing,
     ...next,
+    status: keepTerminal || keepProcessed ? existing.status : next.status,
+    pearlReleaseTxid: existing.pearlReleaseTxid ?? next.pearlReleaseTxid,
+    pearlReleaseBlock: existing.pearlReleaseBlock ?? next.pearlReleaseBlock,
+    releasedAt: existing.releasedAt ?? next.releasedAt,
     metadata: {
       ...(existing.metadata ?? {}),
       ...(next.metadata ?? {}),

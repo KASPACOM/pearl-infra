@@ -171,6 +171,39 @@ test('treats multiple live outputs to one bridge deposit address as unsafe', () 
   assert.deepEqual(snapshot.blockers, ['unsafe_deposit_observation']);
 });
 
+test('keeps operator-processed exits in liabilities until Pearl reserve spend matches', () => {
+  const snapshot = createBridgeReconciliationSnapshot({
+    depositWatches: [],
+    reserveWatches: [
+      watch({
+        watchId: 'reserve-hot-1',
+        purpose: 'bridge_reserve',
+        observations: [
+          observation({
+            outpoint: 'reserve-funding:0',
+            amountGrains: '1000',
+            matchStatus: 'confirmed',
+            confirmations: 12,
+          }),
+        ],
+      }),
+    ],
+    exits: [
+      exitRequest({
+        requestedAmountGrains: '200',
+        status: 'processed',
+        pearlReleaseTxid: 'operator-reported-release',
+      }),
+    ],
+    mintedSupplyGrains: '500',
+    now: NOW,
+  });
+
+  assert.equal(snapshot.pendingExitGrains, '200');
+  assert.equal(snapshot.reserveAvailableGrains, '800');
+  assert.equal(snapshot.reserveSurplusGrains, '300');
+});
+
 function watch(overrides: Partial<WatchedBridgeAddressWithHistory> = {}): WatchedBridgeAddressWithHistory {
   return {
     watchId: 'watch-1',
