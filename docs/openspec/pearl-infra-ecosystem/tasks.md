@@ -164,6 +164,19 @@ Merged implementation checkpoints:
 - PR #70 — added bridge persistence repository, Igra event mirror helpers, exit
   lifecycle projection, reserve-spend matcher, public bridge proof/status HTTP
   routes, admin decision routes, pilot alerts, and the bridge pilot runbook.
+- PR #71 — synced bridge checklist state after PR #70.
+- PR #72 — added automated full OTC flow coverage for quote acceptance, unique
+  simnet escrow watch registration, wallet-funded PRL proof facts, Base
+  deposit/release projection, worker release/refund decisions, and public proof.
+- PR #73 — wired bridge live event indexing: Igra RPC polling with checkpoints,
+  Postgres-backed mirrored exits, reserve-spend application, and Pearl indexer
+  scanner updates for bridge reserve spends.
+- PR #74 — hardened full OTC flow coverage with xpub-backed unique simnet P2TR
+  escrow allocation, indexer-shaped PRL proof projection, and fail-closed Base
+  event term validation before PRL release preparation.
+
+Review snapshot after PR #74: PRs #71-#74 are merged, and no feature/code PRs
+remain open against `dev` before this checklist sync.
 
 Current Pearl OTC code/workflow status:
 
@@ -181,7 +194,8 @@ Current Pearl OTC code/workflow status:
   release preparation after confirmed PRL release, and duplicate-safe worker
   iterations. The worker-to-PRL bridge now has JSON-backed decision storage,
   signer-boundary adapters, durable broadcast-attempt storage, simnet-shaped
-  release/refund transaction tests, and an opt-in live `pearld` RPC smoke test.
+  release/refund transaction tests, automated quote-to-proof flow coverage, and
+  an opt-in live `pearld` RPC smoke test.
 - Signer workflow is implemented through fee caps, expected template hashes,
   output-policy checks, signer key allow-list/pause controls, persistent
   request state, append-only audit records, retry-safe requests, and no
@@ -196,7 +210,7 @@ Current Pearl OTC code/workflow status:
   notes, manual-review notes, failed alert-delivery replay, and the public
   support/error alert form, while settlement execution controls stay absent.
 
-Current delegation queue after PR #70 plus bridge live-indexing work:
+Current delegation queue after PR #74:
 
 - Bridge events/indexer owner: `10.8.7.b`, `10.8.8.b`, and `10.8.9.b` are now
   covered by the bridge-service Igra RPC poller, checkpoint store, Postgres
@@ -218,9 +232,10 @@ Current delegation queue after PR #70 plus bridge live-indexing work:
   rehearsal, covering ownership transfer, operator/relayer permissions, cap
   semantics, pause behavior, replay protection, exit liabilities, deployment
   scripts, and verification evidence.
-- OTC evidence owner: finish `9.8.10.c`, `9.3.9`, and `9.8.11` for the full
-  quote -> accept -> PRL funding -> Base deposit -> worker -> public proof path
-  and later testnet2/Base Sepolia run with real txids.
+- OTC evidence owner: finish the remaining live slice of `9.8.10.c`, `9.3.9`,
+  and `9.8.11`: replace simulated Base events with real Base Sepolia txids and
+  run the PRL signing/broadcast boundary with real txids before any mainnet PRL
+  path opens.
 - Base ops owner: finish `9.6.7`; keep `9.6.9` blocked until explicit Base
   mainnet approval.
 - Oyster/prod ops owner: finish `9.10.6.b`, `9.10.8.d`, `9.10.9.b`, and
@@ -407,19 +422,21 @@ Current delegation queue after PR #70 plus bridge live-indexing work:
 
 ### 9.8 Strategy Loophole Fix Tracker
 
-Status after admin FE wiring: API startup/idempotency, derivation
+Status after PR #74: API startup/idempotency, derivation
 allocation safety, watch registration, Pearl funding/spend detection, reorg
 hardening, Pearl proof projection, Base escrow event ingestion, the persistent
 settlement-worker iteration, the Pearl signer boundary policy/request/audit
 layer, explicit deployment environment/secret contracts, monitoring contracts,
-and backend-driven RFQ/accept/checkout/proof/admin screens are implemented,
-with Base Sepolia native-USDC stress evidence recorded. The remaining
-production blockers are live simnet/testnet evidence, alert secret deployment,
-and Base ownership acceptance evidence.
+backend-driven RFQ/accept/checkout/proof/admin screens, automated full OTC
+quote-to-proof coverage, and Base event term fail-closed validation are
+implemented, with Base Sepolia native-USDC stress evidence recorded. The
+remaining production blockers are live simnet/testnet evidence with real Base
+txids and a real PRL signing/broadcast path, alert secret deployment, and Base
+ownership acceptance evidence.
 
-Open 9.8 items after admin FE wiring: `9.8.10` and `9.8.11`.
+Open 9.8 items after PR #74: the remaining live `9.8.10.c` slice and `9.8.11`.
 
-Loophole tracker after admin FE wiring:
+Loophole tracker after PR #74:
 
 - [x] Mock/local production fallback — OTC API production startup now fails
   closed unless Postgres, Base RPC, real Pearl P2TR xpub allocation, Pearl
@@ -449,9 +466,15 @@ Loophole tracker after admin FE wiring:
   storage in the worker runtime, and no live broadcast from the signer path.
 - [x] Implicit deployment config and weak ops alerts — canonical env contracts,
   secret names, deployment gates, and monitoring thresholds are documented.
-- [ ] No full OTC simnet escrow evidence yet — PRL-side simnet release/refund
-  evidence is recorded for `9.6.4`, but mainnet PRL paths remain blocked until
-  `9.8.10` records quote, Base, worker, and proof coverage.
+- [x] Automated full OTC flow coverage — `9.8.10.c` now covers quote, accept,
+  unique simnet escrow allocation, wallet-funded PRL proof facts, Base
+  deposit/release projection, settlement-worker release/refund decisions, and
+  public proof projection.
+- [ ] No live full OTC cross-chain evidence yet — PRL-side simnet
+  release/refund evidence is recorded for `9.6.4`, and automated quote-to-proof
+  coverage exists, but mainnet PRL paths remain blocked until the remaining
+  `9.8.10.c` live slice replaces simulated Base events with real Base Sepolia
+  txids and a real PRL signing/broadcast path.
 - [ ] No testnet2 Pearl + Base Sepolia end-to-end evidence yet — blocks
   production-like launch until `9.3.9` and `9.8.11` are recorded with txids.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
@@ -529,6 +552,9 @@ Loophole tracker after admin FE wiring:
     - [x] Fail closed on Base event state mismatches before preparing PRL
       release: chain, contract, buyer, seller, fee, and funded amount must
       match the accepted trade.
+    - [x] Replace fake escrow-address suffixing in automated coverage with real
+      xpub-backed unique simnet P2TR allocation and indexer-shaped PRL proof
+      projection.
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
@@ -653,15 +679,15 @@ Loophole tracker after admin FE wiring:
   - 2026-05-18: Added `WrappedPearl` and `PearlBridge` under `contracts/usdc-escrow/src`. The bridge is federated/custodial by design: relayers submit Pearl outpoint claims, the contract enforces replay protection and caps, operators record globally unique Pearl release txids for exits, and cap reductions cannot go below active supply plus pending exit liabilities.
 - [x] 10.7 Build Igra bridge contract tests for mint replay protection, exit burn/lock, min/max limits, rolling caps, pause, and processed-exit idempotency.
   - 2026-05-18: Added `PearlBridge.t.sol` covering bridge-only minting, deposit replay rejection, min/max/pilot/rolling caps, separate entry/exit pauses, burn-and-record exit requests, operator-only processing, idempotent processed exits, conflicting and reused release txid rejection, refunds/double-refund rejection, cap reductions below active liabilities, and two-step ownership.
-- [ ] 10.8 Extend Pearl indexer support for bridge deposit watches, reserve addresses, confirmed deposits, reserve spends, pending exits, and reconciliation gaps.
+- [x] 10.8 Extend Pearl indexer support for bridge deposit watches, reserve addresses, confirmed deposits, reserve spends, pending exits, and reconciliation gaps.
 - [x] 10.8.1 Add shared watched-addresses migration for bridge deposit/reserve watches and address observations.
 - [x] 10.8.2 Add `bridge_exit_requests` table for mirrored Igra burn/lock events.
 - [x] 10.8.3 Implement repository/API support for bridge deposit watches and reserve watches via the shared `/watches` API. Completed in PR #12.
-- [ ] 10.8.4 Track Pearl deposit observations by txid/vout, amount, block, confirmations, match status, consumed mint tx, and reorg state.
+- [x] 10.8.4 Track Pearl deposit observations by txid/vout, amount, block, confirmations, match status, consumed mint tx, and reorg state.
   - [x] 10.8.4.a Add bridge-service deposit observation projection for outpoint, amount, confirmations, match status, consumed claim spend, unsafe classification, and reorg blockers.
-- [ ] 10.8.5 Track reserve spends and classify each spend as exit release, consolidation, ops transfer, fee/change, or unknown.
+- [x] 10.8.5 Track reserve spends and classify each spend as exit release, consolidation, ops transfer, fee/change, or unknown.
   - [x] 10.8.5.a Add bridge-service reserve spend projection that separates known spends from unknown spends before relayer decisions.
-- [ ] 10.8.6 Expose reconciliation views for confirmed reserves, pending deposits, pending exits, minted `wPRL` supply, reserve surplus/deficit, stale requests, and unknown reserve spends.
+- [x] 10.8.6 Expose reconciliation views for confirmed reserves, pending deposits, pending exits, minted `wPRL` supply, reserve surplus/deficit, stale requests, and unknown reserve spends.
   - [x] 10.8.6.a Add bridge-service reconciliation snapshot for reserves, known spends, pending exits, minted supply, surplus/deficit, stale watches, and unknown reserve-spend blockers.
   - [x] 10.8.6.b Add canonical event IDs, event hashes, relayer attestation counts, and quorum requirements to public bridge proof projections.
   - [x] 10.8.6.c Persist reconciliation snapshots so operators can compare reserve health across blocks, not only read the latest in-memory projection.
@@ -685,7 +711,7 @@ Loophole tracker after admin FE wiring:
     classifications.
   - [x] 10.9.3 Add KAT-style canonical deposit/exit event identity, deterministic event hashing, independent relayer quorum evaluation, finality wait state, and fail-closed blockers for unknown relayers, mismatched event hashes, duplicate attestations, and impossible quorum policies.
   - [x] 10.9.4 Require approved relayer quorum plus manual operator approval before bridge-service mint/release prepare decisions.
-- [ ] 10.10 Add bridge API/proof contracts for deposit status, exit status, reserve backing, and public audit trail.
+- [x] 10.10 Add bridge API/proof contracts for deposit status, exit status, reserve backing, and public audit trail.
   - [x] 10.10.1 Add bridge public proof DTOs for deposit status, exit status, reserve backing, blockers, and public audit fields.
   - [x] 10.10.2 Extend bridge public proof contracts with canonical event IDs, event hashes, relayer attestation counts, quorum requirements, and reserve-backing blockers.
   - [x] 10.10.3 Add public `GET /bridge/deposits/:depositId`, `GET /bridge/exits/:exitId`, and `GET /bridge/proof` routes backed by persisted bridge state.
