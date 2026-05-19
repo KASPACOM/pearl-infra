@@ -6,8 +6,7 @@ or broadcast transactions. It verifies an already-run trade by reading:
 - the OTC API public trade and proof routes;
 - Base Sepolia transaction receipts for `TradeCreated`, `Deposited`, and
   `Released` or `Refunded`;
-- the Pearl indexer watch history for the trade escrow when an indexer URL is
-  supplied.
+- the Pearl indexer watch history for the trade escrow.
 
 The test is skipped by default in CI and local runs. It only runs when all
 required environment variables are set.
@@ -19,18 +18,13 @@ export OTC_FULL_FLOW_API_URL=http://127.0.0.1:3000
 export OTC_FULL_FLOW_TRADE_ID=otc_...
 export OTC_FULL_FLOW_BASE_RPC_URL=https://base-sepolia.example
 export OTC_FULL_FLOW_BASE_TX_HASHES=0xcreate,0xdeposit,0xrelease
+export OTC_FULL_FLOW_PEARL_INDEXER_URL=http://127.0.0.1:8088
 ```
 
 For a refund path, use the refund tx hash as the final hash and set:
 
 ```bash
 export OTC_FULL_FLOW_EXPECTED_STATUS=refunded
-```
-
-For independent Pearl indexer verification, also set:
-
-```bash
-export OTC_FULL_FLOW_PEARL_INDEXER_URL=http://127.0.0.1:8088
 ```
 
 ## Run
@@ -54,14 +48,15 @@ The verifier must prove:
 
 - public proof trade ID, status, Base trade key, Base contract, and Pearl escrow
   address match the OTC trade;
-- Base receipts exist, succeeded, and contain escrow events for the exact trade
-  key;
+- Base RPC chain ID matches the OTC trade chain ID;
+- Base receipts exist, succeeded, and contain `TradeCreated`, `Deposited`, and
+  exactly one terminal `Released` or `Refunded` event for the exact trade key;
 - normalized Base event state is safe for the settlement worker and does not
   become `stale`;
 - Base deposit and release/refund tx hashes in public proof match the observed
   receipts;
-- when `OTC_FULL_FLOW_PEARL_INDEXER_URL` is set, indexed Pearl escrow outpoint,
-  release/refund txid, and required confirmations match public proof.
+- indexed Pearl escrow outpoint, release/refund txid, and required
+  confirmations match public proof.
 
 ## Still Blocked Until Live Inputs Exist
 

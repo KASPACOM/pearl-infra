@@ -20,6 +20,7 @@ import {
 
 const NOW = new Date('2026-05-18T14:00:00.000Z');
 const TRADE_KEY = '0x' + '55'.repeat(32);
+const USDC_EXPIRY_UNIX_SECONDS = 1_779_111_000;
 
 test('worker loop consumes Base event state and prepares PRL release once', async () => {
   const baseEvents = new InMemoryUsdcEscrowEventRepository();
@@ -32,7 +33,7 @@ test('worker loop consumes Base event state and prepares PRL release once', asyn
       seller: '0x2222222222222222222222222222222222222222',
       amountMicros: '85000000',
       feeMicros: '0',
-      expiryUnixSeconds: 1_779_000_000,
+      expiryUnixSeconds: USDC_EXPIRY_UNIX_SECONDS,
     }),
     baseEvent({
       eventName: 'Deposited',
@@ -89,9 +90,19 @@ test('worker loop prepares USDC release through broadcaster after PRL release co
   const baseEvents = new InMemoryUsdcEscrowEventRepository();
   await baseEvents.ingestEvents([
     baseEvent({
+      eventName: 'TradeCreated',
+      txHash: '0xcreate',
+      logIndex: 0,
+      buyer: '0x1111111111111111111111111111111111111111',
+      seller: '0x2222222222222222222222222222222222222222',
+      amountMicros: '85000000',
+      feeMicros: '0',
+      expiryUnixSeconds: USDC_EXPIRY_UNIX_SECONDS,
+    }),
+    baseEvent({
       eventName: 'Deposited',
       txHash: '0xdeposit',
-      logIndex: 0,
+      logIndex: 1,
       payer: '0x1111111111111111111111111111111111111111',
       amountMicros: '85000000',
     }),
@@ -188,7 +199,7 @@ test('worker loop fails closed when Base event state mismatches trade terms', as
       seller: '0x2222222222222222222222222222222222222222',
       amountMicros: '85000000',
       feeMicros: '0',
-      expiryUnixSeconds: 1_779_000_000,
+      expiryUnixSeconds: USDC_EXPIRY_UNIX_SECONDS,
     }),
     baseEvent({
       eventName: 'Deposited',
@@ -236,6 +247,25 @@ test('worker loop fails closed when Base event state mismatches trade terms', as
   assert.equal(trades.manualReviews.length, 1);
 });
 
+test('Base event projection marks deposited state without created terms unsafe', async () => {
+  const baseEvents = new InMemoryUsdcEscrowEventRepository();
+  await baseEvents.ingestEvents([
+    baseEvent({
+      eventName: 'Deposited',
+      txHash: '0xdeposit',
+      logIndex: 0,
+      payer: '0x1111111111111111111111111111111111111111',
+      amountMicros: '85000000',
+    }),
+  ]);
+
+  const state = (await baseEvents.getTradeState(TRADE_KEY))!;
+  const projected = baseEscrowEventStateFromUsdcTradeState(state, tradeFixture({ state: 'usdc_escrow_confirmed' }));
+
+  assert.equal(projected.status, 'stale');
+  assert.equal(projected.reason, 'Base escrow created terms missing');
+});
+
 test('Base event projection marks contract, buyer, seller, fee, and amount mismatches unsafe', async () => {
   const baseEvents = new InMemoryUsdcEscrowEventRepository();
   await baseEvents.ingestEvents([
@@ -247,7 +277,7 @@ test('Base event projection marks contract, buyer, seller, fee, and amount misma
       seller: '0x2222222222222222222222222222222222222222',
       amountMicros: '85000000',
       feeMicros: '0',
-      expiryUnixSeconds: 1_779_000_000,
+      expiryUnixSeconds: USDC_EXPIRY_UNIX_SECONDS,
     }),
     baseEvent({
       eventName: 'Deposited',

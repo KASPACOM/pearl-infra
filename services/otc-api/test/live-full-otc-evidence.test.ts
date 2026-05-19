@@ -22,18 +22,19 @@ const tradeId = process.env.OTC_FULL_FLOW_TRADE_ID;
 const baseRpcUrl = process.env.OTC_FULL_FLOW_BASE_RPC_URL;
 const baseTxHashes = parseCsv(process.env.OTC_FULL_FLOW_BASE_TX_HASHES);
 const pearlIndexerUrl = process.env.OTC_FULL_FLOW_PEARL_INDEXER_URL;
-const expectedStatus = process.env.OTC_FULL_FLOW_EXPECTED_STATUS ?? 'released';
+const expectedStatus = parseExpectedStatus(process.env.OTC_FULL_FLOW_EXPECTED_STATUS);
 const BASE_SEPOLIA_CONTRACT = '0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9';
 const TRADE_KEY = `0x${'42'.repeat(32)}`;
 const BUYER_USDC = '0x1111111111111111111111111111111111111111';
 const SELLER_USDC = '0x2222222222222222222222222222222222222222';
+const USDC_EXPIRY_UNIX_SECONDS = 1_779_184_800;
 
 test('live evidence verifier normalizes Base receipt logs into worker-safe state', async () => {
   const trade = tradeFixture();
   const iface = new Interface(PRL_USDC_ESCROW_ABI);
   const network = getUsdcEscrowNetworkConfig('base_sepolia');
   const events = [
-    parseSyntheticEscrowLog({ iface, eventName: 'TradeCreated', args: [TRADE_KEY, BUYER_USDC, SELLER_USDC, 85_000_000n, 0n, 1_779_000_000n], logIndex: 0 }),
+    parseSyntheticEscrowLog({ iface, eventName: 'TradeCreated', args: [TRADE_KEY, BUYER_USDC, SELLER_USDC, 85_000_000n, 0n, BigInt(USDC_EXPIRY_UNIX_SECONDS)], logIndex: 0 }),
     parseSyntheticEscrowLog({ iface, eventName: 'Deposited', args: [TRADE_KEY, BUYER_USDC, 85_000_000n], logIndex: 1 }),
     parseSyntheticEscrowLog({ iface, eventName: 'Released', args: [TRADE_KEY, SELLER_USDC, 85_000_000n, 0n], logIndex: 2 }),
   ].map((log, index) => parseEscrowLog({
@@ -56,7 +57,19 @@ test('live evidence verifier normalizes Base receipt logs into worker-safe state
   assert.equal(baseEscrowEventStateFromUsdcTradeState(state, trade).status, 'released');
 });
 
-test('optional live full OTC evidence verifies public proof, Base receipts, and Pearl indexer history', { skip: !apiUrl || !tradeId || !baseRpcUrl || baseTxHashes.length === 0 }, async () => {
+test('live evidence verifier requires a complete Base lifecycle before accepting terminal evidence', () => {
+  const trade = tradeFixture();
+  const depositedOnly = baseTradeEvent({ eventName: 'Deposited', amountMicros: trade.usdcEscrow.expectedAmountMicros });
+  const releasedWithoutDeposit = [
+    baseTradeEvent({ eventName: 'TradeCreated', amountMicros: '85000000', feeMicros: '0' }),
+    baseTradeEvent({ eventName: 'Released', sellerAmountMicros: '85000000', feeAmountMicros: '0' }),
+  ];
+
+  assert.throws(() => assertCompleteBaseLifecycle([depositedOnly], 'released'), /Base receipts must include TradeCreated/);
+  assert.throws(() => assertCompleteBaseLifecycle(releasedWithoutDeposit, 'released'), /Base receipts must include Deposited/);
+});
+
+test('optional live full OTC evidence verifies public proof, Base receipts, and Pearl indexer history', { skip: !apiUrl || !tradeId || !baseRpcUrl || baseTxHashes.length === 0 || !pearlIndexerUrl }, async () => {
   const trade = await fetchJson<OtcTrade>(`${apiUrl}/otc/trades/${encodeURIComponent(tradeId!)}`);
   const proof = await fetchJson<PublicTradeProof>(`${apiUrl}/otc/trades/${encodeURIComponent(tradeId!)}/proof`);
 
@@ -69,6 +82,7 @@ test('optional live full OTC evidence verifies public proof, Base receipts, and 
 
   const provider = new JsonRpcProvider(baseRpcUrl);
   const baseEvents = await loadBaseEscrowEventsFromReceipts(provider, trade, baseTxHashes);
+  assertCompleteBaseLifecycle(baseEvents, expectedStatus);
   const baseRepository = new InMemoryUsdcEscrowEventRepository();
   await baseRepository.ingestEvents(baseEvents);
 
@@ -87,15 +101,13 @@ test('optional live full OTC evidence verifies public proof, Base receipts, and 
   }
   assert.equal(proof.base.depositTxHash?.toLowerCase(), baseState.depositTxHash?.toLowerCase());
 
-  if (pearlIndexerUrl) {
-    const watchId = createPearlEscrowWatchId(trade.tradeId);
-    const history = await fetchJson<unknown>(`${pearlIndexerUrl.replace(/\/+$/, '')}/watches/${encodeURIComponent(watchId)}`);
-    const indexedProof = projectPearlIndexedProof(trade, history);
-    assert.equal(indexedProof.escrowOutpoint, proof.pearl.escrowOutpoint);
-    assert.equal(indexedProof.releaseTxid, proof.pearl.releaseTxid);
-    assert.equal(indexedProof.refundTxid, proof.pearl.refundTxid);
-    assert.ok(indexedProof.escrowConfirmations >= trade.pearlEscrow.requiredConfirmations);
-  }
+  const watchId = createPearlEscrowWatchId(trade.tradeId);
+  const history = await fetchJson<unknown>(`${pearlIndexerUrl!.replace(/\/+$/, '')}/watches/${encodeURIComponent(watchId)}`);
+  const indexedProof = projectPearlIndexedProof(trade, history);
+  assert.equal(indexedProof.escrowOutpoint, proof.pearl.escrowOutpoint);
+  assert.equal(indexedProof.releaseTxid, proof.pearl.releaseTxid);
+  assert.equal(indexedProof.refundTxid, proof.pearl.refundTxid);
+  assert.ok(indexedProof.escrowConfirmations >= trade.pearlEscrow.requiredConfirmations);
 });
 
 async function loadBaseEscrowEventsFromReceipts(
@@ -105,6 +117,8 @@ async function loadBaseEscrowEventsFromReceipts(
 ): Promise<readonly UsdcEscrowTradeEvent[]> {
   const network = getUsdcEscrowNetworkConfig(trade.usdcEscrow.chainId === 84532 ? 'base_sepolia' : 'base');
   const iface = new Interface(PRL_USDC_ESCROW_ABI);
+  const providerNetwork = await provider.getNetwork();
+  assert.equal(Number(providerNetwork.chainId), trade.usdcEscrow.chainId, 'Base RPC chain ID must match the OTC trade chain ID');
   const currentBlock = await provider.getBlockNumber();
   const events: UsdcEscrowTradeEvent[] = [];
   for (const txHash of txHashes) {
@@ -126,6 +140,17 @@ async function loadBaseEscrowEventsFromReceipts(
     }
   }
   return events;
+}
+
+function assertCompleteBaseLifecycle(
+  events: readonly UsdcEscrowTradeEvent[],
+  status: 'released' | 'refunded',
+): void {
+  const eventNames = new Set(events.map((event) => event.eventName));
+  assert.equal(eventNames.has('TradeCreated'), true, 'Base receipts must include TradeCreated');
+  assert.equal(eventNames.has('Deposited'), true, 'Base receipts must include Deposited');
+  assert.equal(eventNames.has(status === 'released' ? 'Released' : 'Refunded'), true, `Base receipts must include ${status === 'released' ? 'Released' : 'Refunded'}`);
+  assert.equal(eventNames.has(status === 'released' ? 'Refunded' : 'Released'), false, 'Base receipts must not include both terminal outcomes');
 }
 
 function parseEscrowLog(input: {
@@ -222,8 +247,70 @@ function parseCsv(value: string | undefined): readonly string[] {
   return value?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
 }
 
+function parseExpectedStatus(value: string | undefined): 'released' | 'refunded' {
+  if (!value) return 'released';
+  if (value === 'released' || value === 'refunded') return value;
+  throw new Error('OTC_FULL_FLOW_EXPECTED_STATUS must be released or refunded');
+}
+
 function isTradeEventName(value: string): value is Exclude<UsdcEscrowEventName, 'Paused' | 'Unpaused'> {
   return value === 'TradeCreated' || value === 'Deposited' || value === 'Released' || value === 'Refunded' || value === 'Cancelled';
+}
+
+function baseTradeEvent(
+  overrides: (
+    | { eventName: 'TradeCreated'; amountMicros: string; feeMicros: string }
+    | { eventName: 'Deposited'; amountMicros: string }
+    | { eventName: 'Released'; sellerAmountMicros: string; feeAmountMicros: string }
+    | { eventName: 'Refunded'; amountMicros: string }
+  ),
+): UsdcEscrowTradeEvent {
+  const base = {
+    network: 'base_sepolia',
+    chainId: 84532,
+    contractAddress: BASE_SEPOLIA_CONTRACT,
+    tradeKey: TRADE_KEY,
+    txHash: `0x${'11'.repeat(32)}`,
+    logIndex: 0,
+    blockNumber: 100,
+    blockHash: `0x${'ab'.repeat(32)}`,
+    confirmations: 12,
+    observedAt: '2026-05-19T10:00:00.000Z',
+  } as const;
+  switch (overrides.eventName) {
+    case 'TradeCreated':
+      return {
+        ...base,
+        eventName: 'TradeCreated',
+        buyer: BUYER_USDC,
+        seller: SELLER_USDC,
+        amountMicros: overrides.amountMicros,
+        feeMicros: overrides.feeMicros,
+        expiryUnixSeconds: USDC_EXPIRY_UNIX_SECONDS,
+      };
+    case 'Deposited':
+      return {
+        ...base,
+        eventName: 'Deposited',
+        payer: BUYER_USDC,
+        amountMicros: overrides.amountMicros,
+      };
+    case 'Released':
+      return {
+        ...base,
+        eventName: 'Released',
+        seller: SELLER_USDC,
+        sellerAmountMicros: overrides.sellerAmountMicros,
+        feeAmountMicros: overrides.feeAmountMicros,
+      };
+    case 'Refunded':
+      return {
+        ...base,
+        eventName: 'Refunded',
+        buyer: BUYER_USDC,
+        amountMicros: overrides.amountMicros,
+      };
+  }
 }
 
 function tradeFixture(): OtcTrade {
