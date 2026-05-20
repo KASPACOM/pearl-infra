@@ -51,6 +51,26 @@ test('prepares an escrow deposit call using the shared ABI', () => {
   assert.equal(tx.data, call.data);
 });
 
+test('prepares approval and deposit calls from trade-specific API config', () => {
+  const callConfig = {
+    chainId: 84532,
+    usdcToken: '0x5555555555555555555555555555555555555555',
+    escrowContract: '0x6666666666666666666666666666666666666666',
+  };
+  const approval = prepareUsdcApprovalCall('171700000', callConfig);
+  const deposit = prepareEscrowDepositCall(TRADE_KEY, callConfig);
+  const parsedApproval = createUsdcInterface().parseTransaction({ data: approval.data });
+  const parsedDeposit = createEscrowInterface().parseTransaction({ data: deposit.data });
+
+  assert.equal(approval.chainId, 84532);
+  assert.equal(getAddress(approval.to), getAddress(callConfig.usdcToken));
+  assert.equal(getAddress(parsedApproval?.args[0]), getAddress(callConfig.escrowContract));
+  assert.equal(parsedApproval?.args[1], 171700000n);
+  assert.equal(deposit.chainId, 84532);
+  assert.equal(getAddress(deposit.to), getAddress(callConfig.escrowContract));
+  assert.equal(parsedDeposit?.args[0], TRADE_KEY);
+});
+
 test('creates an ethers contract bound to the configured escrow address', () => {
   const config = getBaseEscrowFrontendConfig('base_sepolia');
   const contract = createEscrowContract(null, 'base_sepolia');
@@ -61,4 +81,13 @@ test('creates an ethers contract bound to the configured escrow address', () => 
 test('rejects malformed frontend contract inputs before wallet handoff', () => {
   assert.throws(() => prepareEscrowDepositCall('not-bytes32'), /tradeKey must be a 32-byte hex string/);
   assert.throws(() => prepareUsdcApprovalCall('-1'), /amountMicros must be a base-10 integer string/);
+  assert.throws(
+    () =>
+      prepareEscrowDepositCall(TRADE_KEY, {
+        chainId: 84532,
+        usdcToken: 'not-address',
+        escrowContract: '0x6666666666666666666666666666666666666666',
+      }),
+    /usdcToken must be a valid EVM address/,
+  );
 });

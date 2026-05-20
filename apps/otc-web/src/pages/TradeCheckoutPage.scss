@@ -43,6 +43,10 @@
   }
 }
 
+.checkout-action__error {
+  color: var(--om-danger);
+}
+
 .checkout-page__panel-title {
   display: flex;
   align-items: baseline;

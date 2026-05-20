@@ -2,11 +2,22 @@ import { useEffect, useState } from 'react';
 import type { OtcTrade, PublicTradeProof } from '@kaspacom/pearl-sdk';
 
 import { createOtcClient } from '../api.js';
-import { prepareEscrowDepositCall } from '../base-escrow-client.js';
+import { prepareEscrowDepositCall, prepareUsdcApprovalCall, toTransactionRequest } from '../base-escrow-client.js';
 import { demoProof, demoTrade, DEMO_NOW } from '../demo-data.js';
+import {
+  connectInjectedEvmWallet,
+  hasInjectedEvmWallet,
+  readInjectedEvmWallet,
+  sendAndWaitInjectedEvmTransaction,
+  subscribeInjectedEvmWalletChanges,
+  switchInjectedEvmChain,
+  type EvmWalletSnapshot,
+} from '../evm-wallet.js';
 import { buildTradeCheckoutPageModel, type UsdcVerificationModel } from '../page-models.js';
 import { BrandLoader, DataRow, DeadlineStrip, FailureBanner, StateBadge, Timeline } from '../components/Primitives.js';
 import { getBrowserPathname, getTradeIdFromPath } from '../routing.js';
+
+type CheckoutActionStatus = 'idle' | 'connecting' | 'switching' | 'validating' | 'approving' | 'depositing' | 'submitted' | 'error';
 
 export function TradeCheckoutPage() {
   const routeTradeId = getTradeIdFromPath(getBrowserPathname());
@@ -15,7 +26,45 @@ export function TradeCheckoutPage() {
   const [verification, setVerification] = useState<UsdcVerificationModel | undefined>(() =>
     routeTradeId ? undefined : { verified: true, depositAllowed: true, mismatches: [] },
   );
+  const [wallet, setWallet] = useState<EvmWalletSnapshot>({ connected: false });
+  const [now, setNow] = useState(() => (routeTradeId ? new Date() : DEMO_NOW));
+  const [actionStatus, setActionStatus] = useState<CheckoutActionStatus>('idle');
+  const [actionError, setActionError] = useState<string>();
+  const [approvalTxHash, setApprovalTxHash] = useState<string>();
+  const [depositTxHash, setDepositTxHash] = useState<string>();
   const [loadError, setLoadError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    const refreshWallet = () => {
+      void readInjectedEvmWallet()
+        .then((snapshot) => {
+          if (active) {
+            setWallet(snapshot);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setWallet({ connected: false });
+          }
+        });
+    };
+    refreshWallet();
+    const unsubscribe = subscribeInjectedEvmWalletChanges(refreshWallet);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!routeTradeId) {
+      setNow(DEMO_NOW);
+      return undefined;
+    }
+    const interval = setInterval(() => setNow(new Date()), 10_000);
+    return () => clearInterval(interval);
+  }, [routeTradeId]);
 
   useEffect(() => {
     if (!routeTradeId) {
@@ -23,23 +72,34 @@ export function TradeCheckoutPage() {
     }
     let active = true;
     const client = createOtcClient();
-    void Promise.all([
-      client.getTrade(routeTradeId),
-      client.getProof(routeTradeId),
-      client.verifyUsdcEscrowTerms(routeTradeId),
-    ])
-      .then(([apiTrade, apiProof, apiVerification]) => {
-        if (!active) {
-          return;
+    void client
+      .getTrade(routeTradeId)
+      .then((apiTrade) => {
+        if (active) {
+          setTrade(apiTrade);
         }
-        setTrade(apiTrade);
-        setProof(apiProof);
-        setVerification(apiVerification);
+        return Promise.allSettled([
+          client.getProof(routeTradeId),
+          client.verifyUsdcEscrowTerms(routeTradeId),
+        ]);
+      })
+      .then((results) => {
+        if (!active) return;
+        const [proofResult, verificationResult] = results;
+        if (proofResult?.status === 'fulfilled') {
+          setProof(proofResult.value);
+        }
+        if (verificationResult?.status === 'fulfilled') {
+          setVerification(verificationResult.value);
+        }
+        const firstFailure = results.find((result) => result.status === 'rejected');
+        if (firstFailure?.status === 'rejected') {
+          setLoadError(firstFailure.reason instanceof Error ? firstFailure.reason.message : 'Some checkout data failed to load.');
+        }
       })
       .catch((error) => {
-        if (active) {
-          setLoadError(error instanceof Error ? error.message : 'Trade data failed to load.');
-        }
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : 'Trade data failed to load.');
       });
     return () => {
       active = false;
@@ -66,21 +126,121 @@ export function TradeCheckoutPage() {
     );
   }
 
-  const model = buildTradeCheckoutPageModel(trade, {
-    now: DEMO_NOW,
-    proof,
+  const loadedTrade = trade;
+  const loadedProof = proof;
+  const model = buildTradeCheckoutPageModel(loadedTrade, {
+    now,
+    proof: loadedProof,
     usdcVerification: verification,
-    wallet: { connected: false },
+    wallet,
   });
 
   let depositCall: ReturnType<typeof prepareEscrowDepositCall> | undefined;
+  let approvalCall: ReturnType<typeof prepareUsdcApprovalCall> | undefined;
   if (model.base.depositAction.kind === 'deposit_usdc') {
     try {
-      depositCall = prepareEscrowDepositCall(trade.usdcEscrow.tradeKey, 'base_sepolia');
+      const callConfig = getTradeEscrowCallConfig(loadedTrade);
+      approvalCall = prepareUsdcApprovalCall(loadedTrade.usdcEscrow.expectedAmountMicros, callConfig);
+      depositCall = prepareEscrowDepositCall(loadedTrade.usdcEscrow.tradeKey, callConfig);
     } catch {
       depositCall = undefined;
+      approvalCall = undefined;
     }
   }
+
+  async function connectWallet() {
+    setActionStatus('connecting');
+    setActionError(undefined);
+    try {
+      setWallet(await connectInjectedEvmWallet());
+      setActionStatus('idle');
+    } catch (error) {
+      setActionStatus('error');
+      setActionError(error instanceof Error ? error.message : 'Wallet connection failed.');
+    }
+  }
+
+  async function switchNetwork() {
+    setActionStatus('switching');
+    setActionError(undefined);
+    try {
+      await switchInjectedEvmChain(loadedTrade.usdcEscrow.chainId);
+      setWallet(await readInjectedEvmWallet());
+      setActionStatus('idle');
+    } catch (error) {
+      setActionStatus('error');
+      setActionError(error instanceof Error ? error.message : 'Network switch failed.');
+    }
+  }
+
+  async function refreshAndAssertDepositReady(tradeId: string, proof: PublicTradeProof) {
+    const readiness = await loadCheckoutReadiness(tradeId);
+    const checkedAt = new Date();
+    setTrade(readiness.trade);
+    setVerification(readiness.verification);
+    setWallet(readiness.wallet);
+    setNow(checkedAt);
+
+    const checkedModel = buildTradeCheckoutPageModel(readiness.trade, {
+      now: checkedAt,
+      proof,
+      usdcVerification: readiness.verification,
+      wallet: readiness.wallet,
+    });
+    if (checkedModel.base.depositAction.kind !== 'deposit_usdc') {
+      throw new Error(checkedModel.base.depositAction.reason ?? checkedModel.base.depositAction.label);
+    }
+    return readiness;
+  }
+
+  async function approveAndDeposit() {
+    setActionError(undefined);
+    try {
+      setActionStatus('validating');
+      const readyBeforeApproval = await refreshAndAssertDepositReady(loadedTrade.tradeId, loadedProof);
+      const approvalCall = prepareUsdcApprovalCall(readyBeforeApproval.trade.usdcEscrow.expectedAmountMicros, getTradeEscrowCallConfig(readyBeforeApproval.trade));
+      const depositCall = prepareEscrowDepositCall(readyBeforeApproval.trade.usdcEscrow.tradeKey, getTradeEscrowCallConfig(readyBeforeApproval.trade));
+      setActionStatus('approving');
+      const approvalHash = await sendAndWaitInjectedEvmTransaction(toTransactionRequest(approvalCall), readyBeforeApproval.wallet.address);
+      setApprovalTxHash(approvalHash);
+      setActionStatus('validating');
+      const readyBeforeDeposit = await refreshAndAssertDepositReady(readyBeforeApproval.trade.tradeId, loadedProof);
+      const refreshedDepositCall = prepareEscrowDepositCall(
+        readyBeforeDeposit.trade.usdcEscrow.tradeKey,
+        getTradeEscrowCallConfig(readyBeforeDeposit.trade),
+      );
+      setActionStatus('depositing');
+      const depositHash = await sendAndWaitInjectedEvmTransaction(toTransactionRequest(refreshedDepositCall), readyBeforeDeposit.wallet.address);
+      setDepositTxHash(depositHash);
+      setActionStatus('submitted');
+    } catch (error) {
+      setActionStatus('error');
+      setActionError(error instanceof Error ? error.message : 'Base deposit transaction failed.');
+    }
+  }
+
+  async function handleBaseAction() {
+    if (model.base.depositAction.kind === 'connect_wallet') {
+      await connectWallet();
+      return;
+    }
+    if (model.base.depositAction.kind === 'switch_network') {
+      await switchNetwork();
+      return;
+    }
+    if (model.base.depositAction.kind === 'deposit_usdc') {
+      await approveAndDeposit();
+    }
+  }
+
+  const baseActionBusy = actionStatus !== 'idle' && actionStatus !== 'submitted' && actionStatus !== 'error';
+  const baseActionDisabled =
+    baseActionBusy ||
+    actionStatus === 'submitted' ||
+    Boolean(depositTxHash) ||
+    model.base.depositAction.disabled ||
+    (model.base.depositAction.kind === 'deposit_usdc' && (!approvalCall || !depositCall));
+  const baseActionLabel = getBaseActionLabel(model.base.depositAction.label, actionStatus);
 
   return (
     <section className="checkout-page">
@@ -112,15 +272,22 @@ export function TradeCheckoutPage() {
           <DataRow label="Contract" value={model.base.contract} />
           <DataRow label="Trade key" value={model.base.tradeKey} />
           <DataRow label="Deposit" value={model.base.depositTxHash} />
+          <DataRow label="Wallet" value={wallet.address ?? (hasInjectedEvmWallet() ? 'Disconnected' : 'No injected wallet')} />
+          <DataRow label="Expected total" value={`${model.base.expectedAmountMicros} USDC micros`} />
           <div className="checkout-action">
             <button
               className="om-button om-button--primary"
-              disabled={model.base.depositAction.disabled || model.base.depositAction.kind !== 'deposit_usdc' || !depositCall}
+              disabled={baseActionDisabled}
+              onClick={handleBaseAction}
             >
-              {model.base.depositAction.label}
+              {baseActionBusy ? <BrandLoader compact label={baseActionLabel} /> : baseActionLabel}
             </button>
             {model.base.depositAction.reason ? <small>{model.base.depositAction.reason}</small> : null}
-            {depositCall ? <code>to {depositCall.to}</code> : null}
+            {approvalCall ? <code>approve {approvalCall.to}</code> : null}
+            {depositCall ? <code>deposit {depositCall.to}</code> : null}
+            {approvalTxHash ? <code>approval tx {approvalTxHash}</code> : null}
+            {depositTxHash ? <code>deposit tx {depositTxHash}</code> : null}
+            {actionError ? <small className="checkout-action__error">{actionError}</small> : null}
           </div>
         </section>
       </div>
@@ -134,4 +301,45 @@ export function TradeCheckoutPage() {
       </section>
     </section>
   );
+}
+
+function getTradeEscrowCallConfig(trade: OtcTrade) {
+  return {
+    chainId: trade.usdcEscrow.chainId,
+    usdcToken: trade.usdcEscrow.usdcToken,
+    escrowContract: trade.usdcEscrow.contract,
+  };
+}
+
+function getBaseActionLabel(defaultLabel: string, status: CheckoutActionStatus): string {
+  switch (status) {
+    case 'connecting':
+      return 'Connecting wallet...';
+    case 'switching':
+      return 'Switching network...';
+    case 'validating':
+      return 'Checking trade...';
+    case 'approving':
+      return 'Approving USDC...';
+    case 'depositing':
+      return 'Depositing USDC...';
+    case 'submitted':
+      return 'Deposit submitted';
+    default:
+      return defaultLabel;
+  }
+}
+
+async function loadCheckoutReadiness(tradeId: string): Promise<{
+  trade: OtcTrade;
+  verification: UsdcVerificationModel;
+  wallet: EvmWalletSnapshot;
+}> {
+  const client = createOtcClient();
+  const [trade, verification, wallet] = await Promise.all([
+    client.getTrade(tradeId),
+    client.verifyUsdcEscrowTerms(tradeId),
+    readInjectedEvmWallet(),
+  ]);
+  return { trade, verification, wallet };
 }

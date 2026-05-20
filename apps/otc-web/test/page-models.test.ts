@@ -105,7 +105,7 @@ test('checkout model disables USDC deposit after deadline or verification mismat
 
   const expired = buildTradeCheckoutPageModel(trade, {
     now: new Date('2026-05-18T12:16:00.000Z'),
-    wallet: { connected: true, chainId: 84532 },
+    wallet: { connected: true, chainId: 84532, address: '0x3333333333333333333333333333333333333333' },
     usdcVerification: { verified: true, depositAllowed: true, mismatches: [] },
   });
 
@@ -114,7 +114,7 @@ test('checkout model disables USDC deposit after deadline or verification mismat
 
   const mismatched = buildTradeCheckoutPageModel(trade, {
     now: NOW,
-    wallet: { connected: true, chainId: 84532 },
+    wallet: { connected: true, chainId: 84532, address: '0x3333333333333333333333333333333333333333' },
     usdcVerification: { verified: false, depositAllowed: false, mismatches: ['amountMicros mismatch'] },
   });
 
@@ -123,11 +123,29 @@ test('checkout model disables USDC deposit after deadline or verification mismat
 
   const unverified = buildTradeCheckoutPageModel(trade, {
     now: NOW,
-    wallet: { connected: true, chainId: 84532 },
+    wallet: { connected: true, chainId: 84532, address: '0x3333333333333333333333333333333333333333' },
   });
 
   assert.equal(unverified.base.depositAction.kind, 'blocked');
   assert.match(unverified.base.depositAction.reason ?? '', /not been verified/);
+
+  const wrongWallet = buildTradeCheckoutPageModel(trade, {
+    now: NOW,
+    wallet: { connected: true, chainId: 84532, address: '0x5555555555555555555555555555555555555555' },
+    usdcVerification: { verified: true, depositAllowed: true, mismatches: [] },
+  });
+
+  assert.equal(wrongWallet.base.depositAction.kind, 'blocked');
+  assert.match(wrongWallet.base.depositAction.reason ?? '', /buyer USDC address/);
+
+  const unconfirmedPrl = buildTradeCheckoutPageModel(tradeFixture({ state: 'pearl_escrow_seen' }), {
+    now: NOW,
+    wallet: { connected: true, chainId: 84532, address: '0x3333333333333333333333333333333333333333' },
+    usdcVerification: { verified: true, depositAllowed: true, mismatches: [] },
+  });
+
+  assert.equal(unconfirmedPrl.base.depositAction.kind, 'blocked');
+  assert.match(unconfirmedPrl.base.depositAction.reason ?? '', /pearl_escrow_seen/);
 });
 
 test('checkout and public proof models surface manual-review banners and timeline facts', () => {

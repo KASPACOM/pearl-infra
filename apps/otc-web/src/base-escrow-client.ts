@@ -23,6 +23,14 @@ export interface PreparedContractCall {
   data: string;
 }
 
+export interface FrontendEscrowCallConfig {
+  chainId: number;
+  usdcToken: string;
+  escrowContract: string;
+}
+
+export type FrontendEscrowCallConfigInput = UsdcEscrowNetwork | FrontendEscrowCallConfig;
+
 export function getBaseEscrowFrontendConfig(network: UsdcEscrowNetwork = 'base_sepolia'): FrontendEscrowNetworkConfig {
   const config = getUsdcEscrowNetworkConfig(network);
   if (!config.escrowContract) {
@@ -52,9 +60,9 @@ export function createEscrowContract(
 
 export function prepareUsdcApprovalCall(
   amountMicros: bigint | string,
-  network: UsdcEscrowNetwork = 'base_sepolia',
+  input: FrontendEscrowCallConfigInput = 'base_sepolia',
 ): PreparedContractCall {
-  const config = getBaseEscrowFrontendConfig(network);
+  const config = resolveEscrowCallConfig(input);
   const amount = parseAmountMicros(amountMicros);
   return {
     chainId: config.chainId,
@@ -65,10 +73,10 @@ export function prepareUsdcApprovalCall(
 
 export function prepareEscrowDepositCall(
   tradeKey: string,
-  network: UsdcEscrowNetwork = 'base_sepolia',
+  input: FrontendEscrowCallConfigInput = 'base_sepolia',
 ): PreparedContractCall {
   assertBytes32(tradeKey, 'tradeKey');
-  const config = getBaseEscrowFrontendConfig(network);
+  const config = resolveEscrowCallConfig(input);
   return {
     chainId: config.chainId,
     to: config.escrowContract,
@@ -96,6 +104,18 @@ function parseAmountMicros(amountMicros: bigint | string): bigint {
     throw new Error('amountMicros must be a base-10 integer string');
   }
   return BigInt(amountMicros);
+}
+
+function resolveEscrowCallConfig(input: FrontendEscrowCallConfigInput): FrontendEscrowCallConfig {
+  if (typeof input === 'string') {
+    return getBaseEscrowFrontendConfig(input);
+  }
+  assertEvmAddress(input.usdcToken, 'usdcToken');
+  assertEvmAddress(input.escrowContract, 'escrowContract');
+  if (!Number.isSafeInteger(input.chainId) || input.chainId <= 0) {
+    throw new Error('chainId must be a positive safe integer');
+  }
+  return input;
 }
 
 function assertBytes32(value: string, field: string): void {
