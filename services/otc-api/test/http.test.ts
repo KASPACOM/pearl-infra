@@ -137,9 +137,22 @@ test('serves quote, accept, trade, and proof routes', async () => {
       actor: 'settlement-worker',
     }, operatorHeaders);
     assert.equal(createIntentResponse.status, 200);
-    const createIntent = (await createIntentResponse.json()) as { tradeKey: string; sideEffect: { effectType: string } };
+    const createIntent = (await createIntentResponse.json()) as { tradeKey: string; sideEffect: { actor: string; effectType: string } };
     assert.match(createIntent.tradeKey, /^0x[0-9a-f]{64}$/);
     assert.equal(createIntent.sideEffect.effectType, 'usdc_create_trade');
+    assert.equal(createIntent.sideEffect.actor, 'operator-user');
+
+    const recordSideEffectResponse = await postJson(baseUrl, `/otc/trades/${trade.tradeId}/side-effects`, {
+      idempotencyKey: 'http-record-side-effect-1',
+      effectType: 'usdc_deposit_observed',
+      status: 'confirmed',
+      actor: 'spoofed-operator',
+      txHash: '0x1111111111111111111111111111111111111111111111111111111111111111',
+      chainId: 84532,
+    }, operatorHeaders);
+    assert.equal(recordSideEffectResponse.status, 201);
+    const recordedSideEffect = (await recordSideEffectResponse.json()) as { actor: string };
+    assert.equal(recordedSideEffect.actor, 'operator-user');
 
     const publicSideEffectsResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/side-effects`);
     assert.equal(publicSideEffectsResponse.status, 401);
@@ -147,7 +160,7 @@ test('serves quote, accept, trade, and proof routes', async () => {
     const sideEffectsResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/side-effects`, { headers: adminHeaders });
     assert.equal(sideEffectsResponse.status, 200);
     const sideEffects = (await sideEffectsResponse.json()) as unknown[];
-    assert.equal(sideEffects.length, 1);
+    assert.equal(sideEffects.length, 2);
 
     const supportAlertResponse = await postJson(baseUrl, `/otc/trades/${trade.tradeId}/support-alerts`, {
       idempotencyKey: 'http-support-alert-1',
@@ -212,7 +225,7 @@ test('serves quote, accept, trade, and proof routes', async () => {
       sideEffects: unknown[];
       events: Array<{ metadata?: { actor?: string } }>;
     };
-    assert.equal(adminDetail.sideEffects.length, 3);
+    assert.equal(adminDetail.sideEffects.length, 4);
     assert.equal(adminDetail.events.some((event) => event.metadata?.actor === 'operator-user'), true);
     assert.equal(adminDetail.events.some((event) => event.metadata?.actor === 'spoofed-operator'), false);
   });

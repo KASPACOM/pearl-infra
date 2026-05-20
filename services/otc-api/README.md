@@ -57,9 +57,12 @@ Quote creation, quote acceptance, and side-effect writes store canonical
 request hashes. Reusing the same idempotency key with a different payload is a
 hard error instead of returning the original object.
 
-Admin routes under `/otc/admin/*` require `Authorization: Bearer
-$OTC_ADMIN_API_TOKEN`. User-facing support/error reports use the narrow public
+Admin routes under `/otc/admin/*`, USDC `create-intent`, and side-effect writes
+require `Authorization: Bearer $OTC_ADMIN_API_TOKEN` or a matching
+`OTC_ADMIN_API_TOKENS` credential with the required role. User-facing
+support/error reports use the narrow public
 `POST /otc/trades/:tradeId/support-alerts` endpoint and cannot mark manual
-review or read admin diagnostics. When an alert sink is configured, new
-support/error reports are posted to the operator webhook and/or Telegram chat;
-the delivery result is audited as a `support_alert_delivery` side effect.
+review, prepare Base escrow creation, write side effects, or read admin
+diagnostics. When an alert sink is configured, new support/error reports are
+posted to the operator webhook and/or Telegram chat; the delivery result is
+audited as a `support_alert_delivery` side effect.

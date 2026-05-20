@@ -17,7 +17,7 @@ export function createClientRequestId(prefix: string): string {
 const ADMIN_TOKEN_STORAGE_KEY = 'oysters_market_admin_token';
 
 export function getInitialAdminToken(): string {
-  return getStoredAdminToken() || getViteEnv().VITE_OTC_ADMIN_API_TOKEN || '';
+  return getStoredAdminToken();
 }
 
 export function persistAdminToken(token: string): void {

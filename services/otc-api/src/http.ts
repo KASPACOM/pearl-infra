@@ -111,7 +111,13 @@ export async function handleOtcHttpRequest(
       return adminAuth;
     }
     requireAdminRole(adminAuth, 'operator');
-    return { statusCode: 200, body: await service.prepareUsdcCreateTrade(parts[2], await readJsonBody(request)) };
+    return {
+      statusCode: 200,
+      body: await service.prepareUsdcCreateTrade(parts[2], {
+        ...(await readJsonBody(request)),
+        actor: adminAuth.actor,
+      }),
+    };
   }
 
   if (
@@ -131,7 +137,13 @@ export async function handleOtcHttpRequest(
       return adminAuth;
     }
     requireAdminRole(adminAuth, 'operator');
-    return { statusCode: 201, body: await service.recordSideEffect(parts[2], await readJsonBody(request)) };
+    return {
+      statusCode: 201,
+      body: await service.recordSideEffect(parts[2], {
+        ...(await readJsonBody(request)),
+        actor: adminAuth.actor,
+      }),
+    };
   }
 
   if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'trades' && parts[3] === 'side-effects') {

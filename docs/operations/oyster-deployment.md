@@ -8,8 +8,10 @@ Oyster deploys the Pearl OTC application as two services per environment:
 | main | `main` | `oyster.kaspa.com` | `api-oyster.kaspa.com` | `us-east-1` | `kaspacom/oyster-otc-web-prod`, `kaspacom/oyster-otc-api-prod` |
 
 The web image is built with `VITE_OTC_API_BASE_URL` set to the matching API
-host. The API container serves `/healthz`; the web container serves `/healthz`
-through Nginx.
+host. Do not put admin/operator tokens in `VITE_*` variables; Vite embeds them
+in the public browser bundle. Operators enter the token in the admin screen,
+which stores it in browser session storage only. The API container serves
+`/healthz`; the web container serves `/healthz` through Nginx.
 
 ## CI/CD
 

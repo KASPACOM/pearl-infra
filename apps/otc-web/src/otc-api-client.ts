@@ -77,6 +77,25 @@ export interface UsdcEscrowVerification {
   verified: boolean;
   depositAllowed: boolean;
   mismatches: string[];
+  expected?: {
+    contract: string;
+    chainId: number;
+    tradeKey: string;
+    buyer: string;
+    seller: string;
+    amountMicros: string;
+    feeMicros: string;
+    expiryUnixSeconds: number;
+    usdcToken: string;
+  };
+  onChain?: {
+    buyer: string;
+    seller: string;
+    amountMicros: string;
+    feeMicros: string;
+    expiryUnixSeconds: number;
+    status: 'none' | 'created' | 'deposited' | 'released' | 'refunded' | 'cancelled';
+  };
 }
 
 export interface AdminTradeQuery {
