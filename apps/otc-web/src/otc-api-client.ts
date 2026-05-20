@@ -229,8 +229,8 @@ export class OtcApiClient {
     return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/proof`);
   }
 
-  prepareUsdcCreateTrade(tradeId: string, request: PrepareUsdcCreateTradeRequest): Promise<UsdcCreateTradeIntent> {
-    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/usdc-escrow/create-intent`, request);
+  prepareUsdcCreateTrade(tradeId: string, request: PrepareUsdcCreateTradeRequest, adminToken?: string): Promise<UsdcCreateTradeIntent> {
+    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/usdc-escrow/create-intent`, request, adminToken);
   }
 
   verifyUsdcEscrowTerms(tradeId: string): Promise<UsdcEscrowVerification> {
@@ -241,8 +241,8 @@ export class OtcApiClient {
     return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/side-effects`);
   }
 
-  recordSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
-    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/side-effects`, request);
+  recordSideEffect(tradeId: string, request: RecordSideEffectRequest, adminToken?: string): Promise<OtcSideEffect> {
+    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/side-effects`, request, adminToken);
   }
 
   recordPublicSupportAlert(tradeId: string, request: PublicSupportAlertRequest): Promise<OtcSideEffect> {

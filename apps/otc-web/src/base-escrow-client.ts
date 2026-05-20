@@ -84,6 +84,36 @@ export function prepareEscrowDepositCall(
   };
 }
 
+export function prepareEscrowCreateTradeCall(
+  input: {
+    tradeKey: string;
+    buyer: string;
+    seller: string;
+    amountMicros: bigint | string;
+    feeMicros: bigint | string;
+    expiryUnixSeconds: number;
+  },
+  configInput: FrontendEscrowCallConfigInput = 'base_sepolia',
+): PreparedContractCall {
+  assertBytes32(input.tradeKey, 'tradeKey');
+  assertEvmAddress(input.buyer, 'buyer');
+  assertEvmAddress(input.seller, 'seller');
+  assertUnixSeconds(input.expiryUnixSeconds, 'expiryUnixSeconds');
+  const config = resolveEscrowCallConfig(configInput);
+  return {
+    chainId: config.chainId,
+    to: config.escrowContract,
+    data: createEscrowInterface().encodeFunctionData('createTrade', [
+      input.tradeKey,
+      input.buyer,
+      input.seller,
+      parseAmountMicros(input.amountMicros),
+      parseAmountMicros(input.feeMicros),
+      BigInt(input.expiryUnixSeconds),
+    ]),
+  };
+}
+
 export function toTransactionRequest(call: PreparedContractCall): TransactionRequest {
   return {
     chainId: call.chainId,
@@ -127,5 +157,11 @@ function assertBytes32(value: string, field: string): void {
 export function assertEvmAddress(value: string, field: string): void {
   if (!isAddress(value)) {
     throw new Error(`${field} must be a valid EVM address`);
+  }
+}
+
+function assertUnixSeconds(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${field} must be a positive safe integer`);
   }
 }

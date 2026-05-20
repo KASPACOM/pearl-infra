@@ -106,6 +106,11 @@ export async function handleOtcHttpRequest(
     parts[3] === 'usdc-escrow' &&
     parts[4] === 'create-intent'
   ) {
+    const adminAuth = authorizeAdminRequest(request, options);
+    if ('statusCode' in adminAuth) {
+      return adminAuth;
+    }
+    requireAdminRole(adminAuth, 'operator');
     return { statusCode: 200, body: await service.prepareUsdcCreateTrade(parts[2], await readJsonBody(request)) };
   }
 
