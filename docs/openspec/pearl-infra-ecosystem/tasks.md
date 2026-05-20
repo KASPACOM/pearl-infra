@@ -273,8 +273,8 @@ Current delegation queue after PR #88:
   signing/broadcast boundary with real txids. Pearl testnet2 is no longer a
   mandatory gate because there is no usable faucet/liquidity; after simnet,
   the next live gate is explicitly approved low-cap mainnet.
-- Base ops owner: finish `9.6.7`; keep `9.6.9` blocked until explicit Base
-  mainnet approval.
+- Base ops owner: `9.6.7` is complete on Base Sepolia; keep `9.6.9` blocked
+  until explicit Base mainnet approval.
 - Oyster/prod ops owner: finish `9.10.6.b`, `9.10.8.d`, `9.10.9.b`, and
   `9.10.10.f` only when prod release is approved.
 - Pool planning owner: keep `10.12` blocked until one low-cap entry and one
@@ -452,8 +452,9 @@ Current delegation queue after PR #88:
   - Mock-token lifecycle evidence remains recorded in `contracts/usdc-escrow/deployments/base-sepolia-mock-run.json` as secondary isolated proof.
   - Native Base Sepolia stress evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-stress-20260518114919.json`, covering release, owner refund, buyer refund after expiry, cancel expired, pause/unpause, unauthorized callers, terminal trade ID reuse, parallel trades, expected revert selector/reason checks, and final zero escrow USDC balance.
 - [x] 9.6.6 Deploy the Base Sepolia USDC escrow and record contract address, deploy tx, owner, fee recipient, and native USDC address.
-- [ ] 9.6.7 Complete two-step ownership transfer to the approved multisig or approved testnet owner and record acceptance evidence.
-  - `transferOwnership` is initiated to `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`; acceptance tx and final `owner()` evidence are still required.
+- [x] 9.6.7 Complete two-step ownership transfer to the approved multisig or approved testnet owner and record acceptance evidence.
+  - Ownership acceptance is recorded by tx `0x65dce0852763075eb3a4618ca1deec5bbfa78cce4cc4610f8338b11749c810ab`; current Base Sepolia `owner()` is `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978` and `pendingOwner()` is the zero address.
+  - Evidence is linked from PR #23 comment `https://github.com/KASPACOM/pearl-infra/pull/23#issuecomment-4471406182`.
 - [x] 9.6.8 Keep Base mainnet deployment blocked until contract review, Base Sepolia evidence, multisig ownership plan, and explicit Sione approval are all recorded.
 - [ ] 9.6.9 If Base mainnet is approved later, record mainnet contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link before enabling production settlement.
 - [x] 9.6.10 Add operator runbook for late PRL funding, refunded USDC, failed PRL release, unknown Pearl spend, stale indexer, and emergency pause.
@@ -550,8 +551,8 @@ Loophole tracker after PR #74:
 - [x] Public side-effect mutation/leakage — generic side-effect read/write
   routes now require bearer admin auth (`support_read` for read, `operator`
   for write); public users must use proof and support-alert routes only.
-- [ ] Base Sepolia ownership acceptance evidence is not recorded yet — blocks
-  any Base mainnet path until `9.6.7` is completed.
+- [x] Base Sepolia ownership acceptance evidence is recorded; `9.6.7` is
+  complete.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
   after separate approval, ownership evidence, and live-run evidence.
 
@@ -627,6 +628,12 @@ Loophole tracker after PR #74:
       operator-created Base escrow exists.
     - [x] Add the admin/operator frontend action that creates the Base escrow
       from backend terms and records the `TradeCreated` transaction evidence.
+    - [x] Confirm the dev Oyster API/web deployment, public quote/accept/proof
+      path, and admin-auth read path after PR #94. Smoke trade
+      `trade_129c78c70faa719e55c4f2cd` reached `pearl_escrow_pending` with
+      Base Sepolia escrow contract `0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9`
+      on chain ID `84532`; remaining blocker is wallet-funded PRL plus
+      browser-signed Base transactions.
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
@@ -942,6 +949,11 @@ blockers visible for planning. See
     `createTrade` receipts.
   - [ ] 11.9.d Run the live Base Sepolia browser deposit against an
     operator-created escrow and record the `TradeCreated`/`Deposited` txids.
+    - Handoff: dev is deployed through PR #94, API/web health checks passed,
+      admin credentials stay server/session-only, and Base Sepolia ownership
+      is accepted by `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`. Next live
+      action is wallet signing: operator `createTrade`, buyer USDC
+      `approve`/`deposit`, then evidence verifier recording of the txids.
 - [x] 11.10 Replace the testnet2 escrow-run blocker with the approved
   simnet-to-low-cap-mainnet path.
   - No usable Pearl testnet faucet/liquidity exists. After simnet proof, the
