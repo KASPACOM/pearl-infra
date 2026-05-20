@@ -43,10 +43,14 @@ Current state after PR #81:
      has funded spend evidence: OTC release classified as `release`, OTC CLTV
      refund classified as `refund`, and bridge reserve release spent through
      the same 2-of-3 script-path signer policy.
-   - Remaining bridge custody gate: update/redeploy the simnet scanner so the
-     observed bridge reserve spend is classified as `exit_release` instead of
-     `unknown_spend`, rerun the proof with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`,
-     then record approved live reserve addresses and signer custody.
+   - The bridge reserve scanner gate passed on 2026-05-20:
+     `kaspacom-pearl-indexer-simnet` was redeployed from `origin/dev`, and the
+     proof rerun with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1` classified the
+     bridge reserve spend as `exit_release` with `amount_grains` and
+     `pearl_recipient` metadata.
+   - Remaining bridge custody gate: record approved live reserve addresses,
+     signer custody, relayer/operator identities, cap limits, and the full
+     low-cap entry/exit rehearsal evidence.
    - Treat `exit_release` as classification only; actual release authorization
      must still come from bridge-service matching against an approved pending
      exit, unique release txid, clean reconciliation, and cap limits.

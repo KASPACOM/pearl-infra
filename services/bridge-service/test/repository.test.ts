@@ -51,6 +51,51 @@ test('persists bridge state through JSON file repository', async () => {
   }
 });
 
+test('rejects duplicate Igra exit events and Pearl release txids in local repositories', async () => {
+  const memory = new InMemoryBridgeStateRepository();
+  await memory.upsertExitRequest(exitRequest({
+    exitId: 'exit-1',
+    pearlReleaseTxid: '22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1',
+  }));
+
+  await assert.rejects(
+    () => memory.upsertExitRequest(exitRequest({ exitId: 'exit-2' })),
+    /Igra exit event already belongs to exit exit-1/,
+  );
+  await assert.rejects(
+    () => memory.upsertExitRequest(exitRequest({
+      exitId: 'exit-3',
+      igraBurnLogIndex: 1,
+      pearlReleaseTxid: '0x22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1',
+    })),
+    /Pearl release txid already belongs to exit exit-1/,
+  );
+
+  const dir = await mkdtemp(join(tmpdir(), 'bridge-repo-conflicts-'));
+  try {
+    const json = new JsonFileBridgeStateRepository(join(dir, 'bridge-state.json'));
+    await json.upsertExitRequest(exitRequest({
+      exitId: 'exit-1',
+      pearlReleaseTxid: 'release_tx',
+    }));
+
+    await assert.rejects(
+      () => json.upsertExitRequest(exitRequest({ exitId: 'exit-2' })),
+      /Igra exit event already belongs to exit exit-1/,
+    );
+    await assert.rejects(
+      () => json.upsertExitRequest(exitRequest({
+        exitId: 'exit-3',
+        igraBurnLogIndex: 1,
+        pearlReleaseTxid: 'release_tx',
+      })),
+      /Pearl release txid already belongs to exit exit-1/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 function snapshotRecord(snapshotId: string): BridgeReconciliationSnapshotRecord {
   return {
     snapshotId,

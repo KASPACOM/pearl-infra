@@ -4,6 +4,7 @@ import type {
   BridgeExitRequest,
   WatchedBridgeAddressWithHistory,
 } from './types.js';
+import { matchReserveSpendToExit, type ReserveSpendMatch } from './reserve-spend-matcher.js';
 
 export interface BridgeReconciliationInput {
   depositWatches: readonly WatchedBridgeAddressWithHistory[];
@@ -29,7 +30,10 @@ export interface BridgeReserveSpendRow {
   spendTxid: string;
   spentOutpoint: string;
   classification: string;
+  matchStatus: ReserveSpendMatch['status'];
+  exitId?: string;
   amountGrains?: string;
+  blockers: string[];
   unknown: boolean;
 }
 
@@ -56,8 +60,18 @@ export function createBridgeReconciliationSnapshot(input: BridgeReconciliationIn
   const now = input.now ?? new Date();
   const staleAfterMs = input.staleAfterMs ?? 15 * 60 * 1000;
   const deposits = input.depositWatches.map(reconcileDepositWatch);
-  const reserveSpends = input.reserveWatches.flatMap(reconcileReserveSpends);
-  const confirmedReserveGrains = sumObservations(input.reserveWatches.flatMap((watch) => liveConfirmedObservations(watch.observations)));
+  const invalidReserveWatchIds = input.reserveWatches
+    .filter((watch) => watch.purpose !== 'bridge_reserve')
+    .map((watch) => watch.watchId)
+    .sort();
+  const validReserveWatches = input.reserveWatches.filter((watch) => watch.purpose === 'bridge_reserve');
+  const usedReleaseTxids = new Set(
+    input.exits
+      .filter((exit) => exit.pearlReleaseTxid !== undefined)
+      .map((exit) => exit.pearlReleaseTxid as string),
+  );
+  const reserveSpends = input.reserveWatches.flatMap((watch) => reconcileReserveSpends(watch, input.exits, usedReleaseTxids));
+  const confirmedReserveGrains = sumObservations(validReserveWatches.flatMap((watch) => liveConfirmedObservations(watch.observations)));
   const knownReserveSpendGrains = sumStrings(
     reserveSpends
       .filter((spend) => !spend.unknown && spend.amountGrains !== undefined)
@@ -78,6 +92,7 @@ export function createBridgeReconciliationSnapshot(input: BridgeReconciliationIn
     unknownReserveSpendCount,
     staleWatchIds,
     unsafeDepositCount: deposits.filter((deposit) => deposit.status === 'unsafe' || deposit.status === 'reorged').length,
+    invalidReserveWatchCount: invalidReserveWatchIds.length,
   });
 
   return {
@@ -146,17 +161,35 @@ function reconcileDepositWatch(watch: WatchedBridgeAddressWithHistory): BridgeDe
   };
 }
 
-function reconcileReserveSpends(watch: WatchedBridgeAddressWithHistory): BridgeReserveSpendRow[] {
+function reconcileReserveSpends(
+  watch: WatchedBridgeAddressWithHistory,
+  exits: readonly BridgeExitRequest[],
+  usedReleaseTxids: ReadonlySet<string>,
+): BridgeReserveSpendRow[] {
   return watch.spends.map((spend) => {
+    if (watch.purpose !== 'bridge_reserve') {
+      return {
+        reserveId: watch.watchId,
+        spendTxid: spend.spendTxid,
+        spentOutpoint: spend.spentOutpoint,
+        classification: spend.classification,
+        matchStatus: 'unknown_spend',
+        blockers: ['unexpected_reserve_watch_purpose'],
+        unknown: true,
+      };
+    }
     const amountGrains = readString(spend.classificationData, 'amount_grains');
-    const pearlRecipient = readString(spend.classificationData, 'pearl_recipient');
-    const knownExitRelease = spend.classification === 'exit_release' && amountGrains !== undefined && pearlRecipient !== undefined;
+    const match = matchReserveSpendToExit({ spend, exits, usedReleaseTxids });
+    const knownExitRelease = match.status === 'matched_exit_release';
     return {
       reserveId: watch.watchId,
       spendTxid: spend.spendTxid,
       spentOutpoint: spend.spentOutpoint,
       classification: spend.classification,
+      matchStatus: match.status,
+      ...(match.exitId ? { exitId: match.exitId } : {}),
       ...(amountGrains ? { amountGrains } : {}),
+      blockers: match.blockers,
       unknown: !knownExitRelease,
     };
   });
@@ -199,11 +232,13 @@ function createBlockers(input: {
   unknownReserveSpendCount: number;
   staleWatchIds: readonly string[];
   unsafeDepositCount: number;
+  invalidReserveWatchCount: number;
 }): string[] {
   const blockers: string[] = [];
   if (input.reserveDeficit) blockers.push('reserve_deficit');
   if (input.unknownReserveSpendCount > 0) blockers.push('unknown_reserve_spend');
   if (input.staleWatchIds.length > 0) blockers.push('stale_pearl_watches');
   if (input.unsafeDepositCount > 0) blockers.push('unsafe_deposit_observation');
+  if (input.invalidReserveWatchCount > 0) blockers.push('unexpected_reserve_watch_purpose');
   return blockers;
 }

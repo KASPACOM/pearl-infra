@@ -104,8 +104,6 @@ Operationally, mainnet remains blocked until:
 
 - one low-cap entry and one low-cap exit pass using Pearl simnet proof and clean
   reserve reconciliation;
-- the simnet scanner is redeployed/updated and the proof passes with
-  `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`;
 - the final owner/multisig address is selected;
 - the relayer and operator signer addresses are selected and held by separate
   people/systems;
@@ -134,6 +132,13 @@ Latest evidence:
 
 - `docs/operations/bridge-simnet-rehearsal-evidence-20260519.md`
 - `docs/operations/bridge-simnet-rehearsal-evidence-20260519.json`
+- `docs/operations/pearl-multisig-funded-simnet-evidence-20260520.md`
+- `docs/operations/pearl-multisig-funded-simnet-evidence-20260520.json`
+
+2026-05-20 scanner gate result: `kaspacom-pearl-indexer-simnet` was redeployed
+from `origin/dev`, and `npm run prove:simnet-multisig` passed with
+`PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`. The bridge reserve spend was classified
+as `exit_release` with `amount_grains` and `pearl_recipient` metadata.
 
 Remaining bridge/OTC blockers and the recommended PR order are tracked in
 `docs/operations/bridge-otc-gap-review-20260519.md`.

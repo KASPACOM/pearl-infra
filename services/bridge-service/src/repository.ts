@@ -59,6 +59,7 @@ export class InMemoryBridgeStateRepository implements BridgeStateRepository {
   }
 
   async upsertExitRequest(exit: BridgeExitRequest): Promise<{ exit: BridgeExitRequest; created: boolean }> {
+    assertNoExitConflict([...this.exits.values()], exit);
     const existing = this.exits.get(exit.exitId);
     if (existing) {
       const merged = mergeExit(existing, exit);
@@ -141,6 +142,7 @@ export class JsonFileBridgeStateRepository implements BridgeStateRepository {
 
   async upsertExitRequest(exit: BridgeExitRequest): Promise<{ exit: BridgeExitRequest; created: boolean }> {
     const state = await this.readState();
+    assertNoExitConflict(state.exits, exit);
     const index = state.exits.findIndex((candidate) => candidate.exitId === exit.exitId);
     if (index >= 0) {
       const merged = mergeExit(state.exits[index], exit);
@@ -226,6 +228,34 @@ function mergeExit(existing: BridgeExitRequest, next: BridgeExitRequest): Bridge
     createdAt: existing.createdAt,
     updatedAt: next.updatedAt,
   };
+}
+
+function assertNoExitConflict(existing: readonly BridgeExitRequest[], next: BridgeExitRequest): void {
+  const burnConflict = existing.find((candidate) => (
+    candidate.exitId !== next.exitId &&
+    candidate.igraBurnTxid === next.igraBurnTxid &&
+    candidate.igraBurnLogIndex === next.igraBurnLogIndex
+  ));
+  if (burnConflict) {
+    throw new Error(`Igra exit event already belongs to exit ${burnConflict.exitId}`);
+  }
+
+  if (!next.pearlReleaseTxid) return;
+  const normalizedNextRelease = normalizePearlTxid(next.pearlReleaseTxid);
+  const releaseConflict = existing.find((candidate) => (
+    candidate.exitId !== next.exitId &&
+    candidate.pearlReleaseTxid !== undefined &&
+    normalizePearlTxid(candidate.pearlReleaseTxid) === normalizedNextRelease
+  ));
+  if (releaseConflict) {
+    throw new Error(`Pearl release txid already belongs to exit ${releaseConflict.exitId}`);
+  }
+}
+
+function normalizePearlTxid(txid: string): string {
+  const normalized = txid.toLowerCase();
+  if (/^0x[0-9a-f]{64}$/.test(normalized)) return normalized.slice(2);
+  return normalized;
 }
 
 function isNotFound(error: unknown): boolean {

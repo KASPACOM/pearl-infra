@@ -15,6 +15,26 @@ test('matches reserve spend to pending exit by amount and Pearl recipient', () =
   assert.deepEqual(result.blockers, []);
 });
 
+test('normalizes amount strings and recipient casing before matching reserve spends', () => {
+  const result = matchReserveSpendToExit({
+    spend: spend({ classificationData: { amount_grains: '000100', pearl_recipient: 'TPRL1RECIPIENT' } }),
+    exits: [exit()],
+  });
+
+  assert.equal(result.status, 'matched_exit_release');
+  assert.equal(result.exitId, 'exit-1');
+});
+
+test('rejects malformed reserve spend amount fields instead of matching loosely', () => {
+  const result = matchReserveSpendToExit({
+    spend: spend({ classificationData: { amount_grains: '100.0', pearl_recipient: 'tprl1recipient' } }),
+    exits: [exit()],
+  });
+
+  assert.equal(result.status, 'unknown_spend');
+  assert.deepEqual(result.blockers, ['reserve_spend_missing_match_fields']);
+});
+
 test('routes unknown, amount mismatch, recipient mismatch, and duplicate release txid to manual blockers', () => {
   assert.equal(matchReserveSpendToExit({
     spend: spend({ classificationData: { amount_grains: '100', pearl_recipient: 'other' } }),

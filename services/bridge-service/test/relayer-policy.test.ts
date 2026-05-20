@@ -4,14 +4,14 @@ import test from 'node:test';
 import {
   decideDepositMint,
   decideExitRelease,
-} from '../src/relayer-policy.ts';
+} from '../dist/relayer-policy.js';
 import {
   createDepositBridgeEvent,
   createExitBridgeEvent,
   evaluateBridgeAttestationQuorum,
   type BridgeAttestationQuorum,
 } from '../src/attestations.ts';
-import { createBridgeReconciliationSnapshot } from '../src/reconciliation.ts';
+import { createBridgeReconciliationSnapshot } from '../dist/reconciliation.js';
 import type { BridgeAddressObservation, BridgeExitRequest, WatchedBridgeAddressWithHistory } from '../src/types.ts';
 import type { BridgePilotLimits } from '../src/types.ts';
 

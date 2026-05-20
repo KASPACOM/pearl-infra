@@ -14,16 +14,16 @@ export function matchReserveSpendToExit(input: {
 }): ReserveSpendMatch {
   if (input.spend.classification !== 'exit_release') return unknownSpend(input.spend, 'reserve_spend_not_exit_release');
 
-  const amountGrains = readString(input.spend.classificationData, 'amount_grains');
-  const pearlRecipient = readString(input.spend.classificationData, 'pearl_recipient');
+  const amountGrains = readAmountGrains(input.spend.classificationData, 'amount_grains');
+  const pearlRecipient = readAddress(input.spend.classificationData, 'pearl_recipient');
   const spendTxid = normalizePearlTxid(input.spend.spendTxid);
   if (!amountGrains || !pearlRecipient) {
     return unknownSpend(input.spend, 'reserve_spend_missing_match_fields');
   }
   const candidates = input.exits.filter((exit) => exit.status === 'pending' || exit.status === 'processed' || exit.status === 'released');
   const exactCandidates = candidates.filter((exit) => (
-    exit.requestedAmountGrains === amountGrains &&
-    exit.pearlRecipient === pearlRecipient
+    normalizeAmountGrains(exit.requestedAmountGrains) === amountGrains &&
+    normalizeAddress(exit.pearlRecipient) === pearlRecipient
   ));
   if (exactCandidates.length > 1) {
     return unknownSpend(input.spend, 'ambiguous_exit_release_match');
@@ -70,14 +70,14 @@ export function matchReserveSpendToExit(input: {
       blockers: [],
     };
   }
-  if (amountGrains && candidates.some((exit) => exit.requestedAmountGrains === amountGrains)) {
+  if (amountGrains && candidates.some((exit) => normalizeAmountGrains(exit.requestedAmountGrains) === amountGrains)) {
     return {
       spendTxid: input.spend.spendTxid,
       status: 'recipient_mismatch',
       blockers: ['reserve_spend_recipient_mismatch'],
     };
   }
-  if (pearlRecipient && candidates.some((exit) => exit.pearlRecipient === pearlRecipient)) {
+  if (pearlRecipient && candidates.some((exit) => normalizeAddress(exit.pearlRecipient) === pearlRecipient)) {
     return {
       spendTxid: input.spend.spendTxid,
       status: 'amount_mismatch',
@@ -102,11 +102,26 @@ function unknownSpend(spend: BridgeAddressSpend, blocker: string): ReserveSpendM
   };
 }
 
-function readString(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
+function readAmountGrains(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
   const value = metadata?.[key];
-  if (typeof value === 'string' && value.length > 0) return value;
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') return normalizeAmountGrains(value);
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return String(value);
   return undefined;
+}
+
+function normalizeAmountGrains(value: string): string | undefined {
+  if (!/^\d+$/.test(value)) return undefined;
+  return BigInt(value).toString();
+}
+
+function readAddress(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
+  const value = metadata?.[key];
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  return normalizeAddress(value);
+}
+
+function normalizeAddress(address: string): string {
+  return address.toLowerCase();
 }
 
 function normalizePearlTxid(txid: string): string {
