@@ -397,6 +397,10 @@ Current delegation queue after PR #88:
   - [x] 9.4.6.d Wire the admin Base escrow setup action to prepare the
     server-authoritative `createTrade` intent, send the owner transaction from
     the operator wallet, and audit the confirmed tx as a side effect.
+  - [x] 9.4.6.e Harden the admin Base setup path so admin tokens are never
+    compiled into the public web bundle, create-intent/side-effect audit actors
+    are stamped from bearer credentials, and `createTrade` is chain-verified
+    before and after wallet broadcast.
 - [x] 9.4.7 Display late funding, refunded, reorged, stale indexer, and manual-review states without offering release actions to users.
   - [x] 9.4.7.a Add shared state families and failure banners for all manual
     review states, with checkout/proof models explicitly hiding release actions.
@@ -933,7 +937,10 @@ blockers visible for planning. See
     injected-wallet connect/switch, USDC approve, and escrow deposit calls.
   - [x] 11.9.b Connect the OTC admin frontend to the server-authoritative Base
     `createTrade` intent and operator wallet broadcast path.
-  - [ ] 11.9.c Run the live Base Sepolia browser deposit against an
+  - [x] 11.9.c Harden the OTC admin frontend/API testing path against public
+    token leakage, actor spoofing, stale side-effect evidence, and unverified
+    `createTrade` receipts.
+  - [ ] 11.9.d Run the live Base Sepolia browser deposit against an
     operator-created escrow and record the `TradeCreated`/`Deposited` txids.
 - [x] 11.10 Replace the testnet2 escrow-run blocker with the approved
   simnet-to-low-cap-mainnet path.

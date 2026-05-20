@@ -29,6 +29,7 @@ import {
   type AdminTradeSummary,
   type OtcSideEffect,
   type SupportAlertSeverity,
+  type UsdcEscrowVerification,
 } from '../otc-api-client.js';
 import { BrandLoader, DataRow, StateBadge } from '../components/Primitives.js';
 import { buildStateBadge } from '../page-models.js';
@@ -455,6 +456,7 @@ export function AdminTradesPage() {
       if (wallet.chainId !== detail.trade.usdcEscrow.chainId) {
         throw new Error(`Switch operator wallet to chain ${detail.trade.usdcEscrow.chainId}.`);
       }
+      assertEscrowCanBeCreated(await client.verifyUsdcEscrowTerms(detail.trade.tradeId));
       const intent = await client.prepareUsdcCreateTrade(detail.trade.tradeId, {
         idempotencyKey: createClientRequestId('admin_usdc_create_trade'),
         actor: 'otc-admin-ui',
@@ -477,6 +479,7 @@ export function AdminTradesPage() {
       setBaseActionStatus('creating');
       const txHash = await sendAndWaitInjectedEvmTransaction(toTransactionRequest(createCall), wallet.address);
       setBaseCreateTxHash(txHash);
+      assertEscrowCreated(await client.verifyUsdcEscrowTerms(detail.trade.tradeId));
       setBaseActionStatus('recording');
       await client.recordSideEffect(
         detail.trade.tradeId,
@@ -774,7 +777,7 @@ function BaseEscrowCreateTradePanel({
     (effect) => effect.effectType === 'usdc_create_trade' && (effect.status === 'submitted' || effect.status === 'confirmed'),
   );
   const isBusy = status === 'connecting' || status === 'switching' || status === 'preparing' || status === 'creating' || status === 'recording';
-  const canPrepare = !alreadyCreated && !isBusy && !trade.usdcEscrow.depositTxHash;
+  const canPrepare = !isBusy && !trade.usdcEscrow.depositTxHash;
   const action = getBaseCreateTradeAction(trade, wallet, canPrepare);
 
   return (
@@ -1032,6 +1035,32 @@ function getBaseCreateTradeStatusLabel(status: BaseOperatorActionStatus): string
     default:
       return 'Working...';
   }
+}
+
+function assertEscrowCanBeCreated(verification: UsdcEscrowVerification): void {
+  const status = verification.onChain?.status;
+  if (!status) {
+    throw new Error('Base escrow verification did not return on-chain state.');
+  }
+  if (status === 'none') {
+    return;
+  }
+  if (verification.verified) {
+    throw new Error(`Base escrow already exists on-chain with status ${status}; refresh the trade before retrying.`);
+  }
+  throw new Error(`Base escrow already exists with mismatched terms: ${formatVerificationMismatches(verification)}.`);
+}
+
+function assertEscrowCreated(verification: UsdcEscrowVerification): void {
+  const status = verification.onChain?.status;
+  if (verification.verified && status === 'created') {
+    return;
+  }
+  throw new Error(`Base createTrade did not verify on-chain after confirmation: status ${status ?? 'unknown'}; mismatches ${formatVerificationMismatches(verification)}.`);
+}
+
+function formatVerificationMismatches(verification: UsdcEscrowVerification): string {
+  return verification.mismatches.length > 0 ? verification.mismatches.join(', ') : 'none reported';
 }
 
 function parseOptionalNumber(value: string): number | undefined {
