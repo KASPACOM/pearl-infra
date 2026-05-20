@@ -11,6 +11,11 @@ Pearl simnet until mainnet custody is explicitly approved.
 - Prepare Igra mainnet deployment tooling now.
 - Do not deploy to Igra mainnet until the explicit mainnet approval gates below
   are satisfied.
+- After PR #88, treat `exit_release` as a required scanner shape signal for
+  bridge reserve-release proof, not as final authorization by itself. The bridge
+  still requires an exact pending-exit match by Pearl recipient and amount,
+  unique release txid, clean reserve reconciliation, cap checks, relayer quorum,
+  and manual operator approval.
 
 The currently configured `IGRA_RPC_URL` in the operator environment points to
 Galleon chain `38836`, not Igra mainnet chain `38833`.
@@ -99,6 +104,8 @@ Operationally, mainnet remains blocked until:
 
 - one low-cap entry and one low-cap exit pass using Pearl simnet proof and clean
   reserve reconciliation;
+- the simnet scanner is redeployed/updated and the proof passes with
+  `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`;
 - the final owner/multisig address is selected;
 - the relayer and operator signer addresses are selected and held by separate
   people/systems;

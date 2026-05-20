@@ -180,10 +180,31 @@ Merged implementation checkpoints:
   now remains a liability as `processed` until Pearl release spend confirmation,
   Igra polling is replay-safe and address-validated, checkpoints are monotonic,
   and Postgres enforces unique exit IDs plus unique release txids.
+- PR #77 — synced the checklist after bridge hardening.
+- PR #78 — added the full OTC live evidence verifier.
+- PR #79 — applied Oysters Market branding.
+- PR #80 — added bridge simnet rehearsal evidence for deposit, mint, exit,
+  release, proof, and reserve reconciliation.
+- PR #81 — prepared guarded bridge mainnet deployment gates.
+- PR #82 — synced bridge/OTC remaining work.
+- PR #83 — applied final Oysters branding assets.
+- PR #84 — tightened EVM bridge pilot safety coverage.
+- PR #85 — closed Oysters branding edge cases.
+- PR #86 — added the Pearl multisig simnet escrow package.
+- PR #87 — hardened bridge live deployment gates.
+- PR #88 — hardened the PRL-side multisig proof gates: strict refund locktime
+  validation, x-only signer metadata, Taproot control-block recomputation,
+  `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`, exact reserve-release matching by
+  amount plus Pearl recipient, duplicate pending-exit blockers, malformed
+  `exit_release` blockers, and docs clarifying that `exit_release` is only a
+  shape signal, not final authorization.
 
-Review snapshot after PR #76: PRs #71-#76 are merged into `dev`. Bridge live
-indexing is code-complete for the current mocked/local proof layer, with real
-bridge confidence now gated by `10.8.10` simnet rehearsal evidence.
+Review snapshot after PR #88: PRs #71-#88 are merged into `dev`. The bridge
+service and PRL-side proof strategy now fail closed for the known reserve-spend
+loopholes. Mainnet is still blocked until the live simnet scanner classifies the
+reserve release as `exit_release`, the proof passes with
+`PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`, and live custody addresses/signer policy
+are approved.
 
 Current Pearl OTC code/workflow status:
 
@@ -217,25 +238,22 @@ Current Pearl OTC code/workflow status:
   notes, manual-review notes, failed alert-delivery replay, and the public
   support/error alert form, while settlement execution controls stay absent.
 
-Current delegation queue after PR #76:
+Current delegation queue after PR #88:
 
-- Bridge events/indexer owner: `10.8.7.b`, `10.8.8.b`, and `10.8.9.b` are now
-  covered by the hardened bridge-service Igra RPC poller, monotonic checkpoint
-  store, Postgres exit repository, and reserve-spend applier. Next bridge
-  evidence task is `10.8.10` simnet rehearsal.
+- Bridge proof/scanner owner: PR #88 closed the strategy loopholes in code and
+  tests. Next bridge evidence task is to redeploy/update the simnet scanner
+  classifier, then rerun the proof with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`
+  and freshly-created writable Pearl simnet deposit/release txids.
 - Bridge FE owner: implement `10.10.5` proof-page/frontend models for deposit
   status, exit status, reserve backing, blockers, public audit fields, event
   hashes, and quorum counts.
-- Bridge rehearsal owner: `10.8.10` now has local-Igra rehearsal evidence
-  using real public Pearl simnet deposit/release txids. Before any pilot, repeat
-  with freshly-created writable Pearl simnet txids once `pearld`/wallet
-  credentials are available.
 - Bridge ops/custody owner: complete `10.11.3` by selecting live reserve
-  addresses, signer policy, hot/warm/cold reserve caps, monitoring alerts, and
-  an emergency pause drill.
+  addresses, signer policy, hot/warm/cold reserve caps, signer identities,
+  monitoring alerts, and an emergency pause drill.
 - Bridge mainnet-prep owner: Pearl testnet liquidity is unavailable, so prepare
-  Igra mainnet deployment tooling behind explicit chain/approval/role gates and
-  keep Pearl proof testing on simnet until mainnet custody is approved.
+  Igra mainnet deployment tooling behind explicit chain/approval/role gates,
+  first prove the Galleon/replacement deployment path, and keep Pearl proof
+  testing on simnet until mainnet custody is approved.
 - Threshold authorization owner: scope `10.13.1` through `10.13.3` for
   federation membership, signer custody, threshold/FROST-style authorization,
   and public reserve proof snapshots.
@@ -733,9 +751,19 @@ Loophole tracker after PR #74:
   - [x] 10.8.9.a Add reserve-spend matcher for exact exit release matches, amount mismatch, recipient mismatch, duplicate release txid, and unknown spend blockers.
   - [x] 10.8.9.b Wire reserve-spend matching into the live Pearl spend scanner and update `bridge_exit_requests` on exact matches.
     - 2026-05-19 hardening: Igra `ExitProcessed` is treated as `processed`, not `released`; it remains an exit liability until the Pearl reserve spend scanner observes and matches the actual release txid.
+  - [x] 10.8.9.c Harden reserve-spend matching so an `exit_release` only counts
+    as known when both `amount_grains` and `pearl_recipient` are present and
+    match one unique pending exit; amount-only, malformed, mismatched, or
+    ambiguous duplicate cases remain reconciliation blockers.
 - [x] 10.8.10 Run a bridge simnet rehearsal with real Pearl deposit txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve reconciliation evidence.
   - 2026-05-19: Added `npm --workspace @kaspacom/bridge-service run rehearse:simnet-bridge`, which builds the bridge contracts, deploys fresh local `WrappedPearl`/`PearlBridge` receipts on Anvil chain `19416`, claims real public Pearl simnet deposit txid `442ea8d4fe37cb58e7946bec2cae7a9b3197e751188b3bdf0c143a6edc374164:0`, mirrors the Igra exit request/process logs through the bridge poller, matches real Pearl release txid `22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1`, and records clean reserve reconciliation evidence in `docs/operations/bridge-simnet-rehearsal-evidence-20260519.md`.
   - [ ] 10.8.10.a Repeat the rehearsal with freshly-created writable Pearl simnet deposit/release txids once `pearld`/wallet credentials are available; this is the remaining pre-pilot live-infra confidence gate.
+  - [x] 10.8.10.b Add `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1` to the multisig
+    simnet proof so the proof fails unless the scanner classifies the reserve
+    spend as `exit_release`.
+  - [ ] 10.8.10.c Redeploy/update the simnet scanner classifier and rerun the
+    proof with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`; this is the hard
+    fail-closed gate before any low-cap PRL mainnet pilot.
 - [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
   - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.
   - [x] 10.9.2 Harden bridge relayer guardrails after PR #65 strategy review:
