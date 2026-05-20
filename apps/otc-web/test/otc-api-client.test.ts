@@ -88,7 +88,7 @@ test('gets escrow verification and side-effect routes', async () => {
   const intent = await client.prepareUsdcCreateTrade('trade_1', {
     idempotencyKey: 'intent-1',
     actor: 'otc-web',
-  });
+  }, 'admin-token');
   const verification = await client.verifyUsdcEscrowTerms('trade_1');
   const sideEffects = await client.listSideEffects('trade_1');
   const recorded = await client.recordSideEffect('trade_1', {
@@ -96,17 +96,19 @@ test('gets escrow verification and side-effect routes', async () => {
     effectType: 'usdc_deposit_observed',
     status: 'confirmed',
     actor: 'operator',
-  });
+  }, 'admin-token');
 
   assert.equal(intent.tradeId, 'trade_1');
   assert.equal(verification.depositAllowed, true);
   assert.equal(sideEffects.length, 1);
   assert.equal(recorded.effectType, 'usdc_deposit_observed');
   assert.equal(calls[0].url, 'https://api.example.test/otc/trades/trade_1/usdc-escrow/create-intent');
+  assert.equal(new Headers(calls[0].init.headers).get('authorization'), 'Bearer admin-token');
   assert.equal(calls[1].url, 'https://api.example.test/otc/trades/trade_1/usdc-escrow/verification');
   assert.equal(calls[2].url, 'https://api.example.test/otc/trades/trade_1/side-effects');
   assert.equal(calls[3].url, 'https://api.example.test/otc/trades/trade_1/side-effects');
   assert.equal(calls[3].init.method, 'POST');
+  assert.equal(new Headers(calls[3].init.headers).get('authorization'), 'Bearer admin-token');
 });
 
 test('gets bearer-gated admin list and debug detail routes', async () => {

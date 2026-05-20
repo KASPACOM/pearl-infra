@@ -8,6 +8,7 @@ import {
   createEscrowInterface,
   createUsdcInterface,
   getBaseEscrowFrontendConfig,
+  prepareEscrowCreateTradeCall,
   prepareEscrowDepositCall,
   prepareUsdcApprovalCall,
   toTransactionRequest,
@@ -51,6 +52,32 @@ test('prepares an escrow deposit call using the shared ABI', () => {
   assert.equal(tx.data, call.data);
 });
 
+test('prepares an operator createTrade call using server-authoritative terms', () => {
+  const config = getBaseEscrowFrontendConfig('base_sepolia');
+  const call = prepareEscrowCreateTradeCall(
+    {
+      tradeKey: TRADE_KEY,
+      buyer: '0x3333333333333333333333333333333333333333',
+      seller: '0x4444444444444444444444444444444444444444',
+      amountMicros: '170000000',
+      feeMicros: '1700000',
+      expiryUnixSeconds: 1_779_120_900,
+    },
+    'base_sepolia',
+  );
+  const parsed = createEscrowInterface().parseTransaction({ data: call.data });
+
+  assert.equal(call.chainId, config.chainId);
+  assert.equal(getAddress(call.to), getAddress(config.escrowContract));
+  assert.equal(parsed?.name, 'createTrade');
+  assert.equal(parsed?.args[0], TRADE_KEY);
+  assert.equal(getAddress(parsed?.args[1]), getAddress('0x3333333333333333333333333333333333333333'));
+  assert.equal(getAddress(parsed?.args[2]), getAddress('0x4444444444444444444444444444444444444444'));
+  assert.equal(parsed?.args[3], 170000000n);
+  assert.equal(parsed?.args[4], 1700000n);
+  assert.equal(parsed?.args[5], 1_779_120_900n);
+});
+
 test('prepares approval and deposit calls from trade-specific API config', () => {
   const callConfig = {
     chainId: 84532,
@@ -81,6 +108,21 @@ test('creates an ethers contract bound to the configured escrow address', () => 
 test('rejects malformed frontend contract inputs before wallet handoff', () => {
   assert.throws(() => prepareEscrowDepositCall('not-bytes32'), /tradeKey must be a 32-byte hex string/);
   assert.throws(() => prepareUsdcApprovalCall('-1'), /amountMicros must be a base-10 integer string/);
+  assert.throws(
+    () =>
+      prepareEscrowCreateTradeCall(
+        {
+          tradeKey: TRADE_KEY,
+          buyer: 'not-address',
+          seller: '0x4444444444444444444444444444444444444444',
+          amountMicros: '170000000',
+          feeMicros: '1700000',
+          expiryUnixSeconds: 1_779_120_900,
+        },
+        'base_sepolia',
+      ),
+    /buyer must be a valid EVM address/,
+  );
   assert.throws(
     () =>
       prepareEscrowDepositCall(TRADE_KEY, {

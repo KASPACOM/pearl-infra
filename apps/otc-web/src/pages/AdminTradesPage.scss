@@ -315,6 +315,25 @@
   }
 }
 
+.admin-base-create {
+  border: 1px solid var(--om-line);
+  border-radius: 8px;
+  padding: 12px;
+
+  button {
+    justify-self: start;
+  }
+
+  small,
+  code {
+    overflow-wrap: anywhere;
+  }
+}
+
+.admin-base-create__error {
+  color: var(--om-danger);
+}
+
 .admin-action-form__grid,
 .admin-proof-grid {
   display: grid;

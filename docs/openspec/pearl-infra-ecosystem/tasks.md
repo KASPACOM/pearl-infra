@@ -394,6 +394,9 @@ Current delegation queue after PR #88:
     match the accepted buyer address, PRL funding must be confirmed, and
     trade/verification/wallet state is re-read immediately before approval and
     deposit broadcast.
+  - [x] 9.4.6.d Wire the admin Base escrow setup action to prepare the
+    server-authoritative `createTrade` intent, send the owner transaction from
+    the operator wallet, and audit the confirmed tx as a side effect.
 - [x] 9.4.7 Display late funding, refunded, reorged, stale indexer, and manual-review states without offering release actions to users.
   - [x] 9.4.7.a Add shared state families and failure banners for all manual
     review states, with checkout/proof models explicitly hiding release actions.
@@ -618,6 +621,8 @@ Loophole tracker after PR #74:
       routes and executable Base wallet deposit path, so a live run can proceed
       quote -> accept -> checkout -> approve/deposit from the browser once the
       operator-created Base escrow exists.
+    - [x] Add the admin/operator frontend action that creates the Base escrow
+      from backend terms and records the `TradeCreated` transaction evidence.
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
@@ -926,7 +931,9 @@ blockers visible for planning. See
   real PRL signing/broadcast path.
   - [x] 11.9.a Connect the OTC frontend checkout to real OTC API data,
     injected-wallet connect/switch, USDC approve, and escrow deposit calls.
-  - [ ] 11.9.b Run the live Base Sepolia browser deposit against an
+  - [x] 11.9.b Connect the OTC admin frontend to the server-authoritative Base
+    `createTrade` intent and operator wallet broadcast path.
+  - [ ] 11.9.c Run the live Base Sepolia browser deposit against an
     operator-created escrow and record the `TradeCreated`/`Deposited` txids.
 - [x] 11.10 Replace the testnet2 escrow-run blocker with the approved
   simnet-to-low-cap-mainnet path.

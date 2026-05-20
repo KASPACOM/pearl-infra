@@ -126,10 +126,16 @@ test('serves quote, accept, trade, and proof routes', async () => {
     assert.equal(proof.deadlines.usdcDepositDeadline, '2026-05-16T12:15:00.000Z');
     assert.equal(proof.events.length, 1);
 
+    const publicCreateIntentResponse = await postJson(baseUrl, `/otc/trades/${trade.tradeId}/usdc-escrow/create-intent`, {
+      idempotencyKey: 'http-create-trade-public',
+      actor: 'spoofed-operator',
+    });
+    assert.equal(publicCreateIntentResponse.status, 401);
+
     const createIntentResponse = await postJson(baseUrl, `/otc/trades/${trade.tradeId}/usdc-escrow/create-intent`, {
       idempotencyKey: 'http-create-trade-1',
       actor: 'settlement-worker',
-    });
+    }, operatorHeaders);
     assert.equal(createIntentResponse.status, 200);
     const createIntent = (await createIntentResponse.json()) as { tradeKey: string; sideEffect: { effectType: string } };
     assert.match(createIntent.tradeKey, /^0x[0-9a-f]{64}$/);

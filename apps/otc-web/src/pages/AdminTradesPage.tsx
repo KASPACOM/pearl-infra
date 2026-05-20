@@ -13,6 +13,16 @@ import {
   type AlertDeliveryModel,
 } from '../admin-models.js';
 import { createClientRequestId, createOtcClient, getInitialAdminToken, persistAdminToken } from '../api.js';
+import { prepareEscrowCreateTradeCall, toTransactionRequest } from '../base-escrow-client.js';
+import {
+  connectInjectedEvmWallet,
+  hasInjectedEvmWallet,
+  readInjectedEvmWallet,
+  sendAndWaitInjectedEvmTransaction,
+  subscribeInjectedEvmWalletChanges,
+  switchInjectedEvmChain,
+  type EvmWalletSnapshot,
+} from '../evm-wallet.js';
 import {
   OtcApiError,
   type AdminTradeDebugDetail,
@@ -25,6 +35,7 @@ import { buildStateBadge } from '../page-models.js';
 import { getAdminTradeIdFromPath, getBrowserPathname } from '../routing.js';
 
 type NoteMode = 'support_alert' | 'manual_review';
+type BaseOperatorActionStatus = 'idle' | 'connecting' | 'switching' | 'preparing' | 'creating' | 'recording' | 'confirmed' | 'error';
 
 const ADMIN_LIMIT_OPTIONS = [10, 25, 50, 100] as const;
 
@@ -60,10 +71,37 @@ export function AdminTradesPage() {
   const [publicSeverity, setPublicSeverity] = useState<SupportAlertSeverity>('warning');
   const [publicMessage, setPublicMessage] = useState('');
   const [publicContact, setPublicContact] = useState('');
+  const [operatorWallet, setOperatorWallet] = useState<EvmWalletSnapshot>({ connected: false });
+  const [baseActionStatus, setBaseActionStatus] = useState<BaseOperatorActionStatus>('idle');
+  const [baseActionError, setBaseActionError] = useState<string>();
+  const [baseCreateTxHash, setBaseCreateTxHash] = useState<string>();
 
   const rowModels = useMemo(() => rows.map(buildAdminTradeRow), [rows]);
   const deliveryRows = useMemo(() => buildAlertDeliveries(detail), [detail]);
   const metrics = useMemo(() => buildAdminMetrics(rows), [rows]);
+
+  useEffect(() => {
+    let active = true;
+    const refreshWallet = () => {
+      void readInjectedEvmWallet()
+        .then((snapshot) => {
+          if (active) {
+            setOperatorWallet(snapshot);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setOperatorWallet({ connected: false });
+          }
+        });
+    };
+    refreshWallet();
+    const unsubscribe = subscribeInjectedEvmWalletChanges(refreshWallet);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!adminToken) {
@@ -376,6 +414,100 @@ export function AdminTradesPage() {
     }
   }, [detail]);
 
+  const connectOperatorWallet = useCallback(async () => {
+    setBaseActionStatus('connecting');
+    setBaseActionError(undefined);
+    try {
+      setOperatorWallet(await connectInjectedEvmWallet());
+      setBaseActionStatus('idle');
+    } catch (walletError) {
+      setBaseActionStatus('error');
+      setBaseActionError(walletError instanceof Error ? walletError.message : 'Operator wallet connection failed.');
+    }
+  }, []);
+
+  const switchOperatorNetwork = useCallback(async () => {
+    if (!detail) return;
+    setBaseActionStatus('switching');
+    setBaseActionError(undefined);
+    try {
+      await switchInjectedEvmChain(detail.trade.usdcEscrow.chainId);
+      setOperatorWallet(await readInjectedEvmWallet());
+      setBaseActionStatus('idle');
+    } catch (networkError) {
+      setBaseActionStatus('error');
+      setBaseActionError(networkError instanceof Error ? networkError.message : 'Operator network switch failed.');
+    }
+  }, [detail]);
+
+  const createBaseTrade = useCallback(async () => {
+    if (!detail || !adminToken) return;
+    setBaseActionStatus('preparing');
+    setBaseActionError(undefined);
+    setBaseCreateTxHash(undefined);
+    const client = createOtcClient();
+    try {
+      const wallet = await readInjectedEvmWallet();
+      setOperatorWallet(wallet);
+      if (!wallet.connected || !wallet.address) {
+        throw new Error('Connect the Base operator wallet before creating the escrow trade.');
+      }
+      if (wallet.chainId !== detail.trade.usdcEscrow.chainId) {
+        throw new Error(`Switch operator wallet to chain ${detail.trade.usdcEscrow.chainId}.`);
+      }
+      const intent = await client.prepareUsdcCreateTrade(detail.trade.tradeId, {
+        idempotencyKey: createClientRequestId('admin_usdc_create_trade'),
+        actor: 'otc-admin-ui',
+      }, adminToken);
+      const createCall = prepareEscrowCreateTradeCall(
+        {
+          tradeKey: intent.tradeKey,
+          buyer: intent.buyer,
+          seller: intent.seller,
+          amountMicros: intent.amountMicros,
+          feeMicros: intent.feeMicros,
+          expiryUnixSeconds: intent.expiryUnixSeconds,
+        },
+        {
+          chainId: intent.chainId,
+          usdcToken: detail.trade.usdcEscrow.usdcToken,
+          escrowContract: intent.contract,
+        },
+      );
+      setBaseActionStatus('creating');
+      const txHash = await sendAndWaitInjectedEvmTransaction(toTransactionRequest(createCall), wallet.address);
+      setBaseCreateTxHash(txHash);
+      setBaseActionStatus('recording');
+      await client.recordSideEffect(
+        detail.trade.tradeId,
+        {
+          idempotencyKey: createClientRequestId('admin_usdc_create_trade_confirmed'),
+          effectType: 'usdc_create_trade',
+          status: 'confirmed',
+          actor: 'otc-admin-ui',
+          txHash,
+          chainId: intent.chainId,
+          metadata: {
+            contract: intent.contract,
+            trade_key: intent.tradeKey,
+            buyer: intent.buyer,
+            seller: intent.seller,
+            amount_micros: intent.amountMicros,
+            fee_micros: intent.feeMicros,
+            expiry_unix_seconds: intent.expiryUnixSeconds,
+          },
+        },
+        adminToken,
+      );
+      setBaseActionStatus('confirmed');
+      setActionStatus('Base escrow createTrade recorded.');
+      setRefreshTick((current) => current + 1);
+    } catch (createError) {
+      setBaseActionStatus('error');
+      setBaseActionError(formatApiError(createError, 'Base createTrade failed.'));
+    }
+  }, [adminToken, detail]);
+
   return (
     <section className="admin-page">
       <div className="om-page-title">
@@ -545,6 +677,17 @@ export function AdminTradesPage() {
               <DetailTags title="Safe actions" values={detail.safeActions} empty="No safe support actions." tone="ok" />
               <DetailTags title="Waiting on" values={detail.supportSummary.waitingOn} empty="No support wait states." tone="warning" />
 
+              <BaseEscrowCreateTradePanel
+                detail={detail}
+                wallet={operatorWallet}
+                status={baseActionStatus}
+                error={baseActionError}
+                txHash={baseCreateTxHash}
+                onConnect={() => void connectOperatorWallet()}
+                onSwitch={() => void switchOperatorNetwork()}
+                onCreate={() => void createBaseTrade()}
+              />
+
               <AdminNoteForm
                 mode={noteMode}
                 severity={noteSeverity}
@@ -604,6 +747,59 @@ export function AdminTradesPage() {
         </aside>
       </div>
     </section>
+  );
+}
+
+function BaseEscrowCreateTradePanel({
+  detail,
+  wallet,
+  status,
+  error,
+  txHash,
+  onConnect,
+  onSwitch,
+  onCreate,
+}: {
+  detail: AdminTradeDebugDetail;
+  wallet: EvmWalletSnapshot;
+  status: BaseOperatorActionStatus;
+  error?: string;
+  txHash?: string;
+  onConnect: () => void;
+  onSwitch: () => void;
+  onCreate: () => void;
+}) {
+  const trade = detail.trade;
+  const alreadyCreated = detail.sideEffects.some(
+    (effect) => effect.effectType === 'usdc_create_trade' && (effect.status === 'submitted' || effect.status === 'confirmed'),
+  );
+  const isBusy = status === 'connecting' || status === 'switching' || status === 'preparing' || status === 'creating' || status === 'recording';
+  const canPrepare = !alreadyCreated && !isBusy && !trade.usdcEscrow.depositTxHash;
+  const action = getBaseCreateTradeAction(trade, wallet, canPrepare);
+
+  return (
+    <div className="admin-detail__section admin-base-create">
+      <h3>Base escrow setup</h3>
+      <div className="admin-proof-grid">
+        <DataRow label="Operator wallet" value={wallet.address ?? (hasInjectedEvmWallet() ? 'Disconnected' : 'No injected wallet')} />
+        <DataRow label="Chain" value={trade.usdcEscrow.chainId} />
+        <DataRow label="Contract" value={trade.usdcEscrow.contract} />
+        <DataRow label="Trade key" value={trade.usdcEscrow.tradeKey} />
+        <DataRow label="Expected USDC micros" value={trade.usdcEscrow.expectedAmountMicros} />
+        <DataRow label="Create status" value={alreadyCreated ? 'created or submitted' : 'not recorded'} />
+      </div>
+      <button
+        className="om-button om-button--primary"
+        disabled={action.disabled}
+        onClick={action.kind === 'connect' ? onConnect : action.kind === 'switch' ? onSwitch : onCreate}
+        type="button"
+      >
+        {isBusy ? <BrandLoader compact label={getBaseCreateTradeStatusLabel(status)} /> : action.label}
+      </button>
+      {action.reason ? <small>{action.reason}</small> : null}
+      {txHash ? <code>{txHash}</code> : null}
+      {error ? <small className="admin-base-create__error">{error}</small> : null}
+    </div>
   );
 }
 
@@ -795,6 +991,47 @@ function buildAdminMetrics(rows: AdminTradeSummary[]) {
     blockers: rows.reduce((sum, row) => sum + row.currentBlockers.length, 0),
     failedSideEffects: rows.reduce((sum, row) => sum + row.failedSideEffectCount, 0),
   };
+}
+
+function getBaseCreateTradeAction(
+  trade: AdminTradeDebugDetail['trade'],
+  wallet: EvmWalletSnapshot,
+  canPrepare: boolean,
+): { kind: 'connect' | 'switch' | 'create'; label: string; disabled: boolean; reason?: string } {
+  if (!canPrepare) {
+    return {
+      kind: 'create',
+      label: 'Create Base escrow',
+      disabled: true,
+      reason: trade.usdcEscrow.depositTxHash ? 'USDC deposit already exists for this trade.' : undefined,
+    };
+  }
+  if (!wallet.connected) {
+    return { kind: 'connect', label: 'Connect operator wallet', disabled: false };
+  }
+  if (wallet.chainId !== trade.usdcEscrow.chainId) {
+    return { kind: 'switch', label: `Switch to chain ${trade.usdcEscrow.chainId}`, disabled: false };
+  }
+  return { kind: 'create', label: 'Create Base escrow', disabled: false };
+}
+
+function getBaseCreateTradeStatusLabel(status: BaseOperatorActionStatus): string {
+  switch (status) {
+    case 'connecting':
+      return 'Connecting wallet...';
+    case 'switching':
+      return 'Switching network...';
+    case 'preparing':
+      return 'Preparing createTrade...';
+    case 'creating':
+      return 'Creating escrow...';
+    case 'recording':
+      return 'Recording evidence...';
+    case 'confirmed':
+      return 'Created';
+    default:
+      return 'Working...';
+  }
 }
 
 function parseOptionalNumber(value: string): number | undefined {
