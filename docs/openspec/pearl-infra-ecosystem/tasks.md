@@ -241,9 +241,10 @@ Current Pearl OTC code/workflow status:
 Current delegation queue after PR #88:
 
 - Bridge proof/scanner owner: PR #88 closed the strategy loopholes in code and
-  tests. Next bridge evidence task is to redeploy/update the simnet scanner
-  classifier, then rerun the proof with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`
-  and freshly-created writable Pearl simnet deposit/release txids.
+  tests, and the 2026-05-20 simnet proof rerun passed with
+  `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`. Remaining bridge evidence task is the
+  full bridge rehearsal with freshly-created writable Pearl simnet deposit and
+  release txids plus Igra-side entry/exit evidence.
 - Bridge FE owner: implement `10.10.5` proof-page/frontend models for deposit
   status, exit status, reserve backing, blockers, public audit fields, event
   hashes, and quorum counts.
@@ -761,9 +762,14 @@ Loophole tracker after PR #74:
   - [x] 10.8.10.b Add `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1` to the multisig
     simnet proof so the proof fails unless the scanner classifies the reserve
     spend as `exit_release`.
-  - [ ] 10.8.10.c Redeploy/update the simnet scanner classifier and rerun the
+  - [x] 10.8.10.c Redeploy/update the simnet scanner classifier and rerun the
     proof with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`; this is the hard
     fail-closed gate before any low-cap PRL mainnet pilot.
+    - 2026-05-20: Redeployed `kaspacom-pearl-indexer-simnet` from `origin/dev`,
+      mined fresh writable simnet source funds, and reran
+      `npm run prove:simnet-multisig` with
+      `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`. Evidence:
+      `docs/operations/pearl-multisig-funded-simnet-evidence-20260520.md`.
 - [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
   - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.
   - [x] 10.9.2 Harden bridge relayer guardrails after PR #65 strategy review:
@@ -849,14 +855,15 @@ blockers visible for planning. See
     `84c8559efc60456f87b4ceae889d3c47102c111201a9fa4119de0149aeb21f8a`
     spent reserve outpoint
     `d96e430379ec1a47ee616ed2241ce12c636023aadc1b745776fb7448a3fc5882:2`.
-  - [ ] 11.6.b Deploy or verify the current `bridge_reserve` spend classifier
-    on the simnet scanner and record `exit_release` evidence. The live simnet
-    read API observed the reserve spend, but the deployed scanner returned
-    `unknown_spend` with `unsupported_watch_purpose`; repo code and tests now
-    classify bridge reserve spends as `exit_release`. Re-run
-    `npm run prove:simnet-multisig` with
-    `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1` before checking this item off.
-  - [ ] 11.6.b.1 Keep `exit_release` classification as a reserve-spend shape
+  - [x] 11.6.b Deploy or verify the current `bridge_reserve` spend classifier
+    on the simnet scanner and record `exit_release` evidence.
+    - 2026-05-20: Redeployed the simnet indexer and reran
+      `npm run prove:simnet-multisig` with
+      `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`; bridge reserve release txid
+      `8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a`
+      was classified as `exit_release` with `amount_grains` and
+      `pearl_recipient` metadata.
+  - [x] 11.6.b.1 Keep `exit_release` classification as a reserve-spend shape
     signal only. Mainnet release authorization still requires bridge-service
     matching against an approved pending exit by recipient, amount, unique Pearl
     release txid, clean reconciliation, and cap limits.

@@ -1,0 +1,123 @@
+{
+  "generatedAt": "2026-05-20T10:25:08.174Z",
+  "startedAt": "2026-05-20T10:25:05.452Z",
+  "runId": "multisig-pr88-1779272704",
+  "network": "simnet",
+  "pearlRpcUrl": "http://kaspacom-pearld-simnet-e2e:18556/",
+  "indexerRegisterUrl": "http://kaspacom-pearl-indexer-simnet:8088/",
+  "indexerReadUrl": "http://kaspacom-pearl-indexer-simnet:8088/",
+  "sourceAddress": "rprl1p87zy95nv4u36xjjc4d6t9daqde90a73naqwjhh8dmntz0wzen4csg9s9zg",
+  "sourceOutpoint": "2610adfb5cc6f3294753e363d84e75e111e0402ff7ab858f0c19325188d9af2d:0",
+  "fundingTxid": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e",
+  "refundLockTime": 274,
+  "otcRelease": {
+    "watchId": "multisig-pr88-1779272704-otc-release",
+    "escrowAddress": "rprl1pardjhv5qrye8eh9xzevs7pfu4kge4v9ns2780tvjm6257fxd63hs38tzwg",
+    "releaseAddress": "rprl1pegzytzpvt3cxqepqual4lpcly8r26c8kpc9yh3njgs24sdr6mpvs4ytwl2",
+    "fundingOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:0",
+    "fundingObservation": {
+      "outpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:0",
+      "watchId": "multisig-pr88-1779272704-otc-release",
+      "blockHash": "36699c3be2a8bb341b573c88583fd74731fa61dde9d1a510ed15484dd0e902e3",
+      "height": 272,
+      "amountGrains": "125000000",
+      "confirmations": 1,
+      "matchStatus": "confirmed",
+      "classification": "on_time",
+      "observedAt": "2026-05-20T10:25:06.629Z"
+    },
+    "releaseTxid": "31673ee5314349fcbe87dfcae3f79f5de3fdb340a3f4359d5bf14f78385d4de6",
+    "spend": {
+      "spendTxid": "31673ee5314349fcbe87dfcae3f79f5de3fdb340a3f4359d5bf14f78385d4de6",
+      "spentOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:0",
+      "blockHash": "7bf64aae4d9cd13c4486dbd9fde2238d6526d69372c92130a665dce9f2a851f1",
+      "height": 273,
+      "classification": "release",
+      "classificationData": {
+        "output": {
+          "txid": "31673ee5314349fcbe87dfcae3f79f5de3fdb340a3f4359d5bf14f78385d4de6",
+          "vout": 0,
+          "address": "rprl1pegzytzpvt3cxqepqual4lpcly8r26c8kpc9yh3njgs24sdr6mpvs4ytwl2",
+          "amountGrains": "124990000"
+        },
+        "matchedBy": "release_address"
+      },
+      "observedAt": "2026-05-20T10:25:07.681Z"
+    }
+  },
+  "otcRefund": {
+    "watchId": "multisig-pr88-1779272704-otc-refund",
+    "escrowAddress": "rprl1pd3g702df6elc8z07ps658t6h29rvgrsuz4ycqu3yynea9ytpnjmsegk2lp",
+    "refundAddress": "rprl1pe85dw63uy98c97f5nfhdqvefm0hx45q875pjh4k7vs00475d69lslc9ew5",
+    "fundingOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:1",
+    "fundingObservation": {
+      "outpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:1",
+      "watchId": "multisig-pr88-1779272704-otc-refund",
+      "blockHash": "36699c3be2a8bb341b573c88583fd74731fa61dde9d1a510ed15484dd0e902e3",
+      "height": 272,
+      "amountGrains": "126000000",
+      "confirmations": 1,
+      "matchStatus": "confirmed",
+      "classification": "on_time",
+      "observedAt": "2026-05-20T10:25:06.635Z"
+    },
+    "refundTxid": "af83c722411a822eb0644dfdfd4dbdb59cee98dc1e251f7ef0a4981f83261dda",
+    "spend": {
+      "spendTxid": "af83c722411a822eb0644dfdfd4dbdb59cee98dc1e251f7ef0a4981f83261dda",
+      "spentOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:1",
+      "blockHash": "0ad37bedd1e6a869e0021986c3c4684902407c3066aa39bc30265d375ccbebd9",
+      "height": 275,
+      "classification": "refund",
+      "classificationData": {
+        "output": {
+          "txid": "af83c722411a822eb0644dfdfd4dbdb59cee98dc1e251f7ef0a4981f83261dda",
+          "vout": 0,
+          "address": "rprl1pe85dw63uy98c97f5nfhdqvefm0hx45q875pjh4k7vs00475d69lslc9ew5",
+          "amountGrains": "125990000"
+        },
+        "matchedBy": "refund_address"
+      },
+      "observedAt": "2026-05-20T10:25:07.707Z"
+    }
+  },
+  "bridgeReserve": {
+    "watchId": "multisig-pr88-1779272704-bridge-reserve",
+    "reserveAddress": "rprl1p4p2cgjcda76fg3vt74tjt5dcat3mteu9gl7lu7ewexcekq6em6lqjhs0wj",
+    "signerPolicy": "simnet low-cap 2-of-3 P2TR script-path reserve; two reserve signers required for release",
+    "recipientAddress": "rprl1pxvzzgg6epudglal2hxundqs4euxvsjjsz5uxmfmeaj2ydvgx8kysnyc4gp",
+    "fundingOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+    "fundingObservation": {
+      "outpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+      "watchId": "multisig-pr88-1779272704-bridge-reserve",
+      "blockHash": "36699c3be2a8bb341b573c88583fd74731fa61dde9d1a510ed15484dd0e902e3",
+      "height": 272,
+      "amountGrains": "127000000",
+      "confirmations": 1,
+      "matchStatus": "confirmed",
+      "classification": "unknown_funding",
+      "observedAt": "2026-05-20T10:25:06.640Z"
+    },
+    "releaseTxid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+    "spend": {
+      "spendTxid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+      "spentOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+      "blockHash": "0ad37bedd1e6a869e0021986c3c4684902407c3066aa39bc30265d375ccbebd9",
+      "height": 275,
+      "classification": "exit_release",
+      "classificationData": {
+        "output": {
+          "txid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+          "vout": 0,
+          "address": "rprl1pxvzzgg6epudglal2hxundqs4euxvsjjsz5uxmfmeaj2ydvgx8kysnyc4gp",
+          "amountGrains": "126990000"
+        },
+        "matchedBy": "single_external_reserve_output",
+        "amount_grains": "126990000",
+        "pearl_recipient": "rprl1pxvzzgg6epudglal2hxundqs4euxvsjjsz5uxmfmeaj2ydvgx8kysnyc4gp"
+      },
+      "observedAt": "2026-05-20T10:25:07.711Z"
+    },
+    "requireExitReleaseClassification": true,
+    "deployedIndexerClassifiesExitRelease": true
+  }
+}
