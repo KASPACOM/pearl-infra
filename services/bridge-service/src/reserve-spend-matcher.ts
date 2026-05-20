@@ -17,11 +17,18 @@ export function matchReserveSpendToExit(input: {
   const amountGrains = readString(input.spend.classificationData, 'amount_grains');
   const pearlRecipient = readString(input.spend.classificationData, 'pearl_recipient');
   const spendTxid = normalizePearlTxid(input.spend.spendTxid);
+  if (!amountGrains || !pearlRecipient) {
+    return unknownSpend(input.spend, 'reserve_spend_missing_match_fields');
+  }
   const candidates = input.exits.filter((exit) => exit.status === 'pending' || exit.status === 'processed' || exit.status === 'released');
-  const exact = candidates.find((exit) => (
+  const exactCandidates = candidates.filter((exit) => (
     exit.requestedAmountGrains === amountGrains &&
-    (pearlRecipient === undefined || exit.pearlRecipient === pearlRecipient)
+    exit.pearlRecipient === pearlRecipient
   ));
+  if (exactCandidates.length > 1) {
+    return unknownSpend(input.spend, 'ambiguous_exit_release_match');
+  }
+  const exact = exactCandidates[0];
   if (exact) {
     const exactReleaseTxid = exact.pearlReleaseTxid ? normalizePearlTxid(exact.pearlReleaseTxid) : undefined;
     if (exact.status === 'processed' && exactReleaseTxid && exactReleaseTxid !== spendTxid) {

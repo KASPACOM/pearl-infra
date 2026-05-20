@@ -180,27 +180,10 @@ Merged implementation checkpoints:
   now remains a liability as `processed` until Pearl release spend confirmation,
   Igra polling is replay-safe and address-validated, checkpoints are monotonic,
   and Postgres enforces unique exit IDs plus unique release txids.
-- PR #77 — synced the checklist after bridge hardening.
-- PR #78 — added the full OTC live evidence verifier.
-- PR #79 — applied Oysters Market branding.
-- PR #80 — added bridge simnet rehearsal coverage.
-- PR #81 — prepared guarded bridge mainnet deployment gates.
-- PR #82 — synced bridge/OTC remaining work after mainnet-prep.
-- PR #83 — applied final Oysters branding assets.
-- PR #84 — tightened EVM pilot safety coverage for owner-only bridge admin,
-  pause controls, refund-through-pause behavior, release txid uniqueness, and
-  cap-reduction safety documentation.
-- PR #85 — closed Oysters branding edge cases in gradients and repeated SVG
-  loader ids.
-- PR #86 — added simnet 2-of-3 P2TR multisig escrow package construction,
-  BIP341 NUMS script-path custody, signer-key validation, and simnet evidence.
 
-Review snapshot after PR #86: PRs #77-#86 are merged into `dev`. Oysters
-branding is complete for the current asset set, the bridge EVM pilot has
-focused safety coverage, guarded mainnet deployment tooling exists, and
-generic simnet multisig package construction now exists. Real bridge confidence
-is still gated by writable simnet bridge rehearsal, funded multisig spend
-evidence, live reserve custody policy, and explicit low-cap mainnet approval.
+Review snapshot after PR #76: PRs #71-#76 are merged into `dev`. Bridge live
+indexing is code-complete for the current mocked/local proof layer, with real
+bridge confidence now gated by `10.8.10` simnet rehearsal evidence.
 
 Current Pearl OTC code/workflow status:
 
@@ -234,7 +217,7 @@ Current Pearl OTC code/workflow status:
   notes, manual-review notes, failed alert-delivery replay, and the public
   support/error alert form, while settlement execution controls stay absent.
 
-Current delegation queue after PR #86:
+Current delegation queue after PR #76:
 
 - Bridge events/indexer owner: `10.8.7.b`, `10.8.8.b`, and `10.8.9.b` are now
   covered by the hardened bridge-service Igra RPC poller, monotonic checkpoint
@@ -253,16 +236,13 @@ Current delegation queue after PR #86:
 - Bridge mainnet-prep owner: Pearl testnet liquidity is unavailable, so prepare
   Igra mainnet deployment tooling behind explicit chain/approval/role gates and
   keep Pearl proof testing on simnet until mainnet custody is approved.
-- Multisig custody owner: `11.5.a` is covered by PR #86; finish `11.5.b` by
-  proving a funded simnet multisig release/refund spend through `pearld` and
-  the watched-address indexer.
 - Threshold authorization owner: scope `10.13.1` through `10.13.3` for
   federation membership, signer custody, threshold/FROST-style authorization,
   and public reserve proof snapshots.
-- EVM audit owner: PR #84 covered the current pilot safety tests; PR #87 adds
-  live deployment/readiness gates and on-chain role-separation enforcement.
-  Remaining EVM work is the Galleon/Igra deploy path and live deployment
-  evidence, not more broad pilot-contract test scaffolding.
+- EVM audit owner: re-audit `WrappedPearl` and `PearlBridge` before pilot
+  rehearsal, covering ownership transfer, operator/relayer permissions, cap
+  semantics, pause behavior, replay protection, exit liabilities, deployment
+  scripts, and verification evidence.
 - OTC evidence owner: finish the remaining live slice of `9.8.10.c`: replace
   simulated Base events with real Base Sepolia txids, then run the PRL
   signing/broadcast boundary with real txids. Pearl testnet2 is no longer a
@@ -780,15 +760,6 @@ Loophole tracker after PR #74:
   - [x] 10.11.6 Add guarded Igra bridge deployment tooling for `WrappedPearl`/`PearlBridge` with chain ID checks, mainnet approval gates, explicit relayer/operator/final-owner requirements, Igra legacy gas pricing, and deployment evidence output.
     - 2026-05-19: Added `npm --workspace @kaspacom/prl-usdc-escrow-contracts run deploy:pearl-bridge` and local validation evidence in `contracts/usdc-escrow/deployments/local-pearl-bridge-20260519141615.json`. Mainnet deployment is prepared but blocked unless `PEARL_BRIDGE_MAINNET_APPROVED=1`, `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`, chain ID `38833`, final owner, relayer, and operator are explicit.
     - 2026-05-19: Attempted Galleon deployment through the configured `IGRA_RPC_URL` (`38836`), but the RPC rejected the deployment before broadcast because the underlying Kaspa transaction fee was below standardness minimum. Evidence and next fix path are in `docs/operations/bridge-galleon-deploy-attempt-20260519.md`; Igra mainnet stays blocked until Galleon deployment succeeds or a replacement deploy path is proven.
-    - 2026-05-19 hardening: deployment readiness validation now rejects mainnet
-      role collapse across setup owner, final owner, relayer, and operator, and
-      rejects invalid pilot cap relationships before any deployment transaction
-      is sent. Mainnet also requires a reviewed readiness manifest whose final
-      owner, relayer, and operator exactly match the deployment environment and
-      which does not approve pool seeding as part of bridge deployment.
-    - 2026-05-19 role hardening: `PearlBridge` now rejects owner, pending owner,
-      relayer, and operator role collapse on-chain, so role separation survives
-      later owner/admin calls and is not only a deployment-script convention.
 - [ ] 10.12 After bridge entry/exit pilot passes, create `wPRL/USDC` pool plan with initial liquidity, price assumptions, and max bridge exposure approval.
   - [ ] 10.12.1 Do not seed a `wPRL/USDC` pool until one low-cap entry and one low-cap exit have passed with public proof and clean reserve reconciliation.
   - [ ] 10.12.2 Define pool initial liquidity source, max bridge exposure, LP ownership, withdrawal authority, and emergency liquidity removal procedure.
@@ -831,16 +802,39 @@ blockers visible for planning. See
     - Review-loop hardening: multisig escrow construction uses the BIP341 NUMS
       internal key for script-path-only custody and rejects invalid or duplicate
       role keys before producing an address.
-  - [ ] 11.5.b Prove a funded simnet multisig release/refund spend through
+  - [x] 11.5.b Prove a funded simnet multisig release/refund spend through
     `pearld` and the watched-address indexer before treating multisig custody
     as live-ready.
+    - 2026-05-19 funded proof: `d96e430379ec1a47ee616ed2241ce12c636023aadc1b745776fb7448a3fc5882`
+      funded two 2-of-3 P2TR escrow outputs; `c653f1363e7ae80a6ef1005dc715e9020b635b1ff9b569c4f76bff64202f6574`
+      spent the release path and the watched-address indexer classified it as
+      `release`; `0bfccc7207f778a6ab86cb2dacd2bf13311108eae1371203b55afad818998b19`
+      spent the CLTV timeout refund path and the watched-address indexer
+      classified it as `refund`. See
+      `docs/operations/pearl-multisig-funded-simnet-evidence-20260519.md`.
 - [ ] 11.6 Select and prove bridge reserve custody.
   - The bridge service can watch reserve addresses and reconcile reserve
     spends, but live Pearl reserve addresses, multisig/threshold construction,
     and release signing custody are not implemented or approved yet.
-  - The generic 2-of-3 P2TR custody builder can produce a reserve address, but
-    the bridge-specific reserve signer policy and funded spend proof remain
-    open.
+  - [x] 11.6.a Prove a simnet bridge reserve can be funded and released through
+    the 2-of-3 P2TR script-path signer policy. Evidence:
+    `84c8559efc60456f87b4ceae889d3c47102c111201a9fa4119de0149aeb21f8a`
+    spent reserve outpoint
+    `d96e430379ec1a47ee616ed2241ce12c636023aadc1b745776fb7448a3fc5882:2`.
+  - [ ] 11.6.b Deploy or verify the current `bridge_reserve` spend classifier
+    on the simnet scanner and record `exit_release` evidence. The live simnet
+    read API observed the reserve spend, but the deployed scanner returned
+    `unknown_spend` with `unsupported_watch_purpose`; repo code and tests now
+    classify bridge reserve spends as `exit_release`. Re-run
+    `npm run prove:simnet-multisig` with
+    `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1` before checking this item off.
+  - [ ] 11.6.b.1 Keep `exit_release` classification as a reserve-spend shape
+    signal only. Mainnet release authorization still requires bridge-service
+    matching against an approved pending exit by recipient, amount, unique Pearl
+    release txid, clean reconciliation, and cap limits.
+  - [ ] 11.6.c Select approved live reserve addresses, signer ownership,
+    custody tiers, cap limits, and emergency pause authority before any
+    mainnet release path is enabled.
 - [ ] 11.7 Execute and record an emergency pause/unpause drill against the
   deployed low-cap bridge path.
 - [ ] 11.8 Add bridge proof-page/frontend support for deposit status, exit

@@ -63,7 +63,7 @@ test('keeps mismatch and unknown Pearl reserve spends as manual-review blockers'
   assert.equal(results[0].status, 'recipient_mismatch');
   assert.deepEqual(results[0].blockers, ['reserve_spend_recipient_mismatch']);
   assert.equal(results[1].status, 'unknown_spend');
-  assert.deepEqual(results[1].blockers, ['unknown_reserve_spend']);
+  assert.deepEqual(results[1].blockers, ['reserve_spend_missing_match_fields']);
   assert.equal((await repo.findExitRequest('exit-1'))?.status, 'pending');
 });
 

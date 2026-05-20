@@ -127,6 +127,8 @@ test('creates a simnet 2-of-3 multisig P2TR escrow package', () => {
     'seller_arbiter_release',
     'seller_timeout_refund',
   ]);
+  assert.equal(escrow.keys.taprootScriptLeaves?.[0]?.leafVersion, 0xc0);
+  assert.match(escrow.keys.taprootScriptLeaves?.[0]?.controlBlockHex ?? '', /^[0-9a-f]+$/);
   assert.equal(escrow.keys.taprootScriptLeaves?.[3]?.lockTime, 144);
 });
 
@@ -147,6 +149,66 @@ test('rejects duplicate multisig escrow role keys', () => {
       }),
     /must be distinct/,
   );
+});
+
+test('rejects ambiguous multisig refund locktimes', () => {
+  const baseInput = {
+    tradeId: 'trade-bad-locktime',
+    network: 'simnet' as const,
+    buyerPubkey: xOnlyPublicKey('02'),
+    sellerPubkey: xOnlyPublicKey('03'),
+    arbiterPubkey: xOnlyPublicKey('04'),
+    expectedAmountGrains: '250000000',
+    requiredConfirmations: 2,
+    releaseAddress: createSimnetAddress('05'),
+    refundAddress: createSimnetAddress('06'),
+  };
+
+  assert.throws(
+    () => createPearlMultisigEscrowPackage(baseInput),
+    /requires exactly one refund lock/,
+  );
+  assert.throws(
+    () => createPearlMultisigEscrowPackage({
+      ...baseInput,
+      refundEligibleAfterHeight: 144,
+      refundEligibleAfterUnixTime: 1_800_000_000,
+    }),
+    /requires exactly one refund lock/,
+  );
+  assert.throws(
+    () => createPearlMultisigEscrowPackage({
+      ...baseInput,
+      refundEligibleAfterHeight: 500_000_000,
+    }),
+    /below the CLTV timestamp threshold/,
+  );
+  assert.throws(
+    () => createPearlMultisigEscrowPackage({
+      ...baseInput,
+      refundEligibleAfterUnixTime: 144,
+    }),
+    /at or above the CLTV timestamp threshold/,
+  );
+});
+
+test('stores compressed multisig signer pubkeys as normalized x-only keys', () => {
+  const escrow = createPearlMultisigEscrowPackage({
+    tradeId: 'trade-compressed-multisig',
+    network: 'simnet',
+    buyerPubkey: compressedPublicKey('02'),
+    sellerPubkey: compressedPublicKey('03'),
+    arbiterPubkey: compressedPublicKey('04'),
+    expectedAmountGrains: '250000000',
+    requiredConfirmations: 2,
+    releaseAddress: createSimnetAddress('05'),
+    refundAddress: createSimnetAddress('06'),
+    refundEligibleAfterHeight: 144,
+  });
+
+  assert.equal(escrow.keys.signerPubkeys.buyer, xOnlyPublicKey('02'));
+  assert.equal(escrow.keys.signerPubkeys.seller, xOnlyPublicKey('03'));
+  assert.equal(escrow.keys.signerPubkeys.arbiter, xOnlyPublicKey('04'));
 });
 
 test('creates multisig refund unsigned tx with CLTV locktime and non-final sequence', () => {
@@ -187,4 +249,11 @@ function xOnlyPublicKey(seed: string): string {
   const publicKey = ecc.pointFromScalar(privateKey, true);
   if (!publicKey) throw new Error(`invalid private key fixture: ${seed}`);
   return Buffer.from(publicKey).subarray(1).toString('hex');
+}
+
+function compressedPublicKey(seed: string): string {
+  const privateKey = Buffer.from(seed.padStart(64, '0'), 'hex');
+  const publicKey = ecc.pointFromScalar(privateKey, true);
+  if (!publicKey) throw new Error(`invalid private key fixture: ${seed}`);
+  return Buffer.from(publicKey).toString('hex');
 }

@@ -45,6 +45,8 @@ export interface PearlEscrowTaprootScriptLeaf {
   kind: string;
   requiredSigners: PearlEscrowSignerRole[];
   scriptHex: string;
+  leafVersion?: number;
+  controlBlockHex?: string;
   lockTime?: number;
 }
 

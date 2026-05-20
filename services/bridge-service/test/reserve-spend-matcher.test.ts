@@ -30,6 +30,10 @@ test('routes unknown, amount mismatch, recipient mismatch, and duplicate release
     spend: spend({ classificationData: {} }),
     exits: [exit()],
   }).status, 'unknown_spend');
+  assert.deepEqual(matchReserveSpendToExit({
+    spend: spend({ classificationData: { amount_grains: '100' } }),
+    exits: [exit()],
+  }).blockers, ['reserve_spend_missing_match_fields']);
 
   assert.equal(matchReserveSpendToExit({
     spend: spend({ spendTxid: 'release_tx' }),
@@ -57,6 +61,19 @@ test('rejects Pearl reserve spend that conflicts with operator processed txid', 
 
   assert.equal(result.status, 'duplicate_release_txid');
   assert.deepEqual(result.blockers, ['processed_release_txid_mismatch']);
+});
+
+test('blocks ambiguous reserve spend matches instead of choosing the first exit', () => {
+  const result = matchReserveSpendToExit({
+    spend: spend(),
+    exits: [
+      exit({ exitId: 'exit-1' }),
+      exit({ exitId: 'exit-2' }),
+    ],
+  });
+
+  assert.equal(result.status, 'unknown_spend');
+  assert.deepEqual(result.blockers, ['ambiguous_exit_release_match']);
 });
 
 test('matches Pearl spend txids against bytes32 Igra release txids', () => {

@@ -51,11 +51,24 @@ These items block a live bridge pilot and any public `wPRL/USDC` pool:
      authority, daily limits, and maximum hot-wallet exposure.
 
 4. Decide and implement bridge reserve custody.
-   - The bridge can watch reserve addresses and reconcile reserve spends, but
-     the live Pearl reserve address/multisig/threshold-signing construction is
-     not implemented or selected.
-   - Next action: choose the low-cap pilot custody shape, record the reserve
-     address set, and prove the Pearl release signing path before any live exit.
+   - 2026-05-19 funded simnet proof selected and exercised the low-cap pilot
+     construction: 2-of-3 P2TR script-path reserve custody with two reserve
+     signers required for release.
+   - Evidence: funding tx
+     `d96e430379ec1a47ee616ed2241ce12c636023aadc1b745776fb7448a3fc5882`
+     created the reserve output and release tx
+     `84c8559efc60456f87b4ceae889d3c47102c111201a9fa4119de0149aeb21f8a`
+     spent it.
+   - Remaining gap: the deployed simnet scanner observed the reserve spend but
+     classified it as `unknown_spend` because that process is older than the
+     repo code that classifies `bridge_reserve` spends as `exit_release`.
+   - Next action: update/redeploy the simnet scanner, record `exit_release`
+     evidence with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`, then approve live
+     reserve addresses and signer custody before any live exit.
+   - Important boundary: `exit_release` is not sufficient authorization by
+     itself. The bridge service must still match the spend to an approved
+     pending exit by Pearl recipient, amount, unique release txid, clean
+     reconciliation, and cap limits.
 
 5. Execute an emergency pause drill.
    - The runbook exists, but the live operator drill still needs evidence.
@@ -96,9 +109,15 @@ These items block a full production-grade Pearl OTC settlement release:
    - 2026-05-19 review-loop update: the multisig package now uses the BIP341
      NUMS internal key for script-path-only custody and rejects invalid or
      duplicate signer role keys.
-   - Next action: prove a funded simnet multisig release/refund spend through
-     `pearld` and the watched-address indexer, then decide whether low-cap
-     mainnet uses this path or the constrained coordinator path.
+   - 2026-05-19 funded proof: tx
+     `d96e430379ec1a47ee616ed2241ce12c636023aadc1b745776fb7448a3fc5882`
+     funded two multisig escrows; release tx
+     `c653f1363e7ae80a6ef1005dc715e9020b635b1ff9b569c4f76bff64202f6574`
+     was classified as `release`; refund tx
+     `0bfccc7207f778a6ab86cb2dacd2bf13311108eae1371203b55afad818998b19`
+     was classified as `refund`.
+   - Next action: decide whether low-cap mainnet uses this path or the
+     constrained coordinator path, then record the approved live signer set.
 
 3. Replace the remaining simulated Base leg in live evidence.
    - The checker can verify receipts, but the evidence needs actual Base

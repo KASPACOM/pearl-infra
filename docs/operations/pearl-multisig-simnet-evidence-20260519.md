@@ -67,10 +67,7 @@ Result:
 
 ## Still Needed
 
-- Fund the generated multisig escrow address on writable Pearl simnet.
-- Produce and sign a script-path release spend.
-- Produce and sign the timeout refund path.
-- Register the generated address with the Pearl indexer and prove funding/spend
-  classification through the watched-address API.
+- Funded release/refund proof is now recorded in
+  `docs/operations/pearl-multisig-funded-simnet-evidence-20260519.md`.
 - Decide whether the first low-cap mainnet OTC pilot uses this 2-of-3 script
   path or the existing coordinator-signed P2TR path.

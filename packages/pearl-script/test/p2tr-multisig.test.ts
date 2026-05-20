@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import * as bip341 from 'bitcoinjs-lib/src/payments/bip341.js';
 import * as ecc from 'tiny-secp256k1';
 
 import { BIP341_NUMS_INTERNAL_PUBKEY_HEX, createPearlP2trMultisigEscrowPayment } from '../dist/index.js';
@@ -32,6 +33,19 @@ test('creates a deterministic simnet 2-of-3 Taproot escrow payment', () => {
   assert.equal(payment.leaves[3].lockTime, 144);
   for (const leaf of payment.leaves) {
     assert.match(leaf.scriptHex, /^[0-9a-f]+$/);
+    assert.equal(leaf.leafVersion, 0xc0);
+    assert.match(leaf.controlBlockHex, /^[0-9a-f]+$/);
+    assert.equal((leaf.controlBlockHex.length / 2 - 33) % 32, 0);
+    const controlBlock = Buffer.from(leaf.controlBlockHex, 'hex');
+    assert.equal(controlBlock.subarray(1, 33).toString('hex'), payment.internalPubkeyHex);
+    const leafHash = bip341.tapleafHash({
+      output: Buffer.from(leaf.scriptHex, 'hex'),
+      version: leaf.leafVersion,
+    });
+    const rootHash = bip341.rootHashFromPath(controlBlock, leafHash);
+    const tweaked = bip341.tweakKey(Buffer.from(payment.internalPubkeyHex, 'hex'), rootHash);
+    assert.equal(`5120${tweaked?.x.toString('hex')}`, payment.outputScriptHex);
+    assert.equal(controlBlock[0] & 1, tweaked?.parity);
   }
 });
 
