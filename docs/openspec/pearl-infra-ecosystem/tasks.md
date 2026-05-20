@@ -780,6 +780,14 @@ Loophole tracker after PR #74:
       `npm run prove:simnet-multisig` with
       `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`. Evidence:
       `docs/operations/pearl-multisig-funded-simnet-evidence-20260520.md`.
+  - [x] 10.8.10.d Rerun the bridge-service rehearsal against the fresh writable
+    Pearl simnet multisig evidence instead of the older public simnet txids.
+    - 2026-05-20: Updated `bridge-simnet-rehearsal.mjs` to consume
+      `docs/operations/pearl-multisig-funded-simnet-evidence-20260520.json` and
+      recorded `docs/operations/bridge-simnet-rehearsal-evidence-20260520.md`.
+      The run matched reserve release txid
+      `8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a`
+      to the mirrored exit, with no reserve reconciliation blockers.
 - [x] 10.9 Build relayer/federation service plan with manual approval mode, quorum rules, idempotency, and operator runbook.
   - [x] 10.9.1 Add bridge relayer decision policy for manual approval, idempotent mint/release prepare actions, pilot caps, rolling caps, and clean-reconciliation gates.
   - [x] 10.9.2 Harden bridge relayer guardrails after PR #65 strategy review:
@@ -804,6 +812,12 @@ Loophole tracker after PR #74:
   - [x] 10.11.6 Add guarded Igra bridge deployment tooling for `WrappedPearl`/`PearlBridge` with chain ID checks, mainnet approval gates, explicit relayer/operator/final-owner requirements, Igra legacy gas pricing, and deployment evidence output.
     - 2026-05-19: Added `npm --workspace @kaspacom/prl-usdc-escrow-contracts run deploy:pearl-bridge` and local validation evidence in `contracts/usdc-escrow/deployments/local-pearl-bridge-20260519141615.json`. Mainnet deployment is prepared but blocked unless `PEARL_BRIDGE_MAINNET_APPROVED=1`, `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`, chain ID `38833`, final owner, relayer, and operator are explicit.
     - 2026-05-19: Attempted Galleon deployment through the configured `IGRA_RPC_URL` (`38836`), but the RPC rejected the deployment before broadcast because the underlying Kaspa transaction fee was below standardness minimum. Evidence and next fix path are in `docs/operations/bridge-galleon-deploy-attempt-20260519.md`; Igra mainnet stays blocked until Galleon deployment succeeds or a replacement deploy path is proven.
+  - [x] 10.11.7 Draft the bridge reserve custody policy for the low-cap pilot.
+    - 2026-05-20: Added
+      `docs/operations/bridge-reserve-custody-policy.md` with the hot/warm/cold
+      tier model, 2-of-3 P2TR hot-tier proof boundary, required live fields,
+      authorization boundary, and the pause-drill sequence. Live addresses,
+      signer identities, cap values, and pause authority remain unapproved.
 - [ ] 10.12 After bridge entry/exit pilot passes, create `wPRL/USDC` pool plan with initial liquidity, price assumptions, and max bridge exposure approval.
   - [ ] 10.12.1 Do not seed a `wPRL/USDC` pool until one low-cap entry and one low-cap exit have passed with public proof and clean reserve reconciliation.
   - [ ] 10.12.2 Define pool initial liquidity source, max bridge exposure, LP ownership, withdrawal authority, and emergency liquidity removal procedure.
@@ -827,13 +841,19 @@ blockers visible for planning. See
     Galleon attempt failed before broadcast on the underlying Kaspa standardness
     fee. Next proof must either raise the accepted fee/gas path or replace the
     deploy route and record evidence.
-- [ ] 11.3 Repeat the bridge rehearsal with freshly-created writable Pearl
+- [x] 11.3 Repeat the bridge rehearsal with freshly-created writable Pearl
   simnet deposit/release txids.
-  - Current bridge rehearsal uses real public simnet txids. The next confidence
-    gate is a newly-created wallet-funded deposit and release controlled during
-    the run.
+  - 2026-05-20: `npm --workspace @kaspacom/bridge-service run
+    rehearse:simnet-bridge` passed using
+    `docs/operations/pearl-multisig-funded-simnet-evidence-20260520.json`.
+    Evidence is in
+    `docs/operations/bridge-simnet-rehearsal-evidence-20260520.md`.
 - [ ] 11.4 Select and document live reserve addresses, signer policy,
   hot/warm/cold reserve tiers, cap limits, and emergency pause authority.
+  - [x] 11.4.a Draft the low-cap reserve custody policy and authorization
+    boundary in `docs/operations/bridge-reserve-custody-policy.md`.
+  - [ ] 11.4.b Select live reserve addresses, signer identities, cap values, and
+    pause authority.
 - [ ] 11.5 Decide whether the first mainnet OTC pilot uses the current
   coordinator-signed P2TR escrow model or waits for true PRL multisig escrow.
   - Current code derives one P2TR escrow address per trade from
@@ -877,6 +897,9 @@ blockers visible for planning. See
     signal only. Mainnet release authorization still requires bridge-service
     matching against an approved pending exit by recipient, amount, unique Pearl
     release txid, clean reconciliation, and cap limits.
+  - [x] 11.6.b.2 Prove the bridge service can consume the fresh writable simnet
+    reserve evidence and reconcile a matched exit release with no blockers.
+    Evidence: `docs/operations/bridge-simnet-rehearsal-evidence-20260520.md`.
   - [ ] 11.6.c Select approved live reserve addresses, signer ownership,
     custody tiers, cap limits, and emergency pause authority before any
     mainnet release path is enabled.

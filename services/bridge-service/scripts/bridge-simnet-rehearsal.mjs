@@ -21,32 +21,20 @@ import { decideDepositMint, decideExitRelease } from '../dist/relayer-policy.js'
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 const CONTRACT_ROOT = resolve(REPO_ROOT, 'contracts/usdc-escrow');
-const OUTPUT_JSON = resolve(REPO_ROOT, 'docs/operations/bridge-simnet-rehearsal-evidence-20260519.json');
-const OUTPUT_MD = resolve(REPO_ROOT, 'docs/operations/bridge-simnet-rehearsal-evidence-20260519.md');
+const DEFAULT_PEARL_EVIDENCE_JSON = resolve(REPO_ROOT, 'docs/operations/pearl-multisig-funded-simnet-evidence-20260520.json');
+const PEARL_EVIDENCE_JSON = process.env.BRIDGE_REHEARSAL_PEARL_EVIDENCE_JSON
+  ? resolve(process.env.BRIDGE_REHEARSAL_PEARL_EVIDENCE_JSON)
+  : DEFAULT_PEARL_EVIDENCE_JSON;
+const OUTPUT_JSON = resolve(REPO_ROOT, 'docs/operations/bridge-simnet-rehearsal-evidence-20260520.json');
+const OUTPUT_MD = resolve(REPO_ROOT, 'docs/operations/bridge-simnet-rehearsal-evidence-20260520.md');
 const RPC_URL = process.env.BRIDGE_REHEARSAL_RPC_URL ?? 'http://127.0.0.1:19545';
 const CHAIN_ID = 19416;
-const OBSERVED_AT = '2026-05-19T12:00:00.000Z';
-const DEPOSIT_AMOUNT = 322_963_140_676n;
-const RELEASE_AMOUNT = 322_963_139_676n;
+const pearlEvidence = await readJson(PEARL_EVIDENCE_JSON);
+const PEARL = pearlFromEvidence(pearlEvidence);
+const OBSERVED_AT = pearlEvidence.generatedAt ?? new Date().toISOString();
+const DEPOSIT_AMOUNT = BigInt(PEARL.depositAmountGrains);
+const RELEASE_AMOUNT = BigInt(PEARL.releaseAmountGrains);
 const RESIDUAL_BACKING = DEPOSIT_AMOUNT - RELEASE_AMOUNT;
-
-const PEARL = {
-  network: 'simnet',
-  depositWatchId: 'bridge-rehearsal-deposit-20260519',
-  reserveWatchId: 'bridge-rehearsal-reserve-20260519',
-  depositAddress: 'rprl1pmfr3p9j00pfxjh0zmgp99y8zftmd3s5pmedqhyptwy6lm87hf5ssgn706v',
-  reserveAddress: 'rprl1pmfr3p9j00pfxjh0zmgp99y8zftmd3s5pmedqhyptwy6lm87hf5ssgn706v',
-  releaseAddress: 'rprl1pgxxyvcmdncdxs06cudd5yvmwwahaesaj6n3eu7st7x4sw9hrchaqmpuxye',
-  depositTxid: '442ea8d4fe37cb58e7946bec2cae7a9b3197e751188b3bdf0c143a6edc374164',
-  depositOutpoint: '442ea8d4fe37cb58e7946bec2cae7a9b3197e751188b3bdf0c143a6edc374164:0',
-  depositBlockHash: '4ad7c6cce159d28b8467a87efd6cfe08beb24785eb8fa0a97686a67a4d581b9e',
-  depositHeight: 2,
-  releaseTxid: '22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1',
-  releaseBlockHash: '549eaf125f7c846b32f2cd21cca2c7500c09f6caacc3f24b8ca89b3c24eff099',
-  releaseHeight: 103,
-  requiredConfirmations: 1,
-  observedConfirmations: 101,
-};
 
 const limits = {
   minDepositGrains: '1',
@@ -75,7 +63,7 @@ try {
 
   const depositEvent = createDepositBridgeEvent({
     pearlTxid: PEARL.depositTxid,
-    vout: 0,
+    vout: PEARL.depositVout,
     amountGrains: DEPOSIT_AMOUNT.toString(),
     igraRecipient: deployment.userAddress,
     pearlNetwork: PEARL.network,
@@ -247,7 +235,9 @@ try {
   const evidence = {
     generatedAt: new Date().toISOString(),
     scope: 'bridge-simnet-rehearsal',
-    limitation: 'Pearl-side txids are reused from the public simnet indexer evidence because this session has no writable pearld RPC or wallet credentials; Igra receipts are fresh local Anvil receipts.',
+    pearlEvidenceSource: PEARL_EVIDENCE_JSON,
+    pearlEvidenceRunId: pearlEvidence.runId,
+    limitation: 'Pearl-side txids are imported from the freshly-created writable Pearl simnet multisig proof evidence; Igra receipts are fresh local Anvil receipts.',
     pearlEvidence: {
       depositTxid: PEARL.depositTxid,
       depositOutpoint: PEARL.depositOutpoint,
@@ -393,6 +383,53 @@ async function readArtifact(path) {
   return JSON.parse(await readFile(resolve(CONTRACT_ROOT, 'out', path), 'utf8'));
 }
 
+async function readJson(path) {
+  return JSON.parse(await readFile(path, 'utf8'));
+}
+
+function pearlFromEvidence(evidence) {
+  const reserve = evidence.bridgeReserve;
+  const funding = reserve?.fundingObservation;
+  const spend = reserve?.spend;
+  const releaseOutput = spend?.classificationData?.output;
+  if (!reserve || !funding || !spend || !releaseOutput) {
+    throw new Error(`missing bridge reserve proof fields in ${PEARL_EVIDENCE_JSON}`);
+  }
+  if (spend.classification !== 'exit_release') {
+    throw new Error(`bridge reserve proof is not exit_release: ${spend.classification}`);
+  }
+  const { txid, vout } = splitOutpoint(reserve.fundingOutpoint);
+  return {
+    network: evidence.network ?? 'simnet',
+    depositWatchId: `${evidence.runId}-bridge-rehearsal-deposit`,
+    reserveWatchId: `${evidence.runId}-bridge-rehearsal-reserve`,
+    depositAddress: reserve.reserveAddress,
+    reserveAddress: reserve.reserveAddress,
+    releaseAddress: reserve.recipientAddress,
+    depositTxid: txid,
+    depositVout: vout,
+    depositOutpoint: reserve.fundingOutpoint,
+    depositAmountGrains: funding.amountGrains,
+    depositBlockHash: funding.blockHash,
+    depositHeight: funding.height,
+    releaseTxid: reserve.releaseTxid,
+    releaseAmountGrains: spend.classificationData.amount_grains ?? releaseOutput.amountGrains,
+    releaseBlockHash: spend.blockHash,
+    releaseHeight: spend.height,
+    requiredConfirmations: 1,
+    observedConfirmations: Number(funding.confirmations ?? 1),
+  };
+}
+
+function splitOutpoint(outpoint) {
+  const [txid, rawVout] = String(outpoint).split(':');
+  const vout = Number(rawVout);
+  if (!/^[0-9a-f]{64}$/i.test(txid) || !Number.isSafeInteger(vout) || vout < 0) {
+    throw new Error(`invalid Pearl outpoint: ${outpoint}`);
+  }
+  return { txid, vout };
+}
+
 function artifactBytecode(artifact) {
   if (typeof artifact.bytecode === 'string') return artifact.bytecode;
   return artifact.bytecode?.object;
@@ -488,17 +525,19 @@ async function writeJson(path, value) {
 
 async function writeMarkdown(path, evidence) {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `# Bridge Simnet Rehearsal Evidence - 2026-05-19
+  await writeFile(path, `# Bridge Simnet Rehearsal Evidence - 2026-05-20
 
-This rehearsal uses real Pearl simnet txids from the public Pearl indexer and fresh local Anvil receipts for the Igra bridge contracts.
+This rehearsal uses fresh Pearl simnet txids from the writable multisig proof evidence and fresh local Anvil receipts for the Igra bridge contracts.
 
-Limitation: this session did not have writable \`pearld\` RPC or wallet credentials, so the Pearl deposit/release txids are reused public simnet evidence rather than newly-created Pearl transactions.
+Limitation: Igra is exercised on local Anvil while Galleon is unavailable; the Pearl reserve deposit/release txids come from the latest writable simnet proof artifact.
 
 ## Pearl Evidence
 
 - Deposit txid: \`${evidence.pearlEvidence.depositTxid}\`
 - Deposit outpoint: \`${evidence.pearlEvidence.depositOutpoint}\`
 - Deposit amount grains: \`${evidence.pearlEvidence.depositAmountGrains}\`
+- Pearl evidence source: \`${evidence.pearlEvidenceSource}\`
+- Pearl evidence run id: \`${evidence.pearlEvidenceRunId}\`
 - Release txid: \`${evidence.pearlEvidence.releaseTxid}\`
 - Release amount grains: \`${evidence.pearlEvidence.releaseAmountGrains}\`
 - Reserve address: \`${evidence.pearlEvidence.reserveAddress}\`
@@ -527,7 +566,7 @@ Limitation: this session did not have writable \`pearld\` RPC or wallet credenti
 - Reserve deficit grains: \`${evidence.finalReconciliation.reserveDeficitGrains}\`
 - Reserve blockers: \`${evidence.finalReconciliation.blockers.join(', ') || 'none'}\`
 
-Full machine-readable evidence is in [bridge-simnet-rehearsal-evidence-20260519.json](./bridge-simnet-rehearsal-evidence-20260519.json).
+Full machine-readable evidence is in [bridge-simnet-rehearsal-evidence-20260520.json](./bridge-simnet-rehearsal-evidence-20260520.json).
 `, 'utf8');
 }
 
