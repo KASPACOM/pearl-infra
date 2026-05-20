@@ -189,7 +189,7 @@ const DEADLINE_LABELS: Record<keyof OtcTrade['deadlines'], string> = {
   refundAvailableAt: 'Refund available',
 };
 
-const DEPOSIT_ENABLED_STATES = new Set<TradeState>(['pearl_escrow_pending', 'pearl_escrow_seen', 'pearl_escrow_confirmed', 'usdc_escrow_pending']);
+const DEPOSIT_ENABLED_STATES = new Set<TradeState>(['pearl_escrow_confirmed', 'usdc_escrow_pending']);
 const DEPOSIT_CONFIRMED_STATES = new Set<TradeState>(['usdc_escrow_confirmed', 'release_pending', 'released']);
 
 export function buildQuotePageModel(input: QuoteFormInput): QuotePageModel {
@@ -382,6 +382,14 @@ function getDepositAction(
   if (wallet.chainId !== trade.usdcEscrow.chainId) {
     return { kind: 'switch_network', label: `Switch to chain ${trade.usdcEscrow.chainId}`, disabled: false };
   }
+  if (!sameEvmAddress(wallet.address, trade.buyerUsdcAddress)) {
+    return {
+      kind: 'blocked',
+      label: 'Wallet mismatch',
+      disabled: true,
+      reason: 'Connected wallet must match the buyer USDC address on this trade.',
+    };
+  }
   return { kind: 'deposit_usdc', label: 'Deposit USDC', disabled: false };
 }
 
@@ -395,6 +403,10 @@ function getBaseStatusPills(trade: OtcTrade, wallet?: WalletModel, usdcVerificat
     {
       label: usdcVerification?.verified ? 'Terms verified' : 'Terms unverified',
       status: usdcVerification?.verified ? 'ok' : usdcVerification ? 'blocked' : 'warning',
+    },
+    {
+      label: sameEvmAddress(wallet?.address, trade.buyerUsdcAddress) ? 'Buyer wallet matched' : 'Buyer wallet mismatch',
+      status: sameEvmAddress(wallet?.address, trade.buyerUsdcAddress) ? 'ok' : 'blocked',
     },
   ];
 }
@@ -455,4 +467,8 @@ function isLikelyPearlAddress(value: string): boolean {
 
 function isLikelyEvmAddress(value: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function sameEvmAddress(left?: string, right?: string): boolean {
+  return Boolean(left && right && isLikelyEvmAddress(left) && isLikelyEvmAddress(right) && left.toLowerCase() === right.toLowerCase());
 }

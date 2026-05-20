@@ -380,10 +380,20 @@ Current delegation queue after PR #88:
       `support_alert_delivery` records, so operators know when Telegram/webhook
       escalation failed.
 - [x] 9.4.5 Add typed OTC API client and Base USDC escrow ethers call builders using the shared ABI/config.
+  - [x] 9.4.5.a Let checkout build approval/deposit calldata from the
+    server-authoritative trade contract and token fields instead of hardcoding
+    the Base Sepolia deployment in the UI.
 - [x] 9.4.6 Show all relevant deadlines and disable USDC deposit when the deposit cutoff has passed or when on-chain trade terms do not match backend terms.
   - [x] 9.4.6.a Add shared deadline models and deposit-action gating for wallet
     connection, chain mismatch, expired USDC deposit windows, and failed
     on-chain term verification.
+  - [x] 9.4.6.b Wire the checkout Base action to injected-wallet connect,
+    network switch, USDC approval, and escrow deposit transactions while keeping
+    release/refund controls off the user surface.
+  - [x] 9.4.6.c Harden checkout deposit gating so the connected wallet must
+    match the accepted buyer address, PRL funding must be confirmed, and
+    trade/verification/wallet state is re-read immediately before approval and
+    deposit broadcast.
 - [x] 9.4.7 Display late funding, refunded, reorged, stale indexer, and manual-review states without offering release actions to users.
   - [x] 9.4.7.a Add shared state families and failure banners for all manual
     review states, with checkout/proof models explicitly hiding release actions.
@@ -604,6 +614,10 @@ Loophole tracker after PR #74:
       complete Base lifecycle (`TradeCreated`, `Deposited`, and exactly one
       terminal event), matching Base chain ID, created-term fields, and Pearl
       indexer proof before accepting live evidence.
+    - [x] Wire the frontend checkout to the backend trade/proof/verification
+      routes and executable Base wallet deposit path, so a live run can proceed
+      quote -> accept -> checkout -> approve/deposit from the browser once the
+      operator-created Base escrow exists.
     - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
       non-Oyster raw signer path, or update Oyster once arbitrary raw tx
       signing is implemented.
@@ -910,6 +924,10 @@ blockers visible for planning. See
 - [ ] 11.9 Complete the OTC full-flow live evidence run with real Base Sepolia
   `createTrade`, `deposit`, and terminal `release` or `refund` receipts plus a
   real PRL signing/broadcast path.
+  - [x] 11.9.a Connect the OTC frontend checkout to real OTC API data,
+    injected-wallet connect/switch, USDC approve, and escrow deposit calls.
+  - [ ] 11.9.b Run the live Base Sepolia browser deposit against an
+    operator-created escrow and record the `TradeCreated`/`Deposited` txids.
 - [x] 11.10 Replace the testnet2 escrow-run blocker with the approved
   simnet-to-low-cap-mainnet path.
   - No usable Pearl testnet faucet/liquidity exists. After simnet proof, the
