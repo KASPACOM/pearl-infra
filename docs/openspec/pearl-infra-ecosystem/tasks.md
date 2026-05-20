@@ -198,13 +198,19 @@ Merged implementation checkpoints:
   amount plus Pearl recipient, duplicate pending-exit blockers, malformed
   `exit_release` blockers, and docs clarifying that `exit_release` is only a
   shape signal, not final authorization.
+- PR #90 follow-up audit — tightened the bridge reserve strategy so
+  reconciliation only counts a reserve spend as known after the shared matcher
+  proves it maps to exactly one mirrored exit, normalizes amount/address fields,
+  rejects wrong-purpose reserve watches, and enforces duplicate release/exit
+  guards in local repositories as well as Postgres.
 
-Review snapshot after PR #88: PRs #71-#88 are merged into `dev`. The bridge
-service and PRL-side proof strategy now fail closed for the known reserve-spend
-loopholes. Mainnet is still blocked until the live simnet scanner classifies the
-reserve release as `exit_release`, the proof passes with
-`PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1`, and live custody addresses/signer policy
-are approved.
+Review snapshot after PR #90 follow-up audit: PRs #71-#89 are merged into `dev`.
+The bridge service and PRL-side proof strategy now fail closed for the known
+reserve-spend loopholes: release-shaped spends must match exactly one mirrored
+exit before reconciliation treats them as known, malformed or ambiguous matcher
+inputs stay blockers, non-reserve watches cannot be counted as reserve backing,
+and local plus Postgres repositories reject duplicate exit/release identities.
+Mainnet remains blocked until live custody addresses/signer policy are approved.
 
 Current Pearl OTC code/workflow status:
 
@@ -756,6 +762,10 @@ Loophole tracker after PR #74:
     as known when both `amount_grains` and `pearl_recipient` are present and
     match one unique pending exit; amount-only, malformed, mismatched, or
     ambiguous duplicate cases remain reconciliation blockers.
+  - [x] 10.8.9.d Harden reconciliation so it reuses the reserve-spend matcher
+    before counting known reserve spends, blocks unmatched release-shaped spends,
+    rejects wrong-purpose reserve watches as backing, and normalizes grain
+    amounts plus Pearl recipient casing before exact matching.
 - [x] 10.8.10 Run a bridge simnet rehearsal with real Pearl deposit txids, Igra mint receipts, Igra burn events, Pearl release txids, and reserve reconciliation evidence.
   - 2026-05-19: Added `npm --workspace @kaspacom/bridge-service run rehearse:simnet-bridge`, which builds the bridge contracts, deploys fresh local `WrappedPearl`/`PearlBridge` receipts on Anvil chain `19416`, claims real public Pearl simnet deposit txid `442ea8d4fe37cb58e7946bec2cae7a9b3197e751188b3bdf0c143a6edc374164:0`, mirrors the Igra exit request/process logs through the bridge poller, matches real Pearl release txid `22bc370a13dcd0f3c4dfdf5c3ddd29323146a78b478157115debc846f855e7b1`, and records clean reserve reconciliation evidence in `docs/operations/bridge-simnet-rehearsal-evidence-20260519.md`.
   - [ ] 10.8.10.a Repeat the rehearsal with freshly-created writable Pearl simnet deposit/release txids once `pearld`/wallet credentials are available; this is the remaining pre-pilot live-infra confidence gate.
