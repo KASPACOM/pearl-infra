@@ -15,6 +15,7 @@ import {
 } from '../evm-wallet.js';
 import { buildTradeCheckoutPageModel, type UsdcVerificationModel } from '../page-models.js';
 import { BrandLoader, DataRow, DeadlineStrip, FailureBanner, StateBadge, Timeline } from '../components/Primitives.js';
+import type { PearlReleaseSigningIntent } from '../otc-api-client.js';
 import { getBrowserPathname, getTradeIdFromPath } from '../routing.js';
 
 type CheckoutActionStatus = 'idle' | 'connecting' | 'switching' | 'validating' | 'approving' | 'depositing' | 'submitted' | 'error';
@@ -32,6 +33,7 @@ export function TradeCheckoutPage() {
   const [actionError, setActionError] = useState<string>();
   const [approvalTxHash, setApprovalTxHash] = useState<string>();
   const [depositTxHash, setDepositTxHash] = useState<string>();
+  const [releaseIntent, setReleaseIntent] = useState<PearlReleaseSigningIntent>();
   const [loadError, setLoadError] = useState<string>();
 
   useEffect(() => {
@@ -81,16 +83,20 @@ export function TradeCheckoutPage() {
         return Promise.allSettled([
           client.getProof(routeTradeId),
           client.verifyUsdcEscrowTerms(routeTradeId),
+          client.getPearlReleaseSigningIntent(routeTradeId),
         ]);
       })
       .then((results) => {
         if (!active) return;
-        const [proofResult, verificationResult] = results;
+        const [proofResult, verificationResult, releaseIntentResult] = results;
         if (proofResult?.status === 'fulfilled') {
           setProof(proofResult.value);
         }
         if (verificationResult?.status === 'fulfilled') {
           setVerification(verificationResult.value);
+        }
+        if (releaseIntentResult?.status === 'fulfilled') {
+          setReleaseIntent(releaseIntentResult.value);
         }
         const firstFailure = results.find((result) => result.status === 'rejected');
         if (firstFailure?.status === 'rejected') {
@@ -262,8 +268,13 @@ export function TradeCheckoutPage() {
           <DataRow label="Network" value={model.pearl.network} />
           <DataRow label="Escrow" value={model.pearl.escrowAddress} />
           <DataRow label="Funding" value={model.pearl.fundingOutpoint} />
+          <DataRow label="Custody" value={model.pearl.escrowMode ?? 'coordinator'} />
+          <DataRow label="Release policy" value={model.pearl.releaseSigningMode ?? 'manual_after_base_deposit'} />
+          <DataRow label="Signer sets" value={model.pearl.signerSets.join(' / ') || 'not available'} />
           <DataRow label="Release tx" value={model.pearl.releaseTxid} />
           <DataRow label="Refund tx" value={model.pearl.refundTxid} />
+          <DataRow label="Release intent" value={releaseIntent?.status ?? 'not loaded'} />
+          <DataRow label="Release template" value={releaseIntent?.txTemplateHash ?? releaseIntent?.reason} />
         </section>
 
         <section className="om-panel">

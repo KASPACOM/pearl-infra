@@ -15,6 +15,7 @@ import {
   type TradeState,
   tradeStateIsTerminal,
 } from '@kaspacom/pearl-sdk';
+import { createPearlEscrowTxTemplateHash, createPearlEscrowUnsignedTx, type PearlEscrowPackage, type PearlEscrowTxTemplate } from '@kaspacom/pearl-escrow';
 import { getUsdcEscrowNetworkConfig } from '@kaspacom/usdc-escrow-client';
 
 import type { OtcRepository } from './repository.js';
@@ -32,6 +33,7 @@ import type {
   MarkManualReviewOptions,
   OtcApiConfig,
   OtcSideEffect,
+  PearlReleaseSigningIntent,
   PrepareUsdcCreateTradeRequest,
   PublicTradeProof,
   ReplaySupportAlertRequest,
@@ -180,6 +182,7 @@ export class OtcTradeService {
     if (await this.repository.findTradeByQuoteId(quoteId)) {
       throw new Error('quote already accepted');
     }
+    assertEscrowModeMatchesAllocator(request.pearlEscrowMode, this.config);
     this.assertPearlEscrowWatchRegistrarConfigured();
 
     const tradeId = createStableId('trade', [quote.quoteId, request.clientRequestId]);
@@ -206,6 +209,10 @@ export class OtcTradeService {
       buyerUsdcAddress: request.buyerUsdcAddress,
       sellerPearlRefundAddress: request.sellerPearlRefundAddress,
       sellerUsdcReceiveAddress: request.sellerUsdcReceiveAddress,
+      pearlEscrowMode: request.pearlEscrowMode ?? defaultPearlEscrowMode(this.config),
+      pearlReleaseSigningMode: request.pearlReleaseSigningMode ?? 'manual_after_base_deposit',
+      ...(request.buyerPearlPubkey ? { buyerPearlPubkey: request.buyerPearlPubkey } : {}),
+      ...(request.sellerPearlPubkey ? { sellerPearlPubkey: request.sellerPearlPubkey } : {}),
       pearlEscrow,
       usdcEscrow: {
         network: 'base',
@@ -237,7 +244,7 @@ export class OtcTradeService {
   }
 
   private async ensurePearlEscrowWatch(trade: OtcTrade): Promise<void> {
-    if (this.config.pearlEscrowAllocator !== 'p2tr_xpub') {
+    if (this.config.pearlEscrowAllocator === 'mock') {
       return;
     }
     this.assertPearlEscrowWatchRegistrarConfigured();
@@ -273,8 +280,8 @@ export class OtcTradeService {
   }
 
   private assertPearlEscrowWatchRegistrarConfigured(): void {
-    if (this.config.pearlEscrowAllocator === 'p2tr_xpub' && !this.pearlEscrowWatchRegistrar) {
-      throw new Error('Pearl indexer watch registrar is required when PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
+    if (this.config.pearlEscrowAllocator !== 'mock' && !this.pearlEscrowWatchRegistrar) {
+      throw new Error(`Pearl indexer watch registrar is required when PEARL_ESCROW_ALLOCATOR=${this.config.pearlEscrowAllocator}`);
     }
   }
 
@@ -318,12 +325,60 @@ export class OtcTradeService {
     return createPublicProof(trade, events, this.now(), pearlIndexedProof);
   }
 
+  async getPearlReleaseSigningIntent(tradeId: string): Promise<PearlReleaseSigningIntent> {
+    const trade = await this.getTrade(tradeId);
+    const signerSets = getReleaseSignerSets(trade);
+    const base: Omit<PearlReleaseSigningIntent, 'status'> = {
+      tradeId,
+      action: 'release',
+      signingMode: trade.pearlReleaseSigningMode,
+      signerSets,
+      workerCanFinishWithArbiter: signerSets.some((set) => set.includes('arbiter')),
+    };
+
+    if (trade.pearlEscrowMode !== 'multisig') {
+      return { ...base, status: 'not_ready', reason: 'trade was not allocated with multisig Pearl escrow' };
+    }
+    const pearlIndexedProof = await this.getPearlIndexedProof(trade);
+    const fundingOutpoint = trade.pearlEscrow.fundingOutpoint ?? pearlIndexedProof?.escrowOutpoint;
+    if (!fundingOutpoint) {
+      return { ...base, status: 'not_ready', reason: 'Pearl funding outpoint is not indexed yet' };
+    }
+
+    const fundedTrade = trade.pearlEscrow.fundingOutpoint === fundingOutpoint
+      ? trade
+      : {
+          ...trade,
+          pearlEscrow: {
+            ...trade.pearlEscrow,
+            fundingOutpoint,
+          },
+        };
+    const escrow = pearlEscrowPackageFromTrade(fundedTrade);
+    const unsignedTx = createPearlEscrowUnsignedTx({
+      escrow,
+      kind: 'release',
+      feeGrains: this.config.pearlReleaseFeeGrains ?? '0',
+    });
+    return {
+      ...base,
+      status: 'ready',
+      unsignedTxHex: unsignedTx.unsignedTxHex,
+      txTemplateHash: createPearlEscrowTxTemplateHash(unsignedTx),
+      inputOutpoint: unsignedTx.inputOutpoint,
+      inputAmountGrains: unsignedTx.inputAmountGrains,
+      outputAmountGrains: unsignedTx.outputAmountGrains,
+      feeGrains: unsignedTx.feeGrains,
+      destinationAddress: fundedTrade.buyerPearlAddress,
+    };
+  }
+
   private async getPearlIndexedProof(trade: OtcTrade): Promise<PearlIndexedProof | undefined> {
-    if (this.config.pearlEscrowAllocator !== 'p2tr_xpub') {
+    if (this.config.pearlEscrowAllocator === 'mock') {
       return undefined;
     }
     if (!this.pearlProofReader) {
-      throw new Error('Pearl proof reader is required when PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
+      throw new Error(`Pearl proof reader is required when PEARL_ESCROW_ALLOCATOR=${this.config.pearlEscrowAllocator}`);
     }
     return this.pearlProofReader.getPearlIndexedProof(trade);
   }
@@ -957,6 +1012,15 @@ function validateAcceptQuoteRequest(request: AcceptQuoteRequest, pearlNetwork: O
   assertLikelyPearlAddress(request.sellerPearlRefundAddress, 'sellerPearlRefundAddress', pearlNetwork);
   assertEvmAddress(request.buyerUsdcAddress, 'buyerUsdcAddress');
   assertEvmAddress(request.sellerUsdcReceiveAddress, 'sellerUsdcReceiveAddress');
+  if (request.pearlEscrowMode && !['coordinator', 'multisig'].includes(request.pearlEscrowMode)) {
+    throw new Error('pearlEscrowMode must be coordinator or multisig');
+  }
+  if (
+    request.pearlReleaseSigningMode &&
+    !['preauthorize_release', 'manual_after_base_deposit'].includes(request.pearlReleaseSigningMode)
+  ) {
+    throw new Error('pearlReleaseSigningMode must be preauthorize_release or manual_after_base_deposit');
+  }
 }
 
 function assertPositiveAmount(
@@ -1091,6 +1155,17 @@ function createTradeKey(tradeId: string): string {
   return `0x${createHash('sha256').update(tradeId).digest('hex')}`;
 }
 
+function defaultPearlEscrowMode(config: OtcApiConfig): 'coordinator' | 'multisig' {
+  return config.pearlEscrowAllocator === 'p2tr_multisig' ? 'multisig' : 'coordinator';
+}
+
+function assertEscrowModeMatchesAllocator(requestedMode: AcceptQuoteRequest['pearlEscrowMode'], config: OtcApiConfig): void {
+  const actualMode = defaultPearlEscrowMode(config);
+  if (requestedMode && requestedMode !== actualMode) {
+    throw new Error(`pearlEscrowMode ${requestedMode} is not available for allocator ${config.pearlEscrowAllocator}`);
+  }
+}
+
 function createExpectedUsdcTerms(trade: OtcTrade): {
   buyer: string;
   seller: string;
@@ -1105,6 +1180,72 @@ function createExpectedUsdcTerms(trade: OtcTrade): {
     feeMicros: parseUsdcToMicros(trade.feeUsdc).toString(),
     expiryUnixSeconds: Math.floor(new Date(trade.usdcEscrow.expiresAt).getTime() / 1000),
   };
+}
+
+function pearlEscrowPackageFromTrade(trade: OtcTrade): PearlEscrowPackage {
+  const releaseTemplate = assertPearlTxTemplate(trade.pearlEscrow.releaseTemplate, 'releaseTemplate');
+  const refundTemplate = assertPearlTxTemplate(trade.pearlEscrow.refundTemplate, 'refundTemplate');
+  const internalPubkeyHex = assertTradeString(trade.pearlEscrow.internalPubkeyHex, 'internalPubkeyHex');
+  const taprootOutputScriptHex = assertTradeString(trade.pearlEscrow.taprootOutputScriptHex, 'taprootOutputScriptHex');
+  const fundingOutpoint = assertTradeString(trade.pearlEscrow.fundingOutpoint, 'fundingOutpoint');
+
+  return {
+    tradeId: trade.tradeId,
+    network: trade.pearlEscrow.network,
+    escrowAddress: trade.pearlEscrow.address,
+    escrowScriptType: trade.pearlEscrow.escrowScriptType ?? 'p2tr',
+    expectedAmountGrains: trade.pearlEscrow.expectedAmountGrains,
+    requiredConfirmations: trade.pearlEscrow.requiredConfirmations,
+    fundingOutpoint,
+    ...(trade.pearlEscrow.refundEligibleAfterHeight == null
+      ? {}
+      : { refundEligibleAfterHeight: trade.pearlEscrow.refundEligibleAfterHeight }),
+    ...(trade.pearlEscrow.refundEligibleAfterUnixTime == null
+      ? {}
+      : { refundEligibleAfterUnixTime: trade.pearlEscrow.refundEligibleAfterUnixTime }),
+    releaseTemplate,
+    refundTemplate,
+    keys: {
+      internalPubkeyHex,
+      ...(trade.pearlEscrow.internalKeyPolicy ? { internalKeyPolicy: trade.pearlEscrow.internalKeyPolicy } : {}),
+      ...(trade.pearlEscrow.scriptNonceHex ? { scriptNonceHex: trade.pearlEscrow.scriptNonceHex } : {}),
+      taprootOutputScriptHex,
+      signerPubkeys: trade.pearlEscrow.signerPubkeys ?? {},
+      ...(trade.pearlEscrow.taprootScriptLeaves ? { taprootScriptLeaves: trade.pearlEscrow.taprootScriptLeaves } : {}),
+    },
+    createdAt: trade.createdAt,
+    verification: {
+      simnetVerified: trade.pearlEscrow.simnetVerified ?? false,
+    },
+  };
+}
+
+function getReleaseSignerSets(trade: OtcTrade): string[][] {
+  const template = trade.pearlEscrow.releaseTemplate;
+  if (!template || typeof template !== 'object') return [];
+  const policy = (template as { signingPolicy?: { requiredSigners?: string[]; alternativeSignerSets?: string[][] } }).signingPolicy;
+  return [
+    ...(policy?.requiredSigners?.length ? [policy.requiredSigners] : []),
+    ...(policy?.alternativeSignerSets ?? []),
+  ];
+}
+
+function assertPearlTxTemplate(value: unknown, field: string): PearlEscrowTxTemplate {
+  if (!value || typeof value !== 'object') {
+    throw new Error(`trade Pearl escrow ${field} is required`);
+  }
+  const candidate = value as Partial<PearlEscrowTxTemplate>;
+  if (!Array.isArray(candidate.inputs) || !Array.isArray(candidate.outputs) || !candidate.signingPolicy) {
+    throw new Error(`trade Pearl escrow ${field} is malformed`);
+  }
+  return candidate as PearlEscrowTxTemplate;
+}
+
+function assertTradeString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`trade Pearl escrow ${field} is required`);
+  }
+  return value;
 }
 
 function compareUsdcTerms(

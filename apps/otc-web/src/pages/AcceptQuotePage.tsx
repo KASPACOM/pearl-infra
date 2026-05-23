@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import type { OtcQuote } from '@kaspacom/pearl-sdk';
+import type { OtcQuote, PearlEscrowMode, PearlReleaseSigningMode } from '@kaspacom/pearl-sdk';
 
-import { createClientRequestId, createOtcClient } from '../api.js';
+import { createClientRequestId, createOtcClient, getDefaultPearlEscrowMode } from '../api.js';
 import { demoQuote, demoTrade, DEMO_NOW } from '../demo-data.js';
 import { buildAcceptQuotePageModel } from '../page-models.js';
 import { BrandLoader, Field } from '../components/Primitives.js';
@@ -15,6 +15,10 @@ export function AcceptQuotePage() {
   const [buyerUsdcAddress, setBuyerUsdcAddress] = useState(demoTrade.buyerUsdcAddress);
   const [sellerPearlRefundAddress, setSellerPearlRefundAddress] = useState(demoTrade.sellerPearlRefundAddress);
   const [sellerUsdcReceiveAddress, setSellerUsdcReceiveAddress] = useState(demoTrade.sellerUsdcReceiveAddress);
+  const [pearlEscrowMode, setPearlEscrowMode] = useState<PearlEscrowMode>(getDefaultPearlEscrowMode);
+  const [pearlReleaseSigningMode, setPearlReleaseSigningMode] = useState<PearlReleaseSigningMode>('preauthorize_release');
+  const [buyerPearlPubkey, setBuyerPearlPubkey] = useState('');
+  const [sellerPearlPubkey, setSellerPearlPubkey] = useState('');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'accepted' | 'error'>('idle');
   const [tradeId, setTradeId] = useState(demoTrade.tradeId);
   const [error, setError] = useState<string>();
@@ -24,6 +28,13 @@ export function AcceptQuotePage() {
   const onBuyerUsdcChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setBuyerUsdcAddress(event.target.value), []);
   const onSellerPearlChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setSellerPearlRefundAddress(event.target.value), []);
   const onSellerUsdcChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setSellerUsdcReceiveAddress(event.target.value), []);
+  const onEscrowModeChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => setPearlEscrowMode(event.target.value as PearlEscrowMode), []);
+  const onReleaseSigningModeChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => setPearlReleaseSigningMode(event.target.value as PearlReleaseSigningMode),
+    [],
+  );
+  const onBuyerPearlPubkeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setBuyerPearlPubkey(event.target.value), []);
+  const onSellerPearlPubkeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setSellerPearlPubkey(event.target.value), []);
 
   useEffect(() => {
     if (!routeQuoteId) {
@@ -71,6 +82,10 @@ export function AcceptQuotePage() {
       buyerUsdcAddress,
       sellerPearlRefundAddress,
       sellerUsdcReceiveAddress,
+      pearlEscrowMode,
+      pearlReleaseSigningMode,
+      buyerPearlPubkey,
+      sellerPearlPubkey,
       clientRequestId: createClientRequestId('accept_preview'),
     },
     role,
@@ -92,6 +107,9 @@ export function AcceptQuotePage() {
         buyerUsdcAddress,
         sellerPearlRefundAddress,
         sellerUsdcReceiveAddress,
+        pearlEscrowMode,
+        pearlReleaseSigningMode,
+        ...(pearlEscrowMode === 'multisig' ? { buyerPearlPubkey, sellerPearlPubkey } : {}),
         clientRequestId: createClientRequestId('accept'),
       });
       setTradeId(trade.tradeId);
@@ -131,6 +149,30 @@ export function AcceptQuotePage() {
           ) : (
             <div className="accept-form__note">Seller settlement addresses are managed by the desk and shown later on the proof page.</div>
           )}
+
+          <Field label="Pearl escrow mode" error={model.errors.pearlEscrowMode}>
+            <select value={pearlEscrowMode} onChange={onEscrowModeChange}>
+              <option value="multisig">2-of-3 buyer / seller / arbiter</option>
+              <option value="coordinator">Coordinator signer</option>
+            </select>
+          </Field>
+
+          {pearlEscrowMode === 'multisig' ? (
+            <div className="accept-form__seller">
+              <Field label="Buyer Pearl public key" error={model.errors.buyerPearlPubkey}>
+                <input value={buyerPearlPubkey} onChange={onBuyerPearlPubkeyChange} spellCheck={false} />
+              </Field>
+              <Field label="Seller Pearl public key" error={model.errors.sellerPearlPubkey}>
+                <input value={sellerPearlPubkey} onChange={onSellerPearlPubkeyChange} spellCheck={false} />
+              </Field>
+              <Field label="Release signing" error={model.errors.pearlReleaseSigningMode}>
+                <select value={pearlReleaseSigningMode} onChange={onReleaseSigningModeChange}>
+                  <option value="preauthorize_release">Pre-sign after PRL funding</option>
+                  <option value="manual_after_base_deposit">Sign after Base deposit</option>
+                </select>
+              </Field>
+            </div>
+          ) : null}
 
           <button className="om-button om-button--primary" type="button" disabled={status === 'submitting'} onClick={accept}>
             {status === 'submitting' ? <BrandLoader compact label="Allocating escrows..." /> : 'Accept and continue'}

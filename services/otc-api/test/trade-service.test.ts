@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { canTransitionTrade } from '@kaspacom/pearl-sdk';
+import * as ecc from 'tiny-secp256k1';
 
+import { createConfiguredPearlEscrowAllocator } from '../src/pearl-escrow-allocator.ts';
 import type { PearlProofReader } from '../src/pearl-proof-reader.ts';
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import type { SupportAlertNotification, SupportAlertNotifier } from '../src/support-alert-notifier.ts';
@@ -27,6 +29,9 @@ const config: OtcApiConfig = {
   supportAlertRateLimitWindowMs: 10 * 60 * 1000,
   supportAlertRateLimitMax: 5,
 };
+const BUYER_TESTNET_ADDRESS = 'tprl1pet7ep3czdu9k4wvdlz2fp5p8x2yp7t6ttyqg2c6cmh0lgeuu9lasga5cef';
+const SELLER_TESTNET_REFUND_ADDRESS = 'tprl1pgxxyvcmdncdxs06cudd5yvmwwahaesaj6n3eu7st7x4sw9hrchaqpcq7p3';
+const INDEXED_PEARL_FUNDING_OUTPOINT = `${'aa'.repeat(32)}:0`;
 
 const escrowAllocator: PearlEscrowAllocator = {
   async allocateEscrow({ tradeId, config: allocatorConfig }) {
@@ -90,6 +95,36 @@ class StaticPearlProofReader implements PearlProofReader {
   }
 }
 
+class EmptyPearlProofReader implements PearlProofReader {
+  async getPearlIndexedProof() {
+    return {
+      escrowConfirmations: 0,
+      events: [],
+    };
+  }
+}
+
+class StaticPearlFundingProofReader implements PearlProofReader {
+  async getPearlIndexedProof(trade: Awaited<ReturnType<OtcTradeService['acceptQuote']>>) {
+    return {
+      escrowOutpoint: INDEXED_PEARL_FUNDING_OUTPOINT,
+      escrowConfirmations: 7,
+      events: [
+        {
+          tradeId: trade.tradeId,
+          fromState: trade.state,
+          toState: 'pearl_escrow_confirmed' as const,
+          source: 'pearl_indexer' as const,
+          sourceEventId: 'pearl-observation:indexed-funding:confirmed',
+          outpoint: INDEXED_PEARL_FUNDING_OUTPOINT,
+          confirmations: 7,
+          observedAt: '2026-05-16T12:03:00.000Z',
+        },
+      ],
+    };
+  }
+}
+
 class RecordingSupportAlertNotifier implements SupportAlertNotifier {
   readonly notifications: SupportAlertNotification[] = [];
   private readonly fail: boolean;
@@ -119,6 +154,13 @@ function createServiceWithSupportAlertNotifier(
   now = new Date('2026-05-16T12:00:00.000Z'),
 ): OtcTradeService {
   return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, undefined, () => now, undefined, undefined, notifier);
+}
+
+function xOnlyPublicKey(seed: string): string {
+  const privateKey = Buffer.from(seed.padStart(64, '0'), 'hex');
+  const publicKey = ecc.pointFromScalar(privateKey, true);
+  if (!publicKey) throw new Error(`invalid private key fixture: ${seed}`);
+  return Buffer.from(publicKey).subarray(1).toString('hex');
 }
 
 test('creates an idempotent Base USDC quote', async () => {
@@ -668,6 +710,104 @@ test('requires a Pearl proof reader for real Pearl escrow public proof', async (
     () => service.getPublicProof(trade.tradeId),
     /Pearl proof reader is required/,
   );
+});
+
+test('returns a not-ready Pearl release intent before multisig funding is indexed', async () => {
+  const multisigConfig: OtcApiConfig = {
+    ...config,
+    pearlEscrowAllocator: 'p2tr_multisig',
+    pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
+  };
+  const service = new OtcTradeService(
+    new InMemoryOtcRepository(),
+    multisigConfig,
+    createConfiguredPearlEscrowAllocator(multisigConfig),
+    undefined,
+    () => new Date('2026-05-16T12:00:00.000Z'),
+    new RecordingWatchRegistrar(),
+    new EmptyPearlProofReader(),
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-release-intent-not-ready',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: SELLER_TESTNET_REFUND_ADDRESS,
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    pearlEscrowMode: 'multisig',
+    pearlReleaseSigningMode: 'preauthorize_release',
+    buyerPearlPubkey: xOnlyPublicKey('02'),
+    sellerPearlPubkey: xOnlyPublicKey('03'),
+    clientRequestId: 'accept-request-release-intent-not-ready',
+  });
+
+  const intent = await service.getPearlReleaseSigningIntent(trade.tradeId);
+
+  assert.equal(intent.status, 'not_ready');
+  assert.match(intent.reason ?? '', /funding outpoint/);
+  assert.deepEqual(intent.signerSets, [
+    ['buyer', 'seller'],
+    ['buyer', 'arbiter'],
+    ['seller', 'arbiter'],
+  ]);
+  assert.equal(intent.workerCanFinishWithArbiter, true);
+});
+
+test('builds a Pearl multisig release intent from indexed funding proof', async () => {
+  const multisigConfig: OtcApiConfig = {
+    ...config,
+    pearlEscrowAllocator: 'p2tr_multisig',
+    pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
+    pearlReleaseFeeGrains: '1000',
+  };
+  const service = new OtcTradeService(
+    new InMemoryOtcRepository(),
+    multisigConfig,
+    createConfiguredPearlEscrowAllocator(multisigConfig),
+    undefined,
+    () => new Date('2026-05-16T12:00:00.000Z'),
+    new RecordingWatchRegistrar(),
+    new StaticPearlFundingProofReader(),
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-release-intent-ready',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: SELLER_TESTNET_REFUND_ADDRESS,
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    pearlEscrowMode: 'multisig',
+    pearlReleaseSigningMode: 'preauthorize_release',
+    buyerPearlPubkey: xOnlyPublicKey('02'),
+    sellerPearlPubkey: xOnlyPublicKey('03'),
+    clientRequestId: 'accept-request-release-intent-ready',
+  });
+
+  const intent = await service.getPearlReleaseSigningIntent(trade.tradeId);
+
+  assert.equal(intent.status, 'ready');
+  assert.equal(intent.signingMode, 'preauthorize_release');
+  assert.equal(intent.inputOutpoint, INDEXED_PEARL_FUNDING_OUTPOINT);
+  assert.equal(intent.inputAmountGrains, '100000000000');
+  assert.equal(intent.outputAmountGrains, '99999999000');
+  assert.equal(intent.feeGrains, '1000');
+  assert.equal(intent.destinationAddress, BUYER_TESTNET_ADDRESS);
+  assert.match(intent.unsignedTxHex ?? '', /^[0-9a-f]+$/);
+  assert.match(intent.txTemplateHash ?? '', /^sha256:[0-9a-f]{64}$/);
 });
 
 test('builds admin trade diagnostics and records support alerts', async () => {

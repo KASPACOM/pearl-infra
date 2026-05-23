@@ -63,6 +63,7 @@ export function createPearlP2trMultisigEscrowPayment(input: {
   sellerPubkey: string | Uint8Array;
   arbiterPubkey: string | Uint8Array;
   refundLockTime?: number;
+  scriptNonceHex?: string;
 }): PearlP2trMultisigEscrowPayment {
   ensureEccInitialized();
   if ('internalPubkey' in input) {
@@ -80,11 +81,12 @@ export function createPearlP2trMultisigEscrowPayment(input: {
   if (input.refundLockTime == null) {
     throw new Error('refundLockTime is required for multisig escrow timeout refund leaf');
   }
+  const scriptNonce = input.scriptNonceHex ? normalizeScriptNonce(input.scriptNonceHex) : undefined;
   const leavesWithoutControlBlock = [
-    createTwoOfTwoLeaf('buyer_seller_release', buyerPubkey, sellerPubkey, ['buyer', 'seller']),
-    createTwoOfTwoLeaf('buyer_arbiter_release', buyerPubkey, arbiterPubkey, ['buyer', 'arbiter']),
-    createTwoOfTwoLeaf('seller_arbiter_release', sellerPubkey, arbiterPubkey, ['seller', 'arbiter']),
-    createTimeoutRefundLeaf(sellerPubkey, input.refundLockTime),
+    createTwoOfTwoLeaf('buyer_seller_release', buyerPubkey, sellerPubkey, ['buyer', 'seller'], scriptNonce),
+    createTwoOfTwoLeaf('buyer_arbiter_release', buyerPubkey, arbiterPubkey, ['buyer', 'arbiter'], scriptNonce),
+    createTwoOfTwoLeaf('seller_arbiter_release', sellerPubkey, arbiterPubkey, ['seller', 'arbiter'], scriptNonce),
+    createTimeoutRefundLeaf(sellerPubkey, input.refundLockTime, scriptNonce),
   ];
   const scriptTree: Taptree = [
     [{ output: Buffer.from(leavesWithoutControlBlock[0].scriptHex, 'hex') }, { output: Buffer.from(leavesWithoutControlBlock[1].scriptHex, 'hex') }],
@@ -154,8 +156,10 @@ function createTwoOfTwoLeaf(
   firstPubkey: Uint8Array,
   secondPubkey: Uint8Array,
   requiredSigners: PearlMultisigEscrowLeaf['requiredSigners'],
+  scriptNonce?: Uint8Array,
 ): Omit<PearlMultisigEscrowLeaf, 'controlBlockHex'> {
   const output = script.compile([
+    ...scriptNoncePrefix(scriptNonce),
     Buffer.from(firstPubkey),
     opcodes.OP_CHECKSIG,
     Buffer.from(secondPubkey),
@@ -171,11 +175,16 @@ function createTwoOfTwoLeaf(
   };
 }
 
-function createTimeoutRefundLeaf(sellerPubkey: Uint8Array, lockTime: number): Omit<PearlMultisigEscrowLeaf, 'controlBlockHex'> {
+function createTimeoutRefundLeaf(
+  sellerPubkey: Uint8Array,
+  lockTime: number,
+  scriptNonce?: Uint8Array,
+): Omit<PearlMultisigEscrowLeaf, 'controlBlockHex'> {
   if (!Number.isInteger(lockTime) || lockTime <= 0) {
     throw new Error('refundLockTime must be a positive integer');
   }
   const output = script.compile([
+    ...scriptNoncePrefix(scriptNonce),
     script.number.encode(lockTime),
     opcodes.OP_CHECKLOCKTIMEVERIFY,
     opcodes.OP_DROP,
@@ -189,6 +198,22 @@ function createTimeoutRefundLeaf(sellerPubkey: Uint8Array, lockTime: number): Om
     leafVersion: 0xc0,
     lockTime,
   };
+}
+
+function normalizeScriptNonce(value: string): Uint8Array {
+  const normalized = stripHexPrefix(value);
+  if (!/^[0-9a-fA-F]+$/.test(normalized) || normalized.length % 2 !== 0) {
+    throw new Error('scriptNonceHex must be even-length hex');
+  }
+  const bytes = Buffer.from(normalized, 'hex');
+  if (bytes.length === 0 || bytes.length > 80) {
+    throw new Error('scriptNonceHex must be between 1 and 80 bytes');
+  }
+  return Uint8Array.from(bytes);
+}
+
+function scriptNoncePrefix(scriptNonce?: Uint8Array): Array<Buffer | number> {
+  return scriptNonce ? [Buffer.from(scriptNonce), opcodes.OP_DROP] : [];
 }
 
 function addControlBlockToLeaf(

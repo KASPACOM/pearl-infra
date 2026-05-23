@@ -8,10 +8,12 @@ Oyster deploys the Pearl OTC application as two services per environment:
 | main | `main` | `oyster.kaspa.com` | `api-oyster.kaspa.com` | `us-east-1` | `kaspacom/oyster-otc-web-prod`, `kaspacom/oyster-otc-api-prod` |
 
 The web image is built with `VITE_OTC_API_BASE_URL` set to the matching API
-host. Do not put admin/operator tokens in `VITE_*` variables; Vite embeds them
-in the public browser bundle. Operators enter the token in the admin screen,
-which stores it in browser session storage only. The API container serves
-`/healthz`; the web container serves `/healthz` through Nginx.
+host and `VITE_PEARL_ESCROW_MODE` set to `multisig` on dev, `coordinator` on
+main until mainnet custody is explicitly approved. Do not put admin/operator
+tokens in `VITE_*` variables; Vite embeds them in the public browser bundle.
+Operators enter the token in the admin screen, which stores it in browser
+session storage only. The API container serves `/healthz`; the web container
+serves `/healthz` through Nginx.
 
 ## CI/CD
 
@@ -22,7 +24,7 @@ The workflow:
 1. installs dependencies and runs `npm test`;
 2. builds and pushes the OTC API image;
 3. builds and pushes the OTC web image with the environment-specific API base
-   URL;
+   URL and Pearl escrow-mode default;
 4. updates the matching ArgoCD deployment image tags in `KASPACOM/argo-cd`.
 
 Required GitHub secrets:
@@ -49,7 +51,8 @@ Expected fields in each secret:
 | --- | --- |
 | `OTC_API_DATABASE_URL` | Postgres URL for OTC quotes/trades/side effects. |
 | `BASE_RPC_URL` | Base Sepolia RPC until Base mainnet is approved. |
-| `PEARL_ESCROW_XPUB` | P2TR derivation xpub for the environment. |
+| `PEARL_ESCROW_XPUB` | P2TR derivation xpub when `PEARL_ESCROW_ALLOCATOR=p2tr_xpub`. |
+| `PEARL_ESCROW_ARBITER_PUBKEY` | x-only arbiter key when `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`. |
 | `PEARL_INDEXER_WATCH_URL` | Private watched-address API URL. |
 | `OTC_ADMIN_API_TOKENS` or `OTC_ADMIN_API_TOKEN` | Admin RBAC token contract. |
 | `OTC_ALERT_TELEGRAM_BOT_TOKEN` | Required unless webhook delivery is used. |

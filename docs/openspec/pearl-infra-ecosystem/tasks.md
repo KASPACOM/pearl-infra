@@ -657,6 +657,14 @@ Loophole tracker after PR #74:
     routes require `OTC_ADMIN_API_TOKEN`, and support/error alerts require at
     least one configured sink (`OTC_ALERT_WEBHOOK_URL` or Telegram bot token
     plus chat ID), in production-like deployments.
+  - 2026-05-23: Added the dev end-to-end Pearl multisig custody path: public
+    quote acceptance can request `multisig` custody, capture buyer/seller
+    Pearl pubkeys, select preauthorized-vs-manual release signing, and show
+    custody/signing policy plus release intent status on checkout. The API
+    now supports `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`, requires
+    `PEARL_ESCROW_ARBITER_PUBKEY`, derives trade-id-committed 2-of-3 P2TR
+    escrows, and exposes a public release-intent template only after Pearl
+    funding is indexed.
 - [x] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
   broadcasts, duplicate events, manual-review backlog, and mismatched
   backend/on-chain terms.
@@ -737,7 +745,11 @@ Loophole tracker after PR #74:
   - [x] 9.10.10.d Dev admin-auth smoke passed with the generated admin token.
   - [x] 9.10.10.e Dev support-alert smoke passed with Telegram delivery
     confirmed in admin diagnostics.
-  - [ ] 9.10.10.f Main/prod smoke after prod release path is executed.
+  - [ ] 9.10.10.f Switch dev API secret to `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`
+    with `PEARL_ESCROW_ARBITER_PUBKEY`, deploy the new API/web images, and
+    smoke quote -> multisig accept -> Pearl funding/proof -> Base create/deposit
+    -> release intent from the browser.
+  - [ ] 9.10.10.g Main/prod smoke after prod release path is executed.
 - [x] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
   indexer on `65.21.206.46` and smoke `PEARL_INDEXER_WATCH_URL` from the API
   runtime network.

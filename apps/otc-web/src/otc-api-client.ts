@@ -1,4 +1,12 @@
-import type { OtcQuote, OtcTrade, PublicTradeProof, TradeEvent, TradeState } from '@kaspacom/pearl-sdk';
+import type {
+  OtcQuote,
+  OtcTrade,
+  PearlEscrowMode,
+  PearlReleaseSigningMode,
+  PublicTradeProof,
+  TradeEvent,
+  TradeState,
+} from '@kaspacom/pearl-sdk';
 
 export interface CreateQuoteRequest {
   side: 'buy_prl' | 'sell_prl';
@@ -15,6 +23,10 @@ export interface AcceptQuoteRequest {
   buyerUsdcAddress: string;
   sellerPearlRefundAddress: string;
   sellerUsdcReceiveAddress: string;
+  pearlEscrowMode?: PearlEscrowMode;
+  pearlReleaseSigningMode?: PearlReleaseSigningMode;
+  buyerPearlPubkey?: string;
+  sellerPearlPubkey?: string;
   clientRequestId: string;
 }
 
@@ -96,6 +108,23 @@ export interface UsdcEscrowVerification {
     expiryUnixSeconds: number;
     status: 'none' | 'created' | 'deposited' | 'released' | 'refunded' | 'cancelled';
   };
+}
+
+export interface PearlReleaseSigningIntent {
+  tradeId: string;
+  action: 'release';
+  status: 'ready' | 'not_ready';
+  signingMode?: 'preauthorize_release' | 'manual_after_base_deposit';
+  reason?: string;
+  unsignedTxHex?: string;
+  txTemplateHash?: string;
+  inputOutpoint?: string;
+  inputAmountGrains?: string;
+  outputAmountGrains?: string;
+  feeGrains?: string;
+  destinationAddress?: string;
+  signerSets: string[][];
+  workerCanFinishWithArbiter: boolean;
 }
 
 export interface AdminTradeQuery {
@@ -246,6 +275,10 @@ export class OtcApiClient {
 
   getProof(tradeId: string): Promise<PublicTradeProof> {
     return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/proof`);
+  }
+
+  getPearlReleaseSigningIntent(tradeId: string): Promise<PearlReleaseSigningIntent> {
+    return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/pearl-release/intent`);
   }
 
   prepareUsdcCreateTrade(tradeId: string, request: PrepareUsdcCreateTradeRequest, adminToken?: string): Promise<UsdcCreateTradeIntent> {

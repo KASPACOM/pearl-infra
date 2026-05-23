@@ -5,6 +5,7 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     pearlNetwork: (env.PEARL_NETWORK as OtcApiConfig['pearlNetwork'] | undefined) ?? 'testnet2',
     pearlEscrowAllocator: (env.PEARL_ESCROW_ALLOCATOR as OtcApiConfig['pearlEscrowAllocator'] | undefined) ?? 'mock',
     pearlEscrowXpub: env.PEARL_ESCROW_XPUB,
+    pearlEscrowArbiterPubkey: env.PEARL_ESCROW_ARBITER_PUBKEY,
     pearlEscrowDerivationPrefix: env.PEARL_ESCROW_DERIVATION_PREFIX ?? '0',
     allowMainnetPearlEscrow: env.PEARL_ESCROW_ALLOW_MAINNET === 'true',
     quoteTtlMs: Number(env.OTC_QUOTE_TTL_MS ?? 5 * 60 * 1000),
@@ -14,6 +15,7 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     priceUsdcPerPrl: env.OTC_PRICE_USDC_PER_PRL ?? '0.170000',
     feeBps: Number(env.OTC_FEE_BPS ?? 0),
     pearlEscrowConfirmations: Number(env.PEARL_ESCROW_CONFIRMATIONS ?? 3),
+    pearlReleaseFeeGrains: env.PEARL_RELEASE_FEE_GRAINS ?? '0',
     baseEscrowContract: env.BASE_USDC_ESCROW_CONTRACT ?? '0x0000000000000000000000000000000000000000',
     baseNetwork: (env.BASE_USDC_ESCROW_NETWORK as OtcApiConfig['baseNetwork'] | undefined) ?? 'base_sepolia',
     databaseUrl: env.OTC_API_DATABASE_URL,
@@ -45,8 +47,13 @@ export function assertOtcApiStartupConfig(config: OtcApiConfig, runtime: OtcApiR
   const missing: string[] = [];
   if (!config.databaseUrl) missing.push('OTC_API_DATABASE_URL');
   if (!config.baseRpcUrl) missing.push('BASE_RPC_URL');
-  if (config.pearlEscrowAllocator !== 'p2tr_xpub') missing.push('PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
-  if (!config.pearlEscrowXpub) missing.push('PEARL_ESCROW_XPUB');
+  if (!['p2tr_xpub', 'p2tr_multisig'].includes(config.pearlEscrowAllocator)) {
+    missing.push('PEARL_ESCROW_ALLOCATOR=p2tr_xpub or p2tr_multisig');
+  }
+  if (config.pearlEscrowAllocator === 'p2tr_xpub' && !config.pearlEscrowXpub) missing.push('PEARL_ESCROW_XPUB');
+  if (config.pearlEscrowAllocator === 'p2tr_multisig' && !config.pearlEscrowArbiterPubkey) {
+    missing.push('PEARL_ESCROW_ARBITER_PUBKEY');
+  }
   if (!config.pearlIndexerWatchUrl) missing.push('PEARL_INDEXER_WATCH_URL');
   if (!config.adminApiToken && !config.adminApiTokens) missing.push('OTC_ADMIN_API_TOKEN or OTC_ADMIN_API_TOKENS');
   const hasTelegramAlerts = Boolean(config.supportAlertTelegramBotToken && config.supportAlertTelegramChatId);

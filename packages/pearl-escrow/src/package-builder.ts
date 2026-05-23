@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { createPearlP2trMultisigEscrowPayment, createPearlP2trPayment, normalizeXOnlyPubkey } from '@kaspacom/pearl-script';
 import { validatePearlAddress } from '@kaspacom/pearl-sdk';
 
@@ -69,6 +71,7 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
   assertAddressForNetwork(input.releaseAddress, input.network, 'releaseAddress');
   assertAddressForNetwork(input.refundAddress, input.network, 'refundAddress');
   const refundLockTime = readMultisigRefundLockTime(input);
+  const scriptNonceHex = createTradeScriptNonce(input.tradeId);
 
   const payment = createPearlP2trMultisigEscrowPayment({
     network: input.network,
@@ -76,6 +79,7 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
     sellerPubkey: input.sellerPubkey,
     arbiterPubkey: input.arbiterPubkey,
     refundLockTime,
+    scriptNonceHex,
   });
   const releaseTemplate = createTemplate({
     kind: 'release',
@@ -117,6 +121,7 @@ export function createPearlMultisigEscrowPackage(input: CreatePearlMultisigEscro
     keys: {
       internalPubkeyHex: payment.internalPubkeyHex,
       internalKeyPolicy: payment.internalKeyPolicy,
+      scriptNonceHex,
       taprootOutputScriptHex: payment.outputScriptHex,
       signerPubkeys: {
         buyer: toXOnlyPubkeyHex(input.buyerPubkey),
@@ -236,4 +241,8 @@ function addressNetworkMatches(addressNetwork: ReturnType<typeof validatePearlAd
 
 function toXOnlyPubkeyHex(value: string | Uint8Array): string {
   return Buffer.from(normalizeXOnlyPubkey(value)).toString('hex');
+}
+
+function createTradeScriptNonce(tradeId: string): string {
+  return createHash('sha256').update(`pearl-otc-multisig:${tradeId}`).digest('hex');
 }

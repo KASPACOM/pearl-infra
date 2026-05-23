@@ -126,6 +126,12 @@ test('serves quote, accept, trade, and proof routes', async () => {
     assert.equal(proof.deadlines.usdcDepositDeadline, '2026-05-16T12:15:00.000Z');
     assert.equal(proof.events.length, 1);
 
+    const releaseIntentResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/pearl-release/intent`);
+    assert.equal(releaseIntentResponse.status, 200);
+    const releaseIntent = (await releaseIntentResponse.json()) as { status: string; reason: string };
+    assert.equal(releaseIntent.status, 'not_ready');
+    assert.match(releaseIntent.reason, /multisig/);
+
     const publicCreateIntentResponse = await postJson(baseUrl, `/otc/trades/${trade.tradeId}/usdc-escrow/create-intent`, {
       idempotencyKey: 'http-create-trade-public',
       actor: 'spoofed-operator',
