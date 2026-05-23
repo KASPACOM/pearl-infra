@@ -203,8 +203,9 @@ Merged implementation checkpoints:
   proves it maps to exactly one mirrored exit, normalizes amount/address fields,
   rejects wrong-purpose reserve watches, and enforces duplicate release/exit
   guards in local repositories as well as Postgres.
-- Open PR #96 — wires the OTC dev multisig app flow: `p2tr_multisig` API
-  allocation, trade-id-committed 2-of-3 Pearl Taproot escrows, public
+- Open PR #96 — wires and hardens the OTC dev multisig app flow:
+  `p2tr_multisig` API allocation, trade-id-committed 2-of-3 Pearl Taproot
+  escrows, buyer/seller signer-ownership proofs bound to quote terms, public
   release-intent templates, FE custody/release-signing choices, and dev env
   defaults for multisig custody.
 
@@ -281,9 +282,10 @@ Current delegation queue after PR #96:
 - Oyster/dev ops owner: after PR #96 merges, add the dev
   `PEARL_ESCROW_ARBITER_PUBKEY` secret, switch the dev API allocator to
   `p2tr_multisig`, deploy the new API/web images, and smoke the browser path
-  through quote, multisig accept, Pearl funding/proof, Base create/deposit, and
-  release intent. A settlement-worker Kubernetes runtime is still missing and
-  must be packaged/deployed before unattended settlement can be claimed.
+  through quote, multisig accept with buyer/seller signer proofs, Pearl
+  funding/proof, Base create/deposit, and release intent. A settlement-worker
+  Kubernetes runtime is still missing and must be packaged/deployed before
+  unattended settlement can be claimed.
 - Base ops owner: `9.6.7` is complete on Base Sepolia; keep `9.6.9` blocked
   until explicit Base mainnet approval.
 - Oyster/prod ops owner: finish `9.10.6.c`, `9.10.8.e`, `9.10.9.b`, and
@@ -564,6 +566,17 @@ Loophole tracker after PR #74:
   for write); public users must use proof and support-alert routes only.
 - [x] Base Sepolia ownership acceptance evidence is recorded; `9.6.7` is
   complete.
+- [x] Multisig signer-key spoofing at quote acceptance — PR #96 now requires
+  BIP340 signer-ownership proofs from both buyer and seller before allocating
+  a `p2tr_multisig` Pearl escrow. The signed proof is bound to quote ID, role,
+  Pearl address, USDC address, Pearl pubkey, and release-signing mode, so a
+  typo, placeholder, or substituted pubkey/address cannot silently allocate an
+  escrow the intended party cannot sign.
+- [ ] Release-signature wallet UX is still not production-complete — signer
+  ownership proof is not the final release/refund transaction signature. The
+  app can show release-intent templates after indexed funding, but a Pearl
+  wallet/tooling path must still collect and submit the actual release
+  signatures before claiming fully self-serve user release from the browser.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
   after separate approval, ownership evidence, and live-run evidence.
 
@@ -670,9 +683,10 @@ Loophole tracker after PR #74:
     plus chat ID), in production-like deployments.
   - 2026-05-23: Added the dev end-to-end Pearl multisig custody path: public
     quote acceptance can request `multisig` custody, capture buyer/seller
-    Pearl pubkeys, select preauthorized-vs-manual release signing, and show
-    custody/signing policy plus release intent status on checkout. The API
-    now supports `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`, requires
+    Pearl pubkeys, require BIP340 signer-ownership proofs bound to the accept
+    terms, select preauthorized-vs-manual release signing, and show custody/
+    signing policy plus release intent status on checkout. The API now
+    supports `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`, requires
     `PEARL_ESCROW_ARBITER_PUBKEY`, derives trade-id-committed 2-of-3 P2TR
     escrows, and exposes a public release-intent template only after Pearl
     funding is indexed.
@@ -765,8 +779,8 @@ Loophole tracker after PR #74:
     confirmed in admin diagnostics.
   - [ ] 9.10.10.f Switch dev API secret to `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`
     with `PEARL_ESCROW_ARBITER_PUBKEY`, deploy the new API/web images, and
-    smoke quote -> multisig accept -> Pearl funding/proof -> Base create/deposit
-    -> release intent from the browser.
+    smoke quote -> multisig accept with buyer/seller signer proofs -> Pearl
+    funding/proof -> Base create/deposit -> release intent from the browser.
   - [ ] 9.10.10.g Main/prod smoke after prod release path is executed.
 - [x] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
   indexer on `65.21.206.46` and smoke `PEARL_INDEXER_WATCH_URL` from the API

@@ -48,7 +48,7 @@ test('builds quote request model with locked USDC on Base and validation errors'
   });
 });
 
-test('builds quote acceptance model with role-based seller fields and expiry gating', () => {
+test('builds quote acceptance model with explicit seller fields and expiry gating', () => {
   const quote = quoteFixture({ expiresAt: '2026-05-18T12:05:00.000Z' });
   const buyer = buildAcceptQuotePageModel(
     quote,
@@ -61,8 +61,9 @@ test('builds quote acceptance model with role-based seller fields and expiry gat
     NOW,
   );
 
-  assert.equal(buyer.sellerFieldsVisible, false);
-  assert.equal(buyer.canAccept, true);
+  assert.equal(buyer.sellerFieldsVisible, true);
+  assert.equal(buyer.canAccept, false);
+  assert.match(buyer.errors.sellerPearlRefundAddress ?? '', /seller refund/);
 
   const seller = buildAcceptQuotePageModel(
     quote,
@@ -109,16 +110,22 @@ test('requires Pearl signer pubkeys when quote acceptance selects multisig escro
   assert.equal(missingPubkeys.canAccept, false);
   assert.match(missingPubkeys.errors.buyerPearlPubkey ?? '', /buyer Pearl x-only public key/);
   assert.match(missingPubkeys.errors.sellerPearlPubkey ?? '', /seller Pearl x-only public key/);
+  assert.match(missingPubkeys.errors.buyerPearlPubkeyProof ?? '', /buyer signer proof/);
+  assert.match(missingPubkeys.errors.sellerPearlPubkeyProof ?? '', /seller signer proof/);
 
   const ready = buildAcceptQuotePageModel(
     quote,
     {
       buyerPearlAddress: 'tprl1pbuyer01',
       buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+      sellerPearlRefundAddress: 'tprl1pseller01',
+      sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
       pearlEscrowMode: 'multisig',
       pearlReleaseSigningMode: 'preauthorize_release',
       buyerPearlPubkey: '11'.repeat(32),
       sellerPearlPubkey: '22'.repeat(32),
+      buyerPearlPubkeyProof: '33'.repeat(64),
+      sellerPearlPubkeyProof: '44'.repeat(64),
       clientRequestId: 'accept-client-multisig',
     },
     'buyer',

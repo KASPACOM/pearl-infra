@@ -41,6 +41,8 @@ export interface AcceptQuoteFormInput {
   pearlReleaseSigningMode?: PearlReleaseSigningMode;
   buyerPearlPubkey?: string;
   sellerPearlPubkey?: string;
+  buyerPearlPubkeyProof?: string;
+  sellerPearlPubkeyProof?: string;
   clientRequestId: string;
 }
 
@@ -240,7 +242,7 @@ export function buildQuotePageModel(input: QuoteFormInput): QuotePageModel {
 }
 
 export function buildAcceptQuotePageModel(quote: OtcQuote, input: AcceptQuoteFormInput, role: QuoteRole, now = new Date()): AcceptQuotePageModel {
-  const sellerFieldsVisible = role === 'seller' || role === 'admin';
+  const sellerFieldsVisible = true;
   const quoteExpired = new Date(quote.expiresAt).getTime() <= now.getTime() || quote.status !== 'active';
   const errors: AcceptQuotePageModel['errors'] = {};
 
@@ -250,10 +252,10 @@ export function buildAcceptQuotePageModel(quote: OtcQuote, input: AcceptQuoteFor
   if (!isLikelyEvmAddress(input.buyerUsdcAddress)) {
     errors.buyerUsdcAddress = 'Enter a Base wallet address.';
   }
-  if (sellerFieldsVisible && !isLikelyPearlAddress(input.sellerPearlRefundAddress ?? '')) {
+  if (!isLikelyPearlAddress(input.sellerPearlRefundAddress ?? '')) {
     errors.sellerPearlRefundAddress = 'Enter a Pearl seller refund address.';
   }
-  if (sellerFieldsVisible && !isLikelyEvmAddress(input.sellerUsdcReceiveAddress ?? '')) {
+  if (!isLikelyEvmAddress(input.sellerUsdcReceiveAddress ?? '')) {
     errors.sellerUsdcReceiveAddress = 'Enter a seller USDC receive address.';
   }
   if (input.pearlEscrowMode === 'multisig') {
@@ -262,6 +264,12 @@ export function buildAcceptQuotePageModel(quote: OtcQuote, input: AcceptQuoteFor
     }
     if (!isLikelyPearlPubkey(input.sellerPearlPubkey ?? '')) {
       errors.sellerPearlPubkey = 'Enter the seller Pearl x-only public key.';
+    }
+    if (!isLikelySchnorrSignature(input.buyerPearlPubkeyProof ?? '')) {
+      errors.buyerPearlPubkeyProof = 'Enter the buyer signer proof signature.';
+    }
+    if (!isLikelySchnorrSignature(input.sellerPearlPubkeyProof ?? '')) {
+      errors.sellerPearlPubkeyProof = 'Enter the seller signer proof signature.';
     }
   }
   if (!input.clientRequestId.trim()) {
@@ -495,6 +503,10 @@ function sameEvmAddress(left?: string, right?: string): boolean {
 
 function isLikelyPearlPubkey(value: string): boolean {
   return /^(?:0x)?(?:[0-9a-fA-F]{64}|0[23][0-9a-fA-F]{64})$/.test(value.trim());
+}
+
+function isLikelySchnorrSignature(value: string): boolean {
+  return /^(?:0x)?[0-9a-fA-F]{128}$/.test(value.trim());
 }
 
 function describePearlSignerSets(trade: OtcTrade): string[] {

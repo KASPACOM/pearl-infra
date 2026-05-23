@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import type { OtcQuote, PearlEscrowMode, PearlReleaseSigningMode } from '@kaspacom/pearl-sdk';
+import { createPearlSignerProofMessage, type OtcQuote, type PearlEscrowMode, type PearlReleaseSigningMode } from '@kaspacom/pearl-sdk';
 
 import { createClientRequestId, createOtcClient, getDefaultPearlEscrowMode } from '../api.js';
 import { demoQuote, demoTrade, DEMO_NOW } from '../demo-data.js';
@@ -11,14 +11,16 @@ export function AcceptQuotePage() {
   const quoteId = getQuoteIdFromPath(getBrowserPathname()) ?? demoQuote.quoteId;
   const routeQuoteId = getQuoteIdFromPath(getBrowserPathname());
   const [quote, setQuote] = useState<OtcQuote | undefined>(() => (routeQuoteId ? undefined : demoQuote));
-  const [buyerPearlAddress, setBuyerPearlAddress] = useState(demoTrade.buyerPearlAddress);
-  const [buyerUsdcAddress, setBuyerUsdcAddress] = useState(demoTrade.buyerUsdcAddress);
-  const [sellerPearlRefundAddress, setSellerPearlRefundAddress] = useState(demoTrade.sellerPearlRefundAddress);
-  const [sellerUsdcReceiveAddress, setSellerUsdcReceiveAddress] = useState(demoTrade.sellerUsdcReceiveAddress);
+  const [buyerPearlAddress, setBuyerPearlAddress] = useState(routeQuoteId ? '' : demoTrade.buyerPearlAddress);
+  const [buyerUsdcAddress, setBuyerUsdcAddress] = useState(routeQuoteId ? '' : demoTrade.buyerUsdcAddress);
+  const [sellerPearlRefundAddress, setSellerPearlRefundAddress] = useState(routeQuoteId ? '' : demoTrade.sellerPearlRefundAddress);
+  const [sellerUsdcReceiveAddress, setSellerUsdcReceiveAddress] = useState(routeQuoteId ? '' : demoTrade.sellerUsdcReceiveAddress);
   const [pearlEscrowMode, setPearlEscrowMode] = useState<PearlEscrowMode>(getDefaultPearlEscrowMode);
   const [pearlReleaseSigningMode, setPearlReleaseSigningMode] = useState<PearlReleaseSigningMode>('preauthorize_release');
   const [buyerPearlPubkey, setBuyerPearlPubkey] = useState('');
   const [sellerPearlPubkey, setSellerPearlPubkey] = useState('');
+  const [buyerPearlPubkeyProof, setBuyerPearlPubkeyProof] = useState('');
+  const [sellerPearlPubkeyProof, setSellerPearlPubkeyProof] = useState('');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'accepted' | 'error'>('idle');
   const [tradeId, setTradeId] = useState(demoTrade.tradeId);
   const [error, setError] = useState<string>();
@@ -35,6 +37,8 @@ export function AcceptQuotePage() {
   );
   const onBuyerPearlPubkeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setBuyerPearlPubkey(event.target.value), []);
   const onSellerPearlPubkeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setSellerPearlPubkey(event.target.value), []);
+  const onBuyerPearlPubkeyProofChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setBuyerPearlPubkeyProof(event.target.value), []);
+  const onSellerPearlPubkeyProofChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setSellerPearlPubkeyProof(event.target.value), []);
 
   useEffect(() => {
     if (!routeQuoteId) {
@@ -86,11 +90,29 @@ export function AcceptQuotePage() {
       pearlReleaseSigningMode,
       buyerPearlPubkey,
       sellerPearlPubkey,
+      buyerPearlPubkeyProof,
+      sellerPearlPubkeyProof,
       clientRequestId: createClientRequestId('accept_preview'),
     },
     role,
-    DEMO_NOW,
+    routeQuoteId ? new Date() : DEMO_NOW,
   );
+  const buyerSignerProofMessage = createPearlSignerProofMessage({
+    quoteId,
+    role: 'buyer',
+    pearlAddress: buyerPearlAddress,
+    usdcAddress: buyerUsdcAddress,
+    pearlPubkey: buyerPearlPubkey,
+    releaseSigningMode: pearlReleaseSigningMode,
+  });
+  const sellerSignerProofMessage = createPearlSignerProofMessage({
+    quoteId,
+    role: 'seller',
+    pearlAddress: sellerPearlRefundAddress,
+    usdcAddress: sellerUsdcReceiveAddress,
+    pearlPubkey: sellerPearlPubkey,
+    releaseSigningMode: pearlReleaseSigningMode,
+  });
 
   async function accept() {
     if (!model.canAccept) {
@@ -109,7 +131,9 @@ export function AcceptQuotePage() {
         sellerUsdcReceiveAddress,
         pearlEscrowMode,
         pearlReleaseSigningMode,
-        ...(pearlEscrowMode === 'multisig' ? { buyerPearlPubkey, sellerPearlPubkey } : {}),
+        ...(pearlEscrowMode === 'multisig'
+          ? { buyerPearlPubkey, sellerPearlPubkey, buyerPearlPubkeyProof, sellerPearlPubkeyProof }
+          : {}),
         clientRequestId: createClientRequestId('accept'),
       });
       setTradeId(trade.tradeId);
@@ -125,7 +149,7 @@ export function AcceptQuotePage() {
       <div className="om-page-title">
         <span>Accept quote</span>
         <h1>Confirm counterparties before escrow allocation</h1>
-        <p>Seller fields stay hidden for buyer flow; the API receives the full typed accept request only on submit.</p>
+        <p>Both sides confirm settlement addresses before the API allocates the Pearl escrow.</p>
       </div>
 
       <div className="accept-page__grid">
@@ -137,18 +161,14 @@ export function AcceptQuotePage() {
             <input value={buyerUsdcAddress} onChange={onBuyerUsdcChange} />
           </Field>
 
-          {model.sellerFieldsVisible ? (
-            <div className="accept-form__seller">
-              <Field label="Seller Pearl refund address" error={model.errors.sellerPearlRefundAddress}>
-                <input value={sellerPearlRefundAddress} onChange={onSellerPearlChange} />
-              </Field>
-              <Field label="Seller USDC receive address" error={model.errors.sellerUsdcReceiveAddress}>
-                <input value={sellerUsdcReceiveAddress} onChange={onSellerUsdcChange} />
-              </Field>
-            </div>
-          ) : (
-            <div className="accept-form__note">Seller settlement addresses are managed by the desk and shown later on the proof page.</div>
-          )}
+          <div className="accept-form__seller">
+            <Field label="Seller Pearl refund address" error={model.errors.sellerPearlRefundAddress}>
+              <input value={sellerPearlRefundAddress} onChange={onSellerPearlChange} />
+            </Field>
+            <Field label="Seller USDC receive address" error={model.errors.sellerUsdcReceiveAddress}>
+              <input value={sellerUsdcReceiveAddress} onChange={onSellerUsdcChange} />
+            </Field>
+          </div>
 
           <Field label="Pearl escrow mode" error={model.errors.pearlEscrowMode}>
             <select value={pearlEscrowMode} onChange={onEscrowModeChange}>
@@ -164,6 +184,18 @@ export function AcceptQuotePage() {
               </Field>
               <Field label="Seller Pearl public key" error={model.errors.sellerPearlPubkey}>
                 <input value={sellerPearlPubkey} onChange={onSellerPearlPubkeyChange} spellCheck={false} />
+              </Field>
+              <Field label="Buyer signer proof message">
+                <textarea value={buyerSignerProofMessage} readOnly rows={7} spellCheck={false} />
+              </Field>
+              <Field label="Buyer signer proof signature" error={model.errors.buyerPearlPubkeyProof}>
+                <input value={buyerPearlPubkeyProof} onChange={onBuyerPearlPubkeyProofChange} spellCheck={false} />
+              </Field>
+              <Field label="Seller signer proof message">
+                <textarea value={sellerSignerProofMessage} readOnly rows={7} spellCheck={false} />
+              </Field>
+              <Field label="Seller signer proof signature" error={model.errors.sellerPearlPubkeyProof}>
+                <input value={sellerPearlPubkeyProof} onChange={onSellerPearlPubkeyProofChange} spellCheck={false} />
               </Field>
               <Field label="Release signing" error={model.errors.pearlReleaseSigningMode}>
                 <select value={pearlReleaseSigningMode} onChange={onReleaseSigningModeChange}>

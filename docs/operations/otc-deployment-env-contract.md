@@ -113,6 +113,13 @@ and any required value is absent or mock-only.
 accept screen. The API remains authoritative and rejects a custody mode that
 does not match `PEARL_ESCROW_ALLOCATOR`.
 
+For `multisig` accept flows, the browser must submit buyer and seller Pearl
+pubkeys plus BIP340 signer-ownership proof signatures. The proof message is
+domain-separated as `Pearl OTC signer proof v1` and binds the quote ID, signer
+role, Pearl address, USDC address, Pearl pubkey, and release-signing mode. This
+is an allocation-time ownership proof only; final PRL release/refund
+transaction signatures are collected through the release-intent/signing flow.
+
 ### Settlement Worker And Signer Boundary
 
 | Variable | Required for | Notes |

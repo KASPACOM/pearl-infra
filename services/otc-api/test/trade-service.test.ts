@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { canTransitionTrade } from '@kaspacom/pearl-sdk';
+import { canTransitionTrade, createPearlSignerProofMessage, type PearlReleaseSigningMode, type PearlSignerProofRole } from '@kaspacom/pearl-sdk';
 import * as ecc from 'tiny-secp256k1';
 
 import { createConfiguredPearlEscrowAllocator } from '../src/pearl-escrow-allocator.ts';
@@ -161,6 +162,20 @@ function xOnlyPublicKey(seed: string): string {
   const publicKey = ecc.pointFromScalar(privateKey, true);
   if (!publicKey) throw new Error(`invalid private key fixture: ${seed}`);
   return Buffer.from(publicKey).subarray(1).toString('hex');
+}
+
+function signSignerProof(input: {
+  quoteId: string;
+  role: PearlSignerProofRole;
+  pearlAddress: string;
+  usdcAddress: string;
+  pearlPubkey: string;
+  releaseSigningMode: PearlReleaseSigningMode;
+  privateKeySeed: string;
+}): string {
+  const privateKey = Buffer.from(input.privateKeySeed.padStart(64, '0'), 'hex');
+  const messageHash = createHash('sha256').update(createPearlSignerProofMessage(input)).digest();
+  return Buffer.from(ecc.signSchnorr(messageHash, privateKey)).toString('hex');
 }
 
 test('creates an idempotent Base USDC quote', async () => {
@@ -736,15 +751,36 @@ test('returns a not-ready Pearl release intent before multisig funding is indexe
     usdcRefundAddress: '0x2222222222222222222222222222222222222222',
     clientRequestId: 'quote-request-release-intent-not-ready',
   });
+  const buyerPearlPubkey = xOnlyPublicKey('02');
+  const sellerPearlPubkey = xOnlyPublicKey('03');
+  const pearlReleaseSigningMode = 'preauthorize_release' as const;
   const trade = await service.acceptQuote(quote.quoteId, {
     buyerPearlAddress: BUYER_TESTNET_ADDRESS,
     buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
     sellerPearlRefundAddress: SELLER_TESTNET_REFUND_ADDRESS,
     sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
     pearlEscrowMode: 'multisig',
-    pearlReleaseSigningMode: 'preauthorize_release',
-    buyerPearlPubkey: xOnlyPublicKey('02'),
-    sellerPearlPubkey: xOnlyPublicKey('03'),
+    pearlReleaseSigningMode,
+    buyerPearlPubkey,
+    sellerPearlPubkey,
+    buyerPearlPubkeyProof: signSignerProof({
+      quoteId: quote.quoteId,
+      role: 'buyer',
+      pearlAddress: BUYER_TESTNET_ADDRESS,
+      usdcAddress: '0x3333333333333333333333333333333333333333',
+      pearlPubkey: buyerPearlPubkey,
+      releaseSigningMode: pearlReleaseSigningMode,
+      privateKeySeed: '02',
+    }),
+    sellerPearlPubkeyProof: signSignerProof({
+      quoteId: quote.quoteId,
+      role: 'seller',
+      pearlAddress: SELLER_TESTNET_REFUND_ADDRESS,
+      usdcAddress: '0x4444444444444444444444444444444444444444',
+      pearlPubkey: sellerPearlPubkey,
+      releaseSigningMode: pearlReleaseSigningMode,
+      privateKeySeed: '03',
+    }),
     clientRequestId: 'accept-request-release-intent-not-ready',
   });
 
@@ -758,6 +794,109 @@ test('returns a not-ready Pearl release intent before multisig funding is indexe
     ['seller', 'arbiter'],
   ]);
   assert.equal(intent.workerCanFinishWithArbiter, true);
+});
+
+test('rejects multisig quote acceptance without signer key ownership proofs', async () => {
+  const multisigConfig: OtcApiConfig = {
+    ...config,
+    pearlEscrowAllocator: 'p2tr_multisig',
+    pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
+  };
+  const service = new OtcTradeService(
+    new InMemoryOtcRepository(),
+    multisigConfig,
+    createConfiguredPearlEscrowAllocator(multisigConfig),
+    undefined,
+    () => new Date('2026-05-16T12:00:00.000Z'),
+    new RecordingWatchRegistrar(),
+    new EmptyPearlProofReader(),
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-release-intent-no-proof',
+  });
+
+  await assert.rejects(
+    () => service.acceptQuote(quote.quoteId, {
+      buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+      buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+      sellerPearlRefundAddress: SELLER_TESTNET_REFUND_ADDRESS,
+      sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+      pearlEscrowMode: 'multisig',
+      pearlReleaseSigningMode: 'preauthorize_release',
+      buyerPearlPubkey: xOnlyPublicKey('02'),
+      sellerPearlPubkey: xOnlyPublicKey('03'),
+      clientRequestId: 'accept-request-release-intent-no-proof',
+    }),
+    /buyerPearlPubkeyProof/,
+  );
+});
+
+test('rejects multisig signer proofs bound to different accept terms', async () => {
+  const multisigConfig: OtcApiConfig = {
+    ...config,
+    pearlEscrowAllocator: 'p2tr_multisig',
+    pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
+  };
+  const service = new OtcTradeService(
+    new InMemoryOtcRepository(),
+    multisigConfig,
+    createConfiguredPearlEscrowAllocator(multisigConfig),
+    undefined,
+    () => new Date('2026-05-16T12:00:00.000Z'),
+    new RecordingWatchRegistrar(),
+    new EmptyPearlProofReader(),
+  );
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-release-intent-wrong-proof-terms',
+  });
+  const buyerPearlPubkey = xOnlyPublicKey('02');
+  const sellerPearlPubkey = xOnlyPublicKey('03');
+  const pearlReleaseSigningMode = 'preauthorize_release' as const;
+
+  await assert.rejects(
+    () => service.acceptQuote(quote.quoteId, {
+      buyerPearlAddress: BUYER_TESTNET_ADDRESS,
+      buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+      sellerPearlRefundAddress: SELLER_TESTNET_REFUND_ADDRESS,
+      sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+      pearlEscrowMode: 'multisig',
+      pearlReleaseSigningMode,
+      buyerPearlPubkey,
+      sellerPearlPubkey,
+      buyerPearlPubkeyProof: signSignerProof({
+        quoteId: quote.quoteId,
+        role: 'buyer',
+        pearlAddress: BUYER_TESTNET_ADDRESS,
+        usdcAddress: '0x3333333333333333333333333333333333333333',
+        pearlPubkey: buyerPearlPubkey,
+        releaseSigningMode: pearlReleaseSigningMode,
+        privateKeySeed: '02',
+      }),
+      sellerPearlPubkeyProof: signSignerProof({
+        quoteId: quote.quoteId,
+        role: 'seller',
+        pearlAddress: SELLER_TESTNET_REFUND_ADDRESS,
+        usdcAddress: '0x5555555555555555555555555555555555555555',
+        pearlPubkey: sellerPearlPubkey,
+        releaseSigningMode: pearlReleaseSigningMode,
+        privateKeySeed: '03',
+      }),
+      clientRequestId: 'accept-request-release-intent-wrong-proof-terms',
+    }),
+    /sellerPearlPubkeyProof does not verify/,
+  );
 });
 
 test('builds a Pearl multisig release intent from indexed funding proof', async () => {
@@ -785,15 +924,36 @@ test('builds a Pearl multisig release intent from indexed funding proof', async 
     usdcRefundAddress: '0x2222222222222222222222222222222222222222',
     clientRequestId: 'quote-request-release-intent-ready',
   });
+  const buyerPearlPubkey = xOnlyPublicKey('02');
+  const sellerPearlPubkey = xOnlyPublicKey('03');
+  const pearlReleaseSigningMode = 'preauthorize_release' as const;
   const trade = await service.acceptQuote(quote.quoteId, {
     buyerPearlAddress: BUYER_TESTNET_ADDRESS,
     buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
     sellerPearlRefundAddress: SELLER_TESTNET_REFUND_ADDRESS,
     sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
     pearlEscrowMode: 'multisig',
-    pearlReleaseSigningMode: 'preauthorize_release',
-    buyerPearlPubkey: xOnlyPublicKey('02'),
-    sellerPearlPubkey: xOnlyPublicKey('03'),
+    pearlReleaseSigningMode,
+    buyerPearlPubkey,
+    sellerPearlPubkey,
+    buyerPearlPubkeyProof: signSignerProof({
+      quoteId: quote.quoteId,
+      role: 'buyer',
+      pearlAddress: BUYER_TESTNET_ADDRESS,
+      usdcAddress: '0x3333333333333333333333333333333333333333',
+      pearlPubkey: buyerPearlPubkey,
+      releaseSigningMode: pearlReleaseSigningMode,
+      privateKeySeed: '02',
+    }),
+    sellerPearlPubkeyProof: signSignerProof({
+      quoteId: quote.quoteId,
+      role: 'seller',
+      pearlAddress: SELLER_TESTNET_REFUND_ADDRESS,
+      usdcAddress: '0x4444444444444444444444444444444444444444',
+      pearlPubkey: sellerPearlPubkey,
+      releaseSigningMode: pearlReleaseSigningMode,
+      privateKeySeed: '03',
+    }),
     clientRequestId: 'accept-request-release-intent-ready',
   });
 

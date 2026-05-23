@@ -27,6 +27,8 @@ export interface AcceptQuoteRequest {
   pearlReleaseSigningMode?: PearlReleaseSigningMode;
   buyerPearlPubkey?: string;
   sellerPearlPubkey?: string;
+  buyerPearlPubkeyProof?: string;
+  sellerPearlPubkeyProof?: string;
   clientRequestId: string;
 }
 

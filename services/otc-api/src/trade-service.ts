@@ -11,12 +11,17 @@ import {
   type OtcTradeDeadlines,
   parsePrlToGrains,
   parseUsdcToMicros,
+  createPearlSignerProofMessage,
+  type PearlReleaseSigningMode,
+  type PearlSignerProofRole,
   type TradeEvent,
   type TradeState,
   tradeStateIsTerminal,
 } from '@kaspacom/pearl-sdk';
 import { createPearlEscrowTxTemplateHash, createPearlEscrowUnsignedTx, type PearlEscrowPackage, type PearlEscrowTxTemplate } from '@kaspacom/pearl-escrow';
+import { normalizeXOnlyPubkey } from '@kaspacom/pearl-script';
 import { getUsdcEscrowNetworkConfig } from '@kaspacom/usdc-escrow-client';
+import * as ecc from 'tiny-secp256k1';
 
 import type { OtcRepository } from './repository.js';
 import type { PearlIndexedProof, PearlProofReader } from './pearl-proof-reader.js';
@@ -183,6 +188,7 @@ export class OtcTradeService {
       throw new Error('quote already accepted');
     }
     assertEscrowModeMatchesAllocator(request.pearlEscrowMode, this.config);
+    assertMultisigSignerProofs(quoteId, request, this.config);
     this.assertPearlEscrowWatchRegistrarConfigured();
 
     const tradeId = createStableId('trade', [quote.quoteId, request.clientRequestId]);
@@ -1021,6 +1027,74 @@ function validateAcceptQuoteRequest(request: AcceptQuoteRequest, pearlNetwork: O
   ) {
     throw new Error('pearlReleaseSigningMode must be preauthorize_release or manual_after_base_deposit');
   }
+  if (request.buyerPearlPubkey != null) assertLikelyPearlPubkey(request.buyerPearlPubkey, 'buyerPearlPubkey');
+  if (request.sellerPearlPubkey != null) assertLikelyPearlPubkey(request.sellerPearlPubkey, 'sellerPearlPubkey');
+  if (request.buyerPearlPubkeyProof != null) assertLikelySchnorrSignature(request.buyerPearlPubkeyProof, 'buyerPearlPubkeyProof');
+  if (request.sellerPearlPubkeyProof != null) assertLikelySchnorrSignature(request.sellerPearlPubkeyProof, 'sellerPearlPubkeyProof');
+}
+
+function assertMultisigSignerProofs(quoteId: string, request: AcceptQuoteRequest, config: OtcApiConfig): void {
+  if ((request.pearlEscrowMode ?? defaultPearlEscrowMode(config)) !== 'multisig') {
+    return;
+  }
+
+  assertLikelyPearlPubkey(request.buyerPearlPubkey, 'buyerPearlPubkey');
+  assertLikelyPearlPubkey(request.sellerPearlPubkey, 'sellerPearlPubkey');
+  assertLikelySchnorrSignature(request.buyerPearlPubkeyProof, 'buyerPearlPubkeyProof');
+  assertLikelySchnorrSignature(request.sellerPearlPubkeyProof, 'sellerPearlPubkeyProof');
+
+  const releaseSigningMode = request.pearlReleaseSigningMode ?? 'manual_after_base_deposit';
+  if (!verifyPearlSignerProof({
+    quoteId,
+    role: 'buyer',
+    pearlAddress: request.buyerPearlAddress,
+    usdcAddress: request.buyerUsdcAddress,
+    pearlPubkey: request.buyerPearlPubkey,
+    releaseSigningMode,
+    signatureHex: request.buyerPearlPubkeyProof,
+  })) {
+    throw new Error('buyerPearlPubkeyProof does not verify against buyerPearlPubkey and accept terms');
+  }
+  if (!verifyPearlSignerProof({
+    quoteId,
+    role: 'seller',
+    pearlAddress: request.sellerPearlRefundAddress,
+    usdcAddress: request.sellerUsdcReceiveAddress,
+    pearlPubkey: request.sellerPearlPubkey,
+    releaseSigningMode,
+    signatureHex: request.sellerPearlPubkeyProof,
+  })) {
+    throw new Error('sellerPearlPubkeyProof does not verify against sellerPearlPubkey and accept terms');
+  }
+}
+
+interface VerifyPearlSignerProofInput {
+  quoteId: string;
+  role: PearlSignerProofRole;
+  pearlAddress: string;
+  usdcAddress: string;
+  pearlPubkey: string;
+  releaseSigningMode: PearlReleaseSigningMode;
+  signatureHex: string;
+}
+
+function verifyPearlSignerProof(input: VerifyPearlSignerProofInput): boolean {
+  const pubkey = normalizeXOnlyPubkey(input.pearlPubkey);
+  const signature = parseSchnorrSignature(input.signatureHex);
+  const messageHash = createPearlSignerProofHash(input);
+  return ecc.verifySchnorr(messageHash, pubkey, signature);
+}
+
+function createPearlSignerProofHash(input: Omit<VerifyPearlSignerProofInput, 'signatureHex'>): Uint8Array {
+  return createHash('sha256').update(createPearlSignerProofMessage(input)).digest();
+}
+
+function parseSchnorrSignature(signatureHex: string): Uint8Array {
+  const normalized = signatureHex.trim().replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]{128}$/.test(normalized)) {
+    throw new Error('Pearl signer proof must be a 64-byte BIP340 signature hex');
+  }
+  return Buffer.from(normalized, 'hex');
 }
 
 function assertPositiveAmount(
@@ -1062,6 +1136,20 @@ function assertLikelyPearlAddress(
       : ['tprl1'];
   if (!prefixes.some((prefix) => value.toLowerCase().startsWith(prefix))) {
     throw new Error(`${field} must be a Pearl ${network ?? 'testnet'} address`);
+  }
+}
+
+function assertLikelyPearlPubkey(value: unknown, field: string): asserts value is string {
+  assertNonEmptyBounded(value, field, 132);
+  if (!/^(?:0x)?(?:[0-9a-fA-F]{64}|0[23][0-9a-fA-F]{64})$/.test(value)) {
+    throw new Error(`${field} must be an x-only or compressed secp256k1 public key`);
+  }
+}
+
+function assertLikelySchnorrSignature(value: unknown, field: string): asserts value is string {
+  assertNonEmptyBounded(value, field, 130);
+  if (!/^(?:0x)?[0-9a-fA-F]{128}$/.test(value)) {
+    throw new Error(`${field} must be a 64-byte BIP340 signature hex`);
   }
 }
 
