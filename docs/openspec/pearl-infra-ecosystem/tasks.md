@@ -1078,6 +1078,11 @@ through one-time wallet challenges before creating user/profile records.
     `otc_notification_preferences`, `otc_notification_deliveries`, wallet-proved
     preference APIs, public unsubscribe API, admin delivery audit/status APIs,
     and email verification queueing.
+  - 2026-05-24 hardening pass: profile email changes clear verification and
+    disable email notifications, notification preferences cannot enable email
+    delivery until the exact email is verified, signup cannot pre-enable email
+    notifications, and notification delivery queue read/update is restricted to
+    operator/admin credentials.
   - Missing: event dispatcher, retry scheduler, SMTP/provider delivery worker,
     notification templates, and automatic trade/order/price/referral event
     emission into the delivery queue.
