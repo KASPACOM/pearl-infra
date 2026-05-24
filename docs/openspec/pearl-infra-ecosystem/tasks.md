@@ -1083,9 +1083,12 @@ through one-time wallet challenges before creating user/profile records.
     delivery until the exact email is verified, signup cannot pre-enable email
     notifications, and notification delivery queue read/update is restricted to
     operator/admin credentials.
-  - Missing: event dispatcher, retry scheduler, SMTP/provider delivery worker,
-    notification templates, and automatic trade/order/price/referral event
-    emission into the delivery queue.
+  - 2026-05-24: Added webhook-backed email provider delivery, retry/backoff
+    processing, notification templates, notification worker runtime, taker-user
+    attribution on order quote links, and automatic queueing for trade-status,
+    deadline-warning, order-matched, new-order, and referral point events.
+  - Missing: explicit user price-alert rule storage/evaluation, provider secret
+    deployment, and production smoke evidence for the notification worker.
 - [ ] 12.8 Upgrade Telegram from operator alerts to user self-service:
   wallet-linked account binding, `/orders`, `/trades`, `/trade <id>`,
   price alerts, new-order alerts, and private trade-status notifications.

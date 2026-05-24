@@ -1,6 +1,7 @@
 export * from './config.js';
 export * from './http.js';
 export * from './id.js';
+export * from './notification-dispatcher.js';
 export * from './postgres.js';
 export * from './quote-engine.js';
 export * from './pearl-escrow-allocator.js';

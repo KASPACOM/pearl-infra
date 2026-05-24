@@ -91,6 +91,14 @@ OTC API, indexer, frontend, or general worker containers.
 | `OTC_ALERT_TELEGRAM_BOT_TOKEN` | Telegram alert sink | Telegram bot token from `pearl-otc-operator-alerts` |
 | `OTC_ALERT_TELEGRAM_CHAT_ID` | Telegram alert sink | target chat ID from `pearl-otc-operator-alerts` |
 | `OTC_ALERT_TELEGRAM_MESSAGE_THREAD_ID` | Telegram forum topics | optional target topic/thread ID |
+| `OTC_NOTIFICATION_WORKER_ENABLED` | user notifications | `true` only when a delivery worker is deployed |
+| `OTC_NOTIFICATION_EMAIL_WEBHOOK_URL` | user email notifications | provider webhook URL; required when the notification worker is enabled |
+| `OTC_NOTIFICATION_EMAIL_WEBHOOK_TOKEN` | user email notifications | optional bearer token for provider webhook |
+| `OTC_NOTIFICATION_WORKER_INTERVAL_MS` | user notifications | worker loop interval; default `60000` |
+| `OTC_NOTIFICATION_WORKER_BATCH_SIZE` | user notifications | delivery batch size; default `50` |
+| `OTC_NOTIFICATION_WORKER_MAX_ATTEMPTS` | user notifications | delivery retry cap; default `5` |
+| `OTC_NOTIFICATION_RETRY_BASE_MS` | user notifications | exponential backoff base; default `60000` |
+| `OTC_NOTIFICATION_DEADLINE_WARNING_WINDOW_MS` | user notifications | deadline warning lookahead; default `900000` |
 | `OTC_QUOTE_TTL_MS` | yes | quoted policy value |
 | `OTC_PEARL_FUNDING_TTL_MS` | yes | quoted policy value |
 | `OTC_USDC_DEPOSIT_TTL_MS` | yes | quoted policy value |

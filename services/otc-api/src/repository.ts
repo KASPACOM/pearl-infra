@@ -7,6 +7,7 @@ import type {
   OtcNotificationDelivery,
   OtcNotificationDeliveryStatus,
   OtcNotificationPreference,
+  OtcNotificationTarget,
   OtcOrder,
   OtcOrderQuoteLink,
   OtcPointEvent,
@@ -104,6 +105,7 @@ export interface OtcRepository {
   listNotificationDeliveries(query?: { status?: OtcNotificationDeliveryStatus; limit?: number }): Promise<OtcNotificationDelivery[]>;
   updateNotificationDelivery(deliveryId: string, input: { status: OtcNotificationDeliveryStatus; error?: string; nextAttemptAt?: string; updatedAt: string }): Promise<OtcNotificationDelivery>;
   unsubscribeNotificationByTokenHash(tokenHash: string, updatedAt: string): Promise<OtcNotificationDelivery>;
+  listNotificationTargets(notificationType: OtcNotificationPreference['notificationType'], channel: OtcNotificationPreference['channel']): Promise<OtcNotificationTarget[]>;
   saveOrder(order: OtcOrder): Promise<OtcOrder>;
   findOrderById(orderId: string): Promise<OtcOrder | undefined>;
   listOrders(query?: OrderBookQuery): Promise<OrderBookPage>;
@@ -503,6 +505,24 @@ export class InMemoryOtcRepository implements OtcRepository {
     return updated;
   }
 
+  async listNotificationTargets(
+    notificationType: OtcNotificationPreference['notificationType'],
+    channel: OtcNotificationPreference['channel'],
+  ): Promise<OtcNotificationTarget[]> {
+    const targets: OtcNotificationTarget[] = [];
+    for (const preference of this.notificationPreferences.values()) {
+      if (preference.notificationType !== notificationType || preference.channel !== channel || !preference.enabled) {
+        continue;
+      }
+      const user = this.users.get(preference.userId);
+      if (!user) continue;
+      if (channel === 'email' && user.profile.email && user.profile.emailVerifiedAt) {
+        targets.push({ user, channel, recipient: user.profile.email });
+      }
+    }
+    return targets.sort((left, right) => left.user.userId.localeCompare(right.user.userId));
+  }
+
   async saveOrder(order: OtcOrder): Promise<OtcOrder> {
     this.orders.set(order.orderId, order);
     return order;
@@ -741,6 +761,7 @@ type OrderQuoteLinkRow = Record<string, unknown> & {
   quote_id: string;
   order_id: string;
   amount_prl: string | number;
+  taker_user_id?: string | null;
   taker_pearl_address?: string | null;
   taker_usdc_address?: string | null;
   created_at: Date | string;
@@ -1453,6 +1474,30 @@ export class PgOtcRepository implements OtcRepository {
     });
   }
 
+  async listNotificationTargets(
+    notificationType: OtcNotificationPreference['notificationType'],
+    channel: OtcNotificationPreference['channel'],
+  ): Promise<OtcNotificationTarget[]> {
+    const result = await this.client.query<UserRow>(
+      `${USER_SELECT_FIELDS}
+       JOIN otc_notification_preferences pref
+         ON pref.user_id = u.user_id
+        AND pref.notification_type = $1
+        AND pref.channel = $2
+        AND pref.enabled = true
+       WHERE $2 = 'email'
+         AND p.email IS NOT NULL
+         AND p.email_verified_at IS NOT NULL
+       ORDER BY u.user_id ASC`,
+      [notificationType, channel],
+    );
+    return result.rows.map((row) => ({
+      user: rowToUser(row),
+      channel,
+      recipient: row.email ?? '',
+    })).filter((target) => target.recipient);
+  }
+
   async saveOrder(order: OtcOrder): Promise<OtcOrder> {
     const result = await this.client.query<OrderRow>(
       `INSERT INTO otc_orders (
@@ -1596,16 +1641,24 @@ export class PgOtcRepository implements OtcRepository {
 
   async saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void> {
     await this.client.query(
-      `INSERT INTO otc_order_quote_links (quote_id, order_id, amount_prl, taker_pearl_address, taker_usdc_address, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO otc_order_quote_links (quote_id, order_id, amount_prl, taker_user_id, taker_pearl_address, taker_usdc_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (quote_id) DO NOTHING`,
-      [link.quoteId, link.orderId, link.amountPrl, link.takerPearlAddress ?? null, link.takerUsdcAddress ?? null, link.createdAt],
+      [
+        link.quoteId,
+        link.orderId,
+        link.amountPrl,
+        link.takerUserId ?? null,
+        link.takerPearlAddress ?? null,
+        link.takerUsdcAddress ?? null,
+        link.createdAt,
+      ],
     );
   }
 
   async findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined> {
     const result = await this.client.query<OrderQuoteLinkRow>(
-      `SELECT quote_id, order_id, amount_prl, taker_pearl_address, taker_usdc_address, created_at
+      `SELECT quote_id, order_id, amount_prl, taker_user_id, taker_pearl_address, taker_usdc_address, created_at
          FROM otc_order_quote_links
         WHERE quote_id = $1`,
       [quoteId],
@@ -1916,6 +1969,7 @@ function rowToOrderQuoteLink(row: OrderQuoteLinkRow): OtcOrderQuoteLink {
     quoteId: row.quote_id,
     orderId: row.order_id,
     amountPrl: String(row.amount_prl),
+    ...(row.taker_user_id ? { takerUserId: row.taker_user_id } : {}),
     ...(row.taker_pearl_address ? { takerPearlAddress: row.taker_pearl_address } : {}),
     ...(row.taker_usdc_address ? { takerUsdcAddress: row.taker_usdc_address } : {}),
     createdAt: formatPgDate(row.created_at),

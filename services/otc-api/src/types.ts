@@ -65,6 +65,14 @@ export interface OtcApiConfig {
   supportAlertTelegramMessageThreadId?: string;
   supportAlertRateLimitWindowMs: number;
   supportAlertRateLimitMax: number;
+  notificationEmailWebhookUrl?: string;
+  notificationEmailWebhookToken?: string;
+  notificationWorkerEnabled?: boolean;
+  notificationWorkerIntervalMs?: number;
+  notificationWorkerBatchSize?: number;
+  notificationWorkerMaxAttempts?: number;
+  notificationRetryBaseMs?: number;
+  notificationDeadlineWarningWindowMs?: number;
 }
 
 export interface OtcApiRuntimeConfig {
@@ -409,6 +417,20 @@ export interface OtcNotificationDelivery {
   updatedAt: string;
 }
 
+export interface OtcNotificationTarget {
+  user: OtcUser;
+  channel: OtcNotificationChannel;
+  recipient: string;
+}
+
+export interface NotificationDispatchResult {
+  scannedDeadlines: number;
+  processedDeliveries: number;
+  sentDeliveries: number;
+  failedDeliveries: number;
+  skippedDeliveries: number;
+}
+
 export interface RequestEmailVerificationRequest {
   challengeId: string;
   signature: string;
@@ -534,6 +556,7 @@ export interface OtcOrderQuoteLink {
   quoteId: string;
   orderId: string;
   amountPrl: string;
+  takerUserId?: string;
   takerPearlAddress?: string;
   takerUsdcAddress?: string;
   createdAt: string;
