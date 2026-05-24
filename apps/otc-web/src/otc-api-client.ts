@@ -177,6 +177,43 @@ export interface AdminTradeListPage {
   limit: number;
 }
 
+export interface AdminUserQuery {
+  search?: string;
+  walletType?: OtcUserWalletType;
+  referrerUserId?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface AdminUserSummary {
+  userId: string;
+  referralCode: string;
+  email?: string;
+  emailVerified: boolean;
+  notificationEmailEnabled: boolean;
+  referredBy?: {
+    referredUserId: string;
+    referrerUserId: string;
+    referralCode: string;
+    sourceUrl?: string;
+    attributedAt: string;
+  };
+  wallets: OtcUserWallet[];
+  walletCount: number;
+  orderCount: number;
+  tradeCount: number;
+  pointTotal: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUserListPage {
+  items: AdminUserSummary[];
+  nextCursor?: string;
+  total: number;
+  limit: number;
+}
+
 export interface AdminTradeDebugDetail {
   trade: OtcTrade;
   events: TradeEvent[];
@@ -711,6 +748,27 @@ export class OtcApiClient {
     }
     const suffix = params.toString() ? `?${params.toString()}` : '';
     return this.get(`/otc/admin/trades${suffix}`, adminToken);
+  }
+
+  listAdminUsers(query: AdminUserQuery, adminToken: string): Promise<AdminUserListPage> {
+    const params = new URLSearchParams();
+    if (query.search?.trim()) {
+      params.set('search', query.search.trim());
+    }
+    if (query.walletType) {
+      params.set('wallet_type', query.walletType);
+    }
+    if (query.referrerUserId?.trim()) {
+      params.set('referrer_user_id', query.referrerUserId.trim());
+    }
+    if (query.cursor?.trim()) {
+      params.set('cursor', query.cursor.trim());
+    }
+    if (typeof query.limit === 'number' && Number.isFinite(query.limit)) {
+      params.set('limit', String(Math.max(1, Math.floor(query.limit))));
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return this.get(`/otc/admin/users${suffix}`, adminToken);
   }
 
   getAdminTradeDebug(tradeId: string, adminToken: string): Promise<AdminTradeDebugDetail> {

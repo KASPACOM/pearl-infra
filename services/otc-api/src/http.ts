@@ -317,6 +317,20 @@ async function handleAdminRequest(
     };
   }
 
+  if (method === 'GET' && parts.length === 3 && parts[2] === 'users') {
+    requireAdminRole(admin, 'support_read');
+    return {
+      statusCode: 200,
+      body: await service.listAdminUsers({
+        search: url.searchParams.get('search') ?? undefined,
+        walletType: parseWalletType(url.searchParams.get('wallet_type')),
+        referrerUserId: url.searchParams.get('referrer_user_id') ?? undefined,
+        cursor: url.searchParams.get('cursor') ?? undefined,
+        limit: parseOptionalInteger(url.searchParams.get('limit')),
+      }),
+    };
+  }
+
   if (method === 'GET' && parts.length === 4 && parts[2] === 'trades') {
     requireAdminRole(admin, 'support_read');
     return {
@@ -512,6 +526,10 @@ function parseOrderStatus(value: string | null): OtcOrderStatus | undefined {
     value === 'expired'
     ? value
     : undefined;
+}
+
+function parseWalletType(value: string | null): 'evm' | 'pearl' | undefined {
+  return value === 'evm' || value === 'pearl' ? value : undefined;
 }
 
 function parseOrderSort(value: string | null): OrderBookQuery['sort'] | undefined {

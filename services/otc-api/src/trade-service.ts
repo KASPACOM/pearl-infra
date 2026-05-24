@@ -35,6 +35,9 @@ import type {
   AdminTradeListPage,
   AdminTradeQuery,
   AdminTradeSummary,
+  AdminUserListPage,
+  AdminUserQuery,
+  AdminUserSummary,
   CreateOrderRequest,
   CreateOrderQuoteRequest,
   CreateQuoteRequest,
@@ -1517,6 +1520,17 @@ export class OtcTradeService {
     };
   }
 
+  async listAdminUsers(query: AdminUserQuery = {}): Promise<AdminUserListPage> {
+    const page = await this.repository.listUsers(query);
+    const items = await Promise.all(page.items.map((user) => this.createAdminUserSummary(user)));
+    return {
+      items,
+      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+      total: page.total,
+      limit: page.limit,
+    };
+  }
+
   async getAdminTradeDebug(tradeId: string, options: AdminTradeDebugOptions = {}): Promise<AdminTradeDebugDetail> {
     const trade = await this.getTrade(tradeId);
     const [events, sideEffects, proof] = await Promise.all([
@@ -1537,6 +1551,29 @@ export class OtcTradeService {
       safeActions: getSafeAdminActions(trade, sideEffects),
       redaction,
       supportSummary: createSupportSummary(trade, sideEffects, this.now()),
+    };
+  }
+
+  private async createAdminUserSummary(user: OtcUser): Promise<AdminUserSummary> {
+    const [orders, trades, points] = await Promise.all([
+      this.repository.listOrdersByUser(user.userId),
+      this.repository.listTradesForUser(user),
+      this.getUserPoints(user.userId),
+    ]);
+    return {
+      userId: user.userId,
+      referralCode: user.referralCode,
+      ...(user.profile.email ? { email: user.profile.email } : {}),
+      emailVerified: Boolean(user.profile.emailVerifiedAt),
+      notificationEmailEnabled: user.profile.notificationEmailEnabled,
+      ...(user.referredBy ? { referredBy: user.referredBy } : {}),
+      wallets: user.wallets,
+      walletCount: user.wallets.length,
+      orderCount: orders.length,
+      tradeCount: trades.length,
+      pointTotal: points.totalPoints,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     };
   }
 

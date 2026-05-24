@@ -28,6 +28,26 @@
   }
 }
 
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+
+  a {
+    border: 1px solid var(--om-line);
+    border-radius: 8px;
+    color: var(--om-muted);
+    padding: 8px 12px;
+    text-decoration: none;
+
+    &.is-active {
+      background: var(--om-surface-2);
+      color: var(--om-ink);
+      font-weight: 700;
+    }
+  }
+}
+
 .admin-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

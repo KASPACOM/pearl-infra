@@ -2,6 +2,7 @@ import type { OtcQuote, OtcTrade, TradeEvent } from '@kaspacom/pearl-sdk';
 
 import type { PgQueryClient, PgTransactionalClient } from './postgres.js';
 import type {
+  AdminUserQuery,
   OtcReferralAttribution,
   OtcEmailVerificationToken,
   OtcNotificationDelivery,
@@ -29,6 +30,13 @@ export interface QuoteIdempotencyRecord {
 export interface TradeIdempotencyRecord {
   trade: OtcTrade;
   requestHash?: string;
+}
+
+export interface OtcUserListPage {
+  items: OtcUser[];
+  total: number;
+  limit: number;
+  nextCursor?: string;
 }
 
 export interface SaveAcceptedTradeInput {
@@ -93,6 +101,7 @@ export interface OtcRepository {
   consumeWalletChallenge(challengeId: string, consumedAt: string): Promise<boolean>;
   findUserByWallet(walletType: OtcUserWallet['walletType'], network: string, address: string): Promise<OtcUser | undefined>;
   findUserById(userId: string): Promise<OtcUser | undefined>;
+  listUsers(query?: AdminUserQuery): Promise<OtcUserListPage>;
   saveUser(input: SaveUserInput): Promise<OtcUser>;
   addUserWallet(userId: string, wallet: Omit<OtcUserWallet, 'userId' | 'createdAt'>): Promise<OtcUser>;
   updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile>;
@@ -126,6 +135,21 @@ export class ReferralCodeCollisionError extends Error {
     super(`referral code already exists: ${referralCode}`);
     this.name = 'ReferralCodeCollisionError';
   }
+}
+
+function normalizeListLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit) || !limit) {
+    return 25;
+  }
+  return Math.min(100, Math.max(1, Math.floor(limit)));
+}
+
+function parseListCursor(cursor: string | undefined): number {
+  if (!cursor) {
+    return 0;
+  }
+  const parsed = Number(cursor);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 export interface SaveUserInput {
@@ -338,6 +362,40 @@ export class InMemoryOtcRepository implements OtcRepository {
 
   async findUserById(userId: string): Promise<OtcUser | undefined> {
     return this.users.get(userId);
+  }
+
+  async listUsers(query: AdminUserQuery = {}): Promise<OtcUserListPage> {
+    const search = query.search?.trim().toLowerCase();
+    const offset = parseListCursor(query.cursor);
+    const limit = normalizeListLimit(query.limit);
+    const filtered = Array.from(this.users.values())
+      .filter((user) => {
+        if (query.walletType && !user.wallets.some((wallet) => wallet.walletType === query.walletType)) {
+          return false;
+        }
+        if (query.referrerUserId && user.referredBy?.referrerUserId !== query.referrerUserId) {
+          return false;
+        }
+        if (!search) {
+          return true;
+        }
+        return [
+          user.userId,
+          user.referralCode,
+          user.profile.email ?? '',
+          user.referredBy?.referrerUserId ?? '',
+          ...user.wallets.flatMap((wallet) => [wallet.address, wallet.network, wallet.publicKeyHex ?? '']),
+        ].some((value) => value.toLowerCase().includes(search));
+      })
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.userId.localeCompare(right.userId));
+    const items = filtered.slice(offset, offset + limit);
+    const nextOffset = offset + items.length;
+    return {
+      items,
+      total: filtered.length,
+      limit,
+      ...(nextOffset < filtered.length ? { nextCursor: String(nextOffset) } : {}),
+    };
   }
 
   async saveUser(input: SaveUserInput): Promise<OtcUser> {
@@ -1242,6 +1300,75 @@ export class PgOtcRepository implements OtcRepository {
 
   async findUserById(userId: string): Promise<OtcUser | undefined> {
     return findUserByIdWithClient(this.client, userId);
+  }
+
+  async listUsers(query: AdminUserQuery = {}): Promise<OtcUserListPage> {
+    const limit = normalizeListLimit(query.limit);
+    const offset = parseListCursor(query.cursor);
+    const where: string[] = ['u.status = $1'];
+    const values: unknown[] = ['active'];
+    if (query.walletType) {
+      values.push(query.walletType);
+      where.push(`EXISTS (
+        SELECT 1 FROM otc_user_wallets filter_wallet
+         WHERE filter_wallet.user_id = u.user_id
+           AND filter_wallet.wallet_type = $${values.length}
+      )`);
+    }
+    if (query.referrerUserId) {
+      values.push(query.referrerUserId);
+      where.push(`attr.referrer_user_id = $${values.length}`);
+    }
+    if (query.search?.trim()) {
+      values.push(`%${query.search.trim().toLowerCase()}%`);
+      where.push(`(
+        lower(u.user_id) LIKE $${values.length}
+        OR lower(rc.referral_code) LIKE $${values.length}
+        OR lower(COALESCE(p.email, '')) LIKE $${values.length}
+        OR lower(COALESCE(attr.referrer_user_id, '')) LIKE $${values.length}
+        OR EXISTS (
+          SELECT 1 FROM otc_user_wallets search_wallet
+           WHERE search_wallet.user_id = u.user_id
+             AND (
+               lower(search_wallet.address) LIKE $${values.length}
+               OR lower(search_wallet.network) LIKE $${values.length}
+               OR lower(COALESCE(search_wallet.public_key_hex, '')) LIKE $${values.length}
+             )
+        )
+      )`);
+    }
+    const whereSql = where.join(' AND ');
+    const totalResult = await this.client.query<{ count: string | number }>(
+      `SELECT count(*) AS count
+         FROM otc_users u
+         JOIN otc_user_profiles p ON p.user_id = u.user_id
+         JOIN otc_referral_codes rc ON rc.owner_user_id = u.user_id
+         LEFT JOIN otc_referral_attributions attr ON attr.referred_user_id = u.user_id
+        WHERE ${whereSql}`,
+      values,
+    );
+    const total = Number(totalResult.rows[0]?.count ?? 0);
+    const pageValues = [...values, limit, offset];
+    const idResult = await this.client.query<{ user_id: string }>(
+      `SELECT u.user_id
+         FROM otc_users u
+         JOIN otc_user_profiles p ON p.user_id = u.user_id
+         JOIN otc_referral_codes rc ON rc.owner_user_id = u.user_id
+         LEFT JOIN otc_referral_attributions attr ON attr.referred_user_id = u.user_id
+        WHERE ${whereSql}
+        ORDER BY u.created_at DESC, u.user_id ASC
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      pageValues,
+    );
+    const items = (await Promise.all(idResult.rows.map((row) => findUserByIdWithClient(this.client, row.user_id))))
+      .filter((user): user is OtcUser => Boolean(user));
+    const nextOffset = offset + items.length;
+    return {
+      items,
+      total,
+      limit,
+      ...(nextOffset < total ? { nextCursor: String(nextOffset) } : {}),
+    };
   }
 
   async saveUser(input: SaveUserInput): Promise<OtcUser> {
