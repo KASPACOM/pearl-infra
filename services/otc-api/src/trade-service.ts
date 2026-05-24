@@ -402,7 +402,8 @@ export class OtcTradeService {
     validateCreateOrderRequest(request, this.config.pearlNetwork);
     const { user } = await this.verifyAndConsumeUserWalletChallenge(request.userId, request);
     const makerUsdcAddress = getAddress(request.makerUsdcAddress);
-    if (getAddress(user.wallet.address) !== makerUsdcAddress) {
+    const verifiedUsdcAddress = assertVerifiedBaseEvmUserWallet(user, this.config.baseNetwork);
+    if (verifiedUsdcAddress !== makerUsdcAddress) {
       throw new Error('makerUsdcAddress must match the verified user wallet');
     }
     const releaseSigningMode = request.pearlReleaseSigningMode ?? 'manual_after_base_deposit';
@@ -459,6 +460,10 @@ export class OtcTradeService {
     }
 
     const takerUsdcAddress = getAddress(request.usdcAddress);
+    const verifiedUsdcAddress = assertVerifiedBaseEvmUserWallet(user, this.config.baseNetwork);
+    if (verifiedUsdcAddress !== takerUsdcAddress) {
+      throw new Error('usdcAddress must match the verified user wallet');
+    }
     const makerRole = getOrderMakerRole(order);
     const quoteRequest: CreateQuoteRequest = {
       side: order.side,
@@ -2084,6 +2089,13 @@ function assertOrderMakerSignerProof(input: {
   if (!ecc.verifySchnorr(messageHash, pubkey, signature)) {
     throw new Error('makerPearlPubkeyProof does not verify against order terms');
   }
+}
+
+function assertVerifiedBaseEvmUserWallet(user: OtcUser, baseNetwork: string): string {
+  if (user.wallet.walletType !== 'evm' || user.wallet.network !== baseNetwork) {
+    throw new Error('trading actions require a verified Base EVM wallet user');
+  }
+  return getAddress(user.wallet.address);
 }
 
 function createOrderMakerSignerProofMessage(input: Omit<Parameters<typeof assertOrderMakerSignerProof>[0], 'signatureHex'>): string {

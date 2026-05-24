@@ -559,7 +559,14 @@ function mapError(error: unknown): JsonResponse {
   if (message.includes('is required') || message.includes('is invalid')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
-  if (message.includes('challenge') || message.includes('signature') || message.includes('blocked until') || message.includes('verified email')) {
+  if (
+    message.includes('challenge') ||
+    message.includes('signature') ||
+    message.includes('blocked until') ||
+    message.includes('verified email') ||
+    message.includes('verified user wallet') ||
+    message.includes('verified Base EVM wallet user')
+  ) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('deadline passed') || message.includes('terminal')) {
