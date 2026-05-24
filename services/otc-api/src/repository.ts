@@ -1338,6 +1338,9 @@ export class PgOtcRepository implements OtcRepository {
       await tx.query('UPDATE otc_users SET updated_at = $2 WHERE user_id = $1', [userId, wallet.verifiedAt]);
       const saved = await findUserByWalletWithClient(tx, wallet.walletType, wallet.network, wallet.address);
       if (!saved) throw new Error(`wallet link failed: ${userId}`);
+      if (saved.userId !== userId) {
+        throw new Error('wallet already belongs to another user');
+      }
       return saved;
     });
   }

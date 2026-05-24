@@ -30,6 +30,9 @@ export function ProfilePage() {
   const [orderMakerPearlAddress, setOrderMakerPearlAddress] = useState('');
   const [orderMakerPearlPubkey, setOrderMakerPearlPubkey] = useState('');
   const [orderMakerPearlPubkeyProof, setOrderMakerPearlPubkeyProof] = useState('');
+  const [linkAuthChallengeId, setLinkAuthChallengeId] = useState('');
+  const [linkAuthSignature, setLinkAuthSignature] = useState('');
+  const [linkAuthPublicKeyHex, setLinkAuthPublicKeyHex] = useState('');
   const [status, setStatus] = useState<'idle' | 'working' | 'error'>('idle');
   const [error, setError] = useState<string>();
   const [referralAttribution] = useState(() => readStoredReferralAttribution());
@@ -47,6 +50,16 @@ export function ProfilePage() {
       const snapshot = await connectInjectedEvmWallet();
       setWallet(snapshot);
       if (!snapshot.address) throw new Error('Wallet did not return an address.');
+      if (user) {
+        if (isWalletLinked(user, snapshot.address)) {
+          await loadDashboard(user, snapshot);
+          await loadNotificationPreferences(user, snapshot);
+        } else {
+          setProfileMessage('Account proof required before linking this wallet.');
+        }
+        setStatus('idle');
+        return;
+      }
       const client = createOtcClient();
       const challenge = await client.createWalletChallenge({
         walletType: 'evm',
@@ -69,6 +82,44 @@ export function ProfilePage() {
     } catch (connectError) {
       setStatus('error');
       setError(connectError instanceof Error ? connectError.message : 'Profile connection failed.');
+    }
+  }
+
+  async function linkCurrentEvmWallet() {
+    if (!user || !wallet.address) return;
+    setStatus('working');
+    setError(undefined);
+    setProfileMessage(undefined);
+    try {
+      if (!linkAuthChallengeId.trim() || !linkAuthSignature.trim()) {
+        throw new Error('Account proof challenge and signature are required.');
+      }
+      const client = createOtcClient();
+      const walletChallenge = await client.createWalletChallenge({
+        walletType: 'evm',
+        network: 'base_sepolia',
+        address: wallet.address,
+      });
+      const walletSignature = await signInjectedEvmMessage(walletChallenge.message, wallet.address);
+      const linked = await client.linkUserWallet(user.userId, {
+        challengeId: linkAuthChallengeId.trim(),
+        signature: linkAuthSignature.trim(),
+        ...(linkAuthPublicKeyHex.trim() ? { publicKeyHex: linkAuthPublicKeyHex.trim() } : {}),
+        walletChallengeId: walletChallenge.challengeId,
+        walletSignature,
+      });
+      storeUser(linked);
+      setUser(linked);
+      setLinkAuthChallengeId('');
+      setLinkAuthSignature('');
+      setLinkAuthPublicKeyHex('');
+      setProfileMessage('Wallet linked.');
+      await loadDashboard(linked);
+      await loadNotificationPreferences(linked);
+      setStatus('idle');
+    } catch (linkError) {
+      setStatus('error');
+      setError(linkError instanceof Error ? linkError.message : 'Wallet link failed.');
     }
   }
 
@@ -290,6 +341,22 @@ export function ProfilePage() {
           <button className="om-button om-button--primary" onClick={connectProfile} disabled={status === 'working'}>
             {status === 'working' ? <BrandLoader compact label="Signing..." /> : 'Connect wallet'}
           </button>
+          {user && wallet.address && !isWalletLinked(user, wallet.address) ? (
+            <div className="profile-link-wallet">
+              <Field label="Account proof challenge">
+                <input value={linkAuthChallengeId} onChange={(event) => setLinkAuthChallengeId(event.target.value)} spellCheck={false} />
+              </Field>
+              <Field label="Account proof signature">
+                <input value={linkAuthSignature} onChange={(event) => setLinkAuthSignature(event.target.value)} spellCheck={false} />
+              </Field>
+              <Field label="Pearl public key">
+                <input value={linkAuthPublicKeyHex} onChange={(event) => setLinkAuthPublicKeyHex(event.target.value)} spellCheck={false} />
+              </Field>
+              <button className="om-button" disabled={status === 'working'} onClick={linkCurrentEvmWallet}>
+                Link current wallet
+              </button>
+            </div>
+          ) : null}
           {error ? <p className="om-form-error">{error}</p> : null}
         </section>
 
@@ -479,6 +546,10 @@ function formatWalletLabel(wallet: OtcUser['wallet']): string {
 
 function shortAddress(address: string): string {
   return address.length > 18 ? `${address.slice(0, 10)}...${address.slice(-6)}` : address;
+}
+
+function isWalletLinked(user: OtcUser, address: string): boolean {
+  return getLinkedWallets(user).some((wallet) => wallet.walletType === 'evm' && wallet.address.toLowerCase() === address.toLowerCase());
 }
 
 function normalizeProofPubkey(value: string): string {

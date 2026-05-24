@@ -1172,3 +1172,8 @@ through one-time wallet challenges before creating user/profile records.
   - 2026-05-24 evidence: `npm test` passes with 299 tests, 297 passing and 2
     skipped, including regression coverage for Pearl-only user -> Base wallet
     link -> order creation as the same user.
+  - 2026-05-24 hardening pass: closed the Postgres `ON CONFLICT` race where a
+    concurrent link could resolve to another user's wallet row, added a profile
+    control for linking the current EVM wallet from an external account proof,
+    and covered the race with a repository regression test. `npm test` passes
+    with 300 tests, 298 passing and 2 skipped.
