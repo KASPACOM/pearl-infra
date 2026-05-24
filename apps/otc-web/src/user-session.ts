@@ -97,6 +97,21 @@ export function readOrderQuoteDraft(quoteId: string | undefined): OrderQuoteDraf
   }
 }
 
+export function getLinkedWallets(user: OtcUser): OtcUser['wallets'] {
+  return user.wallets?.length ? user.wallets : [user.wallet];
+}
+
+export function isEvmWalletLinked(user: OtcUser, address: string): boolean {
+  const normalizedAddress = address.trim().toLowerCase();
+  return getLinkedWallets(user).some(
+    (wallet) => wallet.walletType === 'evm' && wallet.address.toLowerCase() === normalizedAddress,
+  );
+}
+
+export function getFirstLinkedEvmAddress(user: OtcUser | undefined): string | undefined {
+  return user ? getLinkedWallets(user).find((wallet) => wallet.walletType === 'evm')?.address : undefined;
+}
+
 function currentSourceUrl(): string {
   if (typeof window === 'undefined') return '';
   return window.location.href || `${window.location.pathname}${window.location.search}`;

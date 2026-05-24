@@ -3,9 +3,12 @@ import test from 'node:test';
 
 import {
   captureReferralFromUrl,
+  getFirstLinkedEvmAddress,
+  isEvmWalletLinked,
   readStoredReferralAttribution,
   readStoredReferralCode,
 } from '../dist/user-session.js';
+import type { OtcUser } from '../dist/otc-api-client.js';
 
 test('captures referral attribution with the original URL and reuses it after navigation', () => {
   const storage = createStorage();
@@ -36,6 +39,38 @@ test('reads legacy stored referral codes as attribution', () => {
   });
 });
 
+test('detects linked EVM wallets without treating Pearl wallets as Base addresses', () => {
+  const pearlWallet = {
+    userId: 'user_1',
+    walletType: 'pearl' as const,
+    network: 'testnet2',
+    address: 'tprl1pprimary',
+    verifiedAt: '2026-05-24T00:00:00.000Z',
+    createdAt: '2026-05-24T00:00:00.000Z',
+  };
+  const evmWallet = {
+    userId: 'user_1',
+    walletType: 'evm' as const,
+    network: 'base_sepolia',
+    address: '0xAbC0000000000000000000000000000000000000',
+    verifiedAt: '2026-05-24T00:00:00.000Z',
+    createdAt: '2026-05-24T00:00:00.000Z',
+  };
+  const pearlOnly = userFixture({
+    wallet: pearlWallet,
+    wallets: [pearlWallet],
+  });
+  const evmLinked = userFixture({
+    wallet: pearlWallet,
+    wallets: [pearlWallet, evmWallet],
+  });
+
+  assert.equal(getFirstLinkedEvmAddress(pearlOnly), undefined);
+  assert.equal(isEvmWalletLinked(pearlOnly, '0xabc0000000000000000000000000000000000000'), false);
+  assert.equal(getFirstLinkedEvmAddress(evmLinked), '0xAbC0000000000000000000000000000000000000');
+  assert.equal(isEvmWalletLinked(evmLinked, '0xabc0000000000000000000000000000000000000'), true);
+});
+
 function withWindow(url: string, storage: Storage, run: () => void) {
   const previousWindow = globalThis.window;
   const parsed = new URL(url);
@@ -59,6 +94,32 @@ function withWindow(url: string, storage: Storage, run: () => void) {
       configurable: true,
     });
   }
+}
+
+function userFixture(overrides: Partial<OtcUser>): OtcUser {
+  const evmWallet = {
+    userId: 'user_1',
+    walletType: 'evm' as const,
+    network: 'base_sepolia',
+    address: '0x1111111111111111111111111111111111111111',
+    verifiedAt: '2026-05-24T00:00:00.000Z',
+    createdAt: '2026-05-24T00:00:00.000Z',
+  };
+  return {
+    userId: 'user_1',
+    referralCode: 'REF123',
+    wallet: evmWallet,
+    wallets: [evmWallet],
+    profile: {
+      userId: 'user_1',
+      notificationEmailEnabled: false,
+      createdAt: '2026-05-24T00:00:00.000Z',
+      updatedAt: '2026-05-24T00:00:00.000Z',
+    },
+    createdAt: '2026-05-24T00:00:00.000Z',
+    updatedAt: '2026-05-24T00:00:00.000Z',
+    ...overrides,
+  };
 }
 
 function createStorage(): Storage {
