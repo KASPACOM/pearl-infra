@@ -6,6 +6,12 @@ const USER_STORAGE_KEY = 'oysters.otc.user';
 const REFERRAL_STORAGE_KEY = 'oysters.otc.referral';
 const ORDER_QUOTE_DRAFT_PREFIX = 'oysters.otc.orderQuote.';
 
+export interface StoredReferralAttribution {
+  referralCode: string;
+  sourceUrl: string;
+  capturedAt: string;
+}
+
 export interface OrderQuoteDraft {
   quoteId: string;
   orderId: string;
@@ -31,13 +37,47 @@ export function storeUser(user: OtcUser): void {
 }
 
 export function readStoredReferralCode(): string | undefined {
+  return readStoredReferralAttribution()?.referralCode;
+}
+
+export function readStoredReferralAttribution(): StoredReferralAttribution | undefined {
+  if (typeof window === 'undefined' || !('localStorage' in window)) return undefined;
+  const captured = captureReferralFromUrl();
+  if (captured) return captured;
+  const raw = window.localStorage.getItem(REFERRAL_STORAGE_KEY)?.trim();
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredReferralAttribution>;
+    if (typeof parsed.referralCode === 'string' && parsed.referralCode.trim()) {
+      return {
+        referralCode: parsed.referralCode.trim(),
+        sourceUrl: typeof parsed.sourceUrl === 'string' && parsed.sourceUrl.trim() ? parsed.sourceUrl : currentSourceUrl(),
+        capturedAt: typeof parsed.capturedAt === 'string' && parsed.capturedAt.trim() ? parsed.capturedAt : new Date().toISOString(),
+      };
+    }
+  } catch {
+    return {
+      referralCode: raw,
+      sourceUrl: currentSourceUrl(),
+      capturedAt: new Date().toISOString(),
+    };
+  }
+  return undefined;
+}
+
+export function captureReferralFromUrl(): StoredReferralAttribution | undefined {
   if (typeof window === 'undefined' || !('localStorage' in window)) return undefined;
   const fromUrl = new URLSearchParams(getBrowserSearch()).get('ref')?.trim();
   if (fromUrl) {
-    window.localStorage.setItem(REFERRAL_STORAGE_KEY, fromUrl);
-    return fromUrl;
+    const attribution = {
+      referralCode: fromUrl,
+      sourceUrl: currentSourceUrl(),
+      capturedAt: new Date().toISOString(),
+    };
+    window.localStorage.setItem(REFERRAL_STORAGE_KEY, JSON.stringify(attribution));
+    return attribution;
   }
-  return window.localStorage.getItem(REFERRAL_STORAGE_KEY)?.trim() || undefined;
+  return undefined;
 }
 
 export function storeOrderQuoteDraft(draft: OrderQuoteDraft): void {
@@ -55,4 +95,9 @@ export function readOrderQuoteDraft(quoteId: string | undefined): OrderQuoteDraf
   } catch {
     return undefined;
   }
+}
+
+function currentSourceUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return window.location.href || `${window.location.pathname}${window.location.search}`;
 }

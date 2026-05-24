@@ -4,7 +4,7 @@ import { createClientRequestId, createOtcClient } from '../api.js';
 import { connectInjectedEvmWallet, signInjectedEvmMessage, type EvmWalletSnapshot } from '../evm-wallet.js';
 import type { MarketStats, OrderBookPage, OtcOrder, OtcUser, RecentTradeSummary } from '../otc-api-client.js';
 import { BrandLoader, DataRow } from '../components/Primitives.js';
-import { readStoredReferralCode, readStoredUser, storeOrderQuoteDraft, storeUser } from '../user-session.js';
+import { readStoredReferralAttribution, readStoredUser, storeOrderQuoteDraft, storeUser } from '../user-session.js';
 
 const emptyStats: MarketStats = {
   successfulTrades: 0,
@@ -75,7 +75,7 @@ export function MarketPage() {
     if (!snapshot.address) throw new Error('Wallet did not return an address.');
     setWallet(snapshot);
     const client = createOtcClient();
-    const referralCode = readStoredReferralCode();
+    const referralAttribution = readStoredReferralAttribution();
     const challenge = await client.createWalletChallenge({
       walletType: 'evm',
       network: 'base_sepolia',
@@ -85,8 +85,8 @@ export function MarketPage() {
     const registered = await client.registerUser({
       challengeId: challenge.challengeId,
       signature,
-      ...(referralCode ? { referralCode } : {}),
-      sourceUrl: typeof window === 'undefined' ? undefined : window.location.href,
+      ...(referralAttribution?.referralCode ? { referralCode: referralAttribution.referralCode } : {}),
+      sourceUrl: referralAttribution?.sourceUrl ?? (typeof window === 'undefined' ? undefined : window.location.href),
     });
     storeUser(registered);
     setUser(registered);

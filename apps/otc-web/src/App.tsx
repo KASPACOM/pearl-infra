@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import { useEffect, type ComponentType } from 'react';
 
 import { AcceptQuotePage } from './pages/AcceptQuotePage.js';
 import { AdminTradesPage } from './pages/AdminTradesPage.js';
@@ -12,8 +12,12 @@ import { PublicProofPage } from './pages/PublicProofPage.js';
 import { RfqPage } from './pages/RfqPage.js';
 import { getBrowserPathname } from './routing.js';
 import { TradeCheckoutPage } from './pages/TradeCheckoutPage.js';
+import { captureReferralFromUrl } from './user-session.js';
 
 export function App() {
+  useEffect(() => {
+    captureReferralFromUrl();
+  }, []);
   const route = resolveRoute(getBrowserPathname());
 
   return (

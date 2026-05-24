@@ -1045,13 +1045,15 @@ through one-time wallet challenges before creating user/profile records.
     both their own referral code and their immutable referred-by attribution,
     and Pearl wallet-as-user registration stays fail-closed until address to
     public-key ownership verification is implemented.
-- [ ] 12.3 Add frontend referral capture so `?ref=<code>` is persisted through
+- [x] 12.3 Add frontend referral capture so `?ref=<code>` is persisted through
   quote/order/user registration and shown in the profile referral panel.
   - 2026-05-24: Profile registration captures `ref=` into local storage,
     submits it during wallet-owned registration, and shows both own referral
-    code and referred-by attribution. Remaining: carry anonymous referral
-    context through pre-profile quote flows and persist attribution when a
-    visitor creates a quote before connecting a wallet profile.
+    code and referred-by attribution.
+  - 2026-05-24: Referral capture now runs globally on every app route, stores
+    the original source URL with the referral code, keeps legacy string storage
+    readable, and reuses that attribution when profile or market flows later
+    create the wallet-owned user.
 - [x] 12.4 Add user profile UX for linked wallets, optional email,
   notification preferences, referral code, and referred-by status.
   - 2026-05-24: Added `/profile` for wallet-owned account creation, optional
