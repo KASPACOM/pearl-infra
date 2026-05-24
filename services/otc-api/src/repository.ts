@@ -4,6 +4,7 @@ import type { PgQueryClient, PgTransactionalClient } from './postgres.js';
 import type {
   OtcReferralAttribution,
   OtcOrder,
+  OtcOrderQuoteLink,
   OtcPointEvent,
   OtcSideEffect,
   OtcUser,
@@ -23,6 +24,18 @@ export interface QuoteIdempotencyRecord {
 export interface TradeIdempotencyRecord {
   trade: OtcTrade;
   requestHash?: string;
+}
+
+export interface SaveAcceptedTradeInput {
+  trade: OtcTrade;
+  clientRequestId: string;
+  requestHash?: string;
+  event: TradeEvent;
+  orderFill?: {
+    orderId: string;
+    amountPrl: string;
+    updatedAt: string;
+  };
 }
 
 export interface PearlEscrowAllocationInput {
@@ -53,6 +66,7 @@ export interface OtcRepository {
   findQuoteByClientRequestId(clientRequestId: string): Promise<OtcQuote | undefined>;
   findQuoteIdempotencyByClientRequestId(clientRequestId: string): Promise<QuoteIdempotencyRecord | undefined>;
   saveTrade(trade: OtcTrade, clientRequestId: string, requestHash?: string): Promise<void>;
+  saveAcceptedTrade(input: SaveAcceptedTradeInput): Promise<void>;
   findTradeById(tradeId: string): Promise<OtcTrade | undefined>;
   listTrades(): Promise<OtcTrade[]>;
   findTradeByQuoteId(quoteId: string): Promise<OtcTrade | undefined>;
@@ -78,9 +92,13 @@ export interface OtcRepository {
   findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined>;
   countUsers(): Promise<number>;
   saveOrder(order: OtcOrder): Promise<OtcOrder>;
+  findOrderById(orderId: string): Promise<OtcOrder | undefined>;
   listOrders(query?: OrderBookQuery): Promise<OrderBookPage>;
   listOpenOrdersForStats(): Promise<OtcOrder[]>;
   listOrdersByUser(userId: string): Promise<OtcOrder[]>;
+  reserveOrderFill(orderId: string, amountPrl: string, updatedAt: string): Promise<OtcOrder>;
+  saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void>;
+  findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined>;
   savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }>;
   listPointEvents(userId: string): Promise<OtcPointEvent[]>;
   listTradesForUser(user: OtcUser): Promise<OtcTrade[]>;
@@ -129,6 +147,7 @@ export class InMemoryOtcRepository implements OtcRepository {
   private readonly userByWallet = new Map<string, string>();
   private readonly referralByCode = new Map<string, ReferralCodeLookup>();
   private readonly orders = new Map<string, OtcOrder>();
+  private readonly orderQuoteLinks = new Map<string, OtcOrderQuoteLink>();
   private readonly pointEvents = new Map<string, OtcPointEvent>();
 
   async saveQuote(quote: OtcQuote, clientRequestId: string, requestHash?: string): Promise<void> {
@@ -160,6 +179,14 @@ export class InMemoryOtcRepository implements OtcRepository {
     this.tradeClientRequests.set(clientRequestId, trade.tradeId);
     this.tradeByQuote.set(trade.quoteId, trade.tradeId);
     if (requestHash) this.tradeRequestHashes.set(clientRequestId, requestHash);
+  }
+
+  async saveAcceptedTrade(input: SaveAcceptedTradeInput): Promise<void> {
+    if (input.orderFill) {
+      await this.reserveOrderFill(input.orderFill.orderId, input.orderFill.amountPrl, input.orderFill.updatedAt);
+    }
+    await this.saveTrade(input.trade, input.clientRequestId, input.requestHash);
+    await this.appendEvent(input.event);
   }
 
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
@@ -352,6 +379,10 @@ export class InMemoryOtcRepository implements OtcRepository {
     return order;
   }
 
+  async findOrderById(orderId: string): Promise<OtcOrder | undefined> {
+    return this.orders.get(orderId);
+  }
+
   async listOrders(query: OrderBookQuery = {}): Promise<OrderBookPage> {
     const limit = normalizeLimit(query.limit);
     const offset = parseCursor(query.cursor);
@@ -367,13 +398,43 @@ export class InMemoryOtcRepository implements OtcRepository {
   }
 
   async listOpenOrdersForStats(): Promise<OtcOrder[]> {
-    return Array.from(this.orders.values()).filter((order) => order.status === 'open');
+    return Array.from(this.orders.values()).filter((order) => order.status === 'open' || order.status === 'partially_filled');
   }
 
   async listOrdersByUser(userId: string): Promise<OtcOrder[]> {
     return Array.from(this.orders.values())
       .filter((order) => order.makerUserId === userId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  async reserveOrderFill(orderId: string, amountPrl: string, updatedAt: string): Promise<OtcOrder> {
+    const order = this.orders.get(orderId);
+    if (!order) throw new Error(`order not found: ${orderId}`);
+    if (!['open', 'partially_filled'].includes(order.status)) {
+      throw new Error(`order is not fillable: ${order.status}`);
+    }
+    const remaining = parseDecimalUnits(order.remainingPrl, 8);
+    const fill = parseDecimalUnits(amountPrl, 8);
+    if (remaining < fill) {
+      throw new Error('order remaining amount is too small');
+    }
+    const nextRemaining = remaining - fill;
+    const updated: OtcOrder = {
+      ...order,
+      remainingPrl: formatDecimalUnits(nextRemaining, 8),
+      status: nextRemaining === 0n ? 'filled' : 'partially_filled',
+      updatedAt,
+    };
+    this.orders.set(orderId, updated);
+    return updated;
+  }
+
+  async saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void> {
+    this.orderQuoteLinks.set(link.quoteId, link);
+  }
+
+  async findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined> {
+    return this.orderQuoteLinks.get(quoteId);
   }
 
   async savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }> {
@@ -494,6 +555,11 @@ type OrderRow = Record<string, unknown> & {
   maker_user_id: string;
   side: OtcOrder['side'];
   funding_asset: OtcOrder['fundingAsset'];
+  maker_pearl_address: string | null;
+  maker_usdc_address: string | null;
+  maker_pearl_pubkey: string | null;
+  maker_pearl_pubkey_proof: string | null;
+  pearl_release_signing_mode: OtcOrder['pearlReleaseSigningMode'] | null;
   amount_prl: string | number;
   remaining_prl: string | number;
   price_usdc_per_prl: string | number;
@@ -503,6 +569,13 @@ type OrderRow = Record<string, unknown> & {
   created_at: Date | string;
   updated_at: Date | string;
   total_count?: string | number;
+}
+
+type OrderQuoteLinkRow = Record<string, unknown> & {
+  quote_id: string;
+  order_id: string;
+  amount_prl: string | number;
+  created_at: Date | string;
 }
 
 type PointEventRow = Record<string, unknown> & {
@@ -564,14 +637,71 @@ export class PgOtcRepository implements OtcRepository {
     const result = await this.client.query(
       `INSERT INTO otc_trades (trade_id, quote_id, client_request_id, request_hash, state, trade)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-       ON CONFLICT (client_request_id) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [trade.tradeId, trade.quoteId, clientRequestId, requestHash ?? null, trade.state, JSON.stringify(trade)],
     );
     if ((result.rowCount ?? 0) === 0) {
       const existing = await this.findTradeIdempotencyByClientRequestId(clientRequestId);
-      if (!existing) throw new Error(`trade insert failed: ${clientRequestId}`);
-      assertIdempotencyHashMatch('trade', clientRequestId, existing.requestHash, requestHash);
+      if (existing) {
+        assertIdempotencyHashMatch('trade', clientRequestId, existing.requestHash, requestHash);
+        return;
+      }
+      if (await this.findTradeByQuoteId(trade.quoteId)) {
+        throw new Error('quote already accepted');
+      }
+      throw new Error(`trade insert failed: ${clientRequestId}`);
     }
+  }
+
+  async saveAcceptedTrade(input: SaveAcceptedTradeInput): Promise<void> {
+    await this.client.withTransaction(async (tx) => {
+      const result = await tx.query(
+        `INSERT INTO otc_trades (trade_id, quote_id, client_request_id, request_hash, state, trade)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+         ON CONFLICT DO NOTHING`,
+        [
+          input.trade.tradeId,
+          input.trade.quoteId,
+          input.clientRequestId,
+          input.requestHash ?? null,
+          input.trade.state,
+          JSON.stringify(input.trade),
+        ],
+      );
+      if ((result.rowCount ?? 0) === 0) {
+        const existing = await findTradeIdempotencyByClientRequestIdWithClient(tx, input.clientRequestId);
+        if (existing) {
+          assertIdempotencyHashMatch('trade', input.clientRequestId, existing.requestHash, input.requestHash);
+          return;
+        }
+        if (await findTradeByQuoteIdWithClient(tx, input.trade.quoteId)) {
+          throw new Error('quote already accepted');
+        }
+        throw new Error(`trade insert failed: ${input.clientRequestId}`);
+      }
+      if (input.orderFill) {
+        const fillResult = await tx.query(
+          `UPDATE otc_orders
+              SET remaining_prl = remaining_prl - $2::numeric,
+                  status = CASE WHEN remaining_prl - $2::numeric = 0 THEN 'filled' ELSE 'partially_filled' END,
+                  updated_at = $3
+            WHERE order_id = $1
+              AND status IN ('open', 'partially_filled')
+              AND remaining_prl >= $2::numeric
+              AND (expires_at IS NULL OR expires_at > $3)`,
+          [input.orderFill.orderId, input.orderFill.amountPrl, input.orderFill.updatedAt],
+        );
+        if ((fillResult.rowCount ?? 0) === 0) {
+          throw new Error('order is no longer fillable for requested amount');
+        }
+      }
+      await tx.query(
+        `INSERT INTO otc_trade_events (trade_id, source_event_id, event, observed_at)
+         VALUES ($1, $2, $3::jsonb, $4)
+         ON CONFLICT (trade_id, source_event_id) DO NOTHING`,
+        [input.event.tradeId, input.event.sourceEventId, JSON.stringify(input.event), input.event.observedAt],
+      );
+    });
   }
 
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
@@ -955,14 +1085,18 @@ export class PgOtcRepository implements OtcRepository {
   async saveOrder(order: OtcOrder): Promise<OtcOrder> {
     const result = await this.client.query<OrderRow>(
       `INSERT INTO otc_orders (
-         order_id, maker_user_id, side, funding_asset, amount_prl, remaining_prl,
+         order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+         maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+         pearl_release_signing_mode, amount_prl, remaining_prl,
          price_usdc_per_prl, min_fill_prl, status, expires_at, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        ON CONFLICT (order_id) DO UPDATE
           SET remaining_prl = EXCLUDED.remaining_prl,
               status = EXCLUDED.status,
               updated_at = EXCLUDED.updated_at
-       RETURNING order_id, maker_user_id, side, funding_asset, amount_prl,
+       RETURNING order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+                 maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+                 pearl_release_signing_mode, amount_prl,
                  remaining_prl, price_usdc_per_prl, min_fill_prl, status,
                  expires_at, created_at, updated_at`,
       [
@@ -970,6 +1104,11 @@ export class PgOtcRepository implements OtcRepository {
         order.makerUserId,
         order.side,
         order.fundingAsset,
+        order.makerPearlAddress,
+        order.makerUsdcAddress,
+        order.makerPearlPubkey,
+        order.makerPearlPubkeyProof,
+        order.pearlReleaseSigningMode,
         order.amountPrl,
         order.remainingPrl,
         order.priceUsdcPerPrl,
@@ -981,6 +1120,20 @@ export class PgOtcRepository implements OtcRepository {
       ],
     );
     return rowToOrder(result.rows[0]);
+  }
+
+  async findOrderById(orderId: string): Promise<OtcOrder | undefined> {
+    const result = await this.client.query<OrderRow>(
+      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+              pearl_release_signing_mode, amount_prl,
+              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
+              expires_at, created_at, updated_at
+         FROM otc_orders
+        WHERE order_id = $1`,
+      [orderId],
+    );
+    return result.rows[0] ? rowToOrder(result.rows[0]) : undefined;
   }
 
   async listOrders(query: OrderBookQuery = {}): Promise<OrderBookPage> {
@@ -998,7 +1151,9 @@ export class PgOtcRepository implements OtcRepository {
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
     const orderSql = getOrderBookSortSql(query.sort, query.side);
     const result = await this.client.query<OrderRow>(
-      `SELECT order_id, maker_user_id, side, funding_asset, amount_prl,
+      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+              pearl_release_signing_mode, amount_prl,
               remaining_prl, price_usdc_per_prl, min_fill_prl, status,
               expires_at, created_at, updated_at,
               count(*) OVER() AS total_count
@@ -1018,19 +1173,23 @@ export class PgOtcRepository implements OtcRepository {
 
   async listOpenOrdersForStats(): Promise<OtcOrder[]> {
     const result = await this.client.query<OrderRow>(
-      `SELECT order_id, maker_user_id, side, funding_asset, amount_prl,
+      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+              pearl_release_signing_mode, amount_prl,
               remaining_prl, price_usdc_per_prl, min_fill_prl, status,
               expires_at, created_at, updated_at
          FROM otc_orders
-        WHERE status = $1`,
-      ['open'],
+        WHERE status IN ($1, $2)`,
+      ['open', 'partially_filled'],
     );
     return result.rows.map(rowToOrder);
   }
 
   async listOrdersByUser(userId: string): Promise<OtcOrder[]> {
     const result = await this.client.query<OrderRow>(
-      `SELECT order_id, maker_user_id, side, funding_asset, amount_prl,
+      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+              pearl_release_signing_mode, amount_prl,
               remaining_prl, price_usdc_per_prl, min_fill_prl, status,
               expires_at, created_at, updated_at
          FROM otc_orders
@@ -1039,6 +1198,48 @@ export class PgOtcRepository implements OtcRepository {
       [userId],
     );
     return result.rows.map(rowToOrder);
+  }
+
+  async reserveOrderFill(orderId: string, amountPrl: string, updatedAt: string): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `UPDATE otc_orders
+          SET remaining_prl = remaining_prl - $2::numeric,
+              status = CASE WHEN remaining_prl - $2::numeric = 0 THEN 'filled' ELSE 'partially_filled' END,
+              updated_at = $3
+        WHERE order_id = $1
+          AND status IN ('open', 'partially_filled')
+          AND remaining_prl >= $2::numeric
+          AND (expires_at IS NULL OR expires_at > $3)
+        RETURNING order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+                  maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+                  pearl_release_signing_mode, amount_prl,
+                  remaining_prl, price_usdc_per_prl, min_fill_prl, status,
+                  expires_at, created_at, updated_at`,
+      [orderId, amountPrl, updatedAt],
+    );
+    if (!result.rows[0]) {
+      throw new Error('order is no longer fillable for requested amount');
+    }
+    return rowToOrder(result.rows[0]);
+  }
+
+  async saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void> {
+    await this.client.query(
+      `INSERT INTO otc_order_quote_links (quote_id, order_id, amount_prl, created_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (quote_id) DO NOTHING`,
+      [link.quoteId, link.orderId, link.amountPrl, link.createdAt],
+    );
+  }
+
+  async findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined> {
+    const result = await this.client.query<OrderQuoteLinkRow>(
+      `SELECT quote_id, order_id, amount_prl, created_at
+         FROM otc_order_quote_links
+        WHERE quote_id = $1`,
+      [quoteId],
+    );
+    return result.rows[0] ? rowToOrderQuoteLink(result.rows[0]) : undefined;
   }
 
   async savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }> {
@@ -1154,6 +1355,23 @@ async function findUserByIdWithClient(client: PgQueryClient, userId: string): Pr
   return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
 }
 
+async function findTradeIdempotencyByClientRequestIdWithClient(
+  client: PgQueryClient,
+  clientRequestId: string,
+): Promise<TradeIdempotencyRecord | undefined> {
+  const result = await client.query<TradeRow>('SELECT trade, request_hash FROM otc_trades WHERE client_request_id = $1', [
+    clientRequestId,
+  ]);
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return { trade: row.trade, ...(row.request_hash ? { requestHash: row.request_hash } : {}) };
+}
+
+async function findTradeByQuoteIdWithClient(client: PgQueryClient, quoteId: string): Promise<OtcTrade | undefined> {
+  const result = await client.query<TradeRow>('SELECT trade FROM otc_trades WHERE quote_id = $1', [quoteId]);
+  return result.rows[0]?.trade;
+}
+
 function rowToSideEffect(row: SideEffectRow): OtcSideEffect {
   return {
     idempotencyKey: row.idempotency_key,
@@ -1240,6 +1458,11 @@ function rowToOrder(row: OrderRow): OtcOrder {
     makerUserId: row.maker_user_id,
     side: row.side,
     fundingAsset: row.funding_asset,
+    makerPearlAddress: row.maker_pearl_address ?? '',
+    makerUsdcAddress: row.maker_usdc_address ?? '',
+    makerPearlPubkey: row.maker_pearl_pubkey ?? '',
+    makerPearlPubkeyProof: row.maker_pearl_pubkey_proof ?? '',
+    pearlReleaseSigningMode: row.pearl_release_signing_mode ?? 'manual_after_base_deposit',
     amountPrl: String(row.amount_prl),
     remainingPrl: String(row.remaining_prl),
     priceUsdcPerPrl: String(row.price_usdc_per_prl),
@@ -1248,6 +1471,15 @@ function rowToOrder(row: OrderRow): OtcOrder {
     ...(row.expires_at ? { expiresAt: formatPgDate(row.expires_at) } : {}),
     createdAt: formatPgDate(row.created_at),
     updatedAt: formatPgDate(row.updated_at),
+  };
+}
+
+function rowToOrderQuoteLink(row: OrderQuoteLinkRow): OtcOrderQuoteLink {
+  return {
+    quoteId: row.quote_id,
+    orderId: row.order_id,
+    amountPrl: String(row.amount_prl),
+    createdAt: formatPgDate(row.created_at),
   };
 }
 
@@ -1339,6 +1571,21 @@ function getOrderBookSortSql(sort: OrderBookQuery['sort'], side?: OtcOrder['side
   return side === 'buy_prl'
     ? 'price_usdc_per_prl DESC, remaining_prl DESC, created_at DESC, order_id ASC'
     : 'price_usdc_per_prl ASC, remaining_prl DESC, created_at DESC, order_id ASC';
+}
+
+function parseDecimalUnits(value: string, decimals: number): bigint {
+  const [whole, fraction = ''] = value.split('.');
+  if (!whole || !/^\d+$/.test(whole) || !/^\d*$/.test(fraction) || fraction.length > decimals) {
+    throw new Error(`invalid decimal amount: ${value}`);
+  }
+  return BigInt(whole) * (10n ** BigInt(decimals)) + BigInt((fraction + '0'.repeat(decimals)).slice(0, decimals));
+}
+
+function formatDecimalUnits(value: bigint, decimals: number): string {
+  const scale = 10n ** BigInt(decimals);
+  const whole = value / scale;
+  const fraction = (value % scale).toString().padStart(decimals, '0');
+  return `${whole}.${fraction}`;
 }
 
 function isPgUniqueViolation(error: unknown, constraint: string): boolean {

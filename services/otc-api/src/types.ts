@@ -381,6 +381,11 @@ export interface OtcOrder {
   makerUserId: string;
   side: OtcQuoteSide;
   fundingAsset: OtcFundingAsset;
+  makerPearlAddress: string;
+  makerUsdcAddress: string;
+  makerPearlPubkey: string;
+  makerPearlPubkeyProof: string;
+  pearlReleaseSigningMode: PearlReleaseSigningMode;
   amountPrl: string;
   remainingPrl: string;
   priceUsdcPerPrl: string;
@@ -397,10 +402,40 @@ export interface CreateOrderRequest {
   signature: string;
   publicKeyHex?: string;
   side: OtcQuoteSide;
+  makerPearlAddress: string;
+  makerUsdcAddress: string;
+  makerPearlPubkey: string;
+  makerPearlPubkeyProof: string;
+  pearlReleaseSigningMode?: PearlReleaseSigningMode;
   amountPrl: string;
   priceUsdcPerPrl: string;
   minFillPrl?: string;
   expiresAt?: string;
+}
+
+export interface CreateOrderQuoteRequest {
+  userId: string;
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  amountPrl: string;
+  pearlAddress: string;
+  usdcAddress: string;
+  clientRequestId: string;
+}
+
+export interface OtcOrderQuoteLink {
+  quoteId: string;
+  orderId: string;
+  amountPrl: string;
+  createdAt: string;
+}
+
+export interface OrderQuoteResponse {
+  quote: import('@kaspacom/pearl-sdk').OtcQuote;
+  order: OtcOrder;
+  makerRole: 'buyer' | 'seller';
+  acceptPrefill: Partial<AcceptQuoteRequest>;
 }
 
 export interface OrderBookQuery {

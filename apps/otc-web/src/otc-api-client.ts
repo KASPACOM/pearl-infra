@@ -298,6 +298,11 @@ export interface OtcOrder {
   makerUserId: string;
   side: 'buy_prl' | 'sell_prl';
   fundingAsset: OtcFundingAsset;
+  makerPearlAddress: string;
+  makerUsdcAddress: string;
+  makerPearlPubkey: string;
+  makerPearlPubkeyProof: string;
+  pearlReleaseSigningMode: PearlReleaseSigningMode;
   amountPrl: string;
   remainingPrl: string;
   priceUsdcPerPrl: string;
@@ -314,10 +319,33 @@ export interface CreateOrderRequest {
   signature: string;
   publicKeyHex?: string;
   side: 'buy_prl' | 'sell_prl';
+  makerPearlAddress: string;
+  makerUsdcAddress: string;
+  makerPearlPubkey: string;
+  makerPearlPubkeyProof: string;
+  pearlReleaseSigningMode?: PearlReleaseSigningMode;
   amountPrl: string;
   priceUsdcPerPrl: string;
   minFillPrl?: string;
   expiresAt?: string;
+}
+
+export interface CreateOrderQuoteRequest {
+  userId: string;
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  amountPrl: string;
+  pearlAddress: string;
+  usdcAddress: string;
+  clientRequestId: string;
+}
+
+export interface OrderQuoteResponse {
+  quote: OtcQuote;
+  order: OtcOrder;
+  makerRole: 'buyer' | 'seller';
+  acceptPrefill: Partial<AcceptQuoteRequest>;
 }
 
 export interface OrderBookQuery {
@@ -499,6 +527,10 @@ export class OtcApiClient {
 
   createOrder(request: CreateOrderRequest): Promise<OtcOrder> {
     return this.post('/otc/orders', request);
+  }
+
+  createOrderQuote(orderId: string, request: CreateOrderQuoteRequest): Promise<OrderQuoteResponse> {
+    return this.post(`/otc/orders/${encodeURIComponent(orderId)}/quotes`, request);
   }
 
   getUserDashboard(userId: string, request: UserDashboardRequest): Promise<OtcUserDashboard> {
