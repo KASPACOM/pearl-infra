@@ -450,6 +450,18 @@ test('rejects invalid accept addresses before escrow allocation', async () => {
       }),
     /sellerUsdcReceiveAddress must be a valid EVM address/,
   );
+
+  await assert.rejects(
+    () =>
+      service.acceptQuote(quote.quoteId, {
+        buyerPearlAddress: 'tprl1pbuyer',
+        buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+        sellerPearlRefundAddress: 'tprl1pbuyer',
+        sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+        clientRequestId: 'accept-ambiguous-pearl-destination',
+      }),
+    /buyerPearlAddress and sellerPearlRefundAddress must be distinct/,
+  );
 });
 
 test('rejects expired quotes', async () => {

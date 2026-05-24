@@ -40,11 +40,14 @@ A product-layer-owned row declaring "watch this Pearl address." Multiple product
 
 | Purpose | Required fields |
 |---|---|
-| `otc_escrow` | `expected_amount_grains`, `release_template_hash`, `refund_template_hash`, `expiry_height` |
+| `otc_escrow` | `expected_amount_grains`, `release_address`, `refund_address`, `release_template`, `refund_template`, `pearl_funding_deadline` |
 | `bridge_deposit` | `igra_recipient`, `expected_amount_min_grains`, `expected_amount_max_grains`, `expiry_height` |
 | `bridge_reserve` | `custody_tier` (`hot`\|`warm`\|`cold`), `active_from_height`, `active_to_height` (nullable) |
 
-The indexer does not validate `metadata` schemas — it just round-trips them. Products own their own metadata validation.
+The indexer does not validate `metadata` schemas. Products own their own metadata
+validation. Re-registering the same watch with matching scalar fields merges new
+metadata keys into the stored row so product metadata can be safely enriched
+without reopening the watch.
 
 ### `address_observations` — funding outputs
 
@@ -217,7 +220,7 @@ What this PR does ship: the table itself, with indexes on `status`, `pearl_recip
 ## How OTC and the bridge each consume this
 
 **OTC (9.3.5, this track):**
-- On `quote.accept`, `otc-api` calls `POST /watches` with `purpose='otc_escrow'` and the template hashes in `metadata`.
+- On `quote.accept`, `otc-api` calls `POST /watches` with `purpose='otc_escrow'`, expected funding amount/deadline, distinct `release_address` and `refund_address`, and release/refund templates in `metadata`.
 - Settlement worker calls `GET /watches/:trade_id` to read `observations` (funding) and `spends` (release/refund) and decide whether to release the Base USDC leg.
 
 **Bridge (10.8, separate track but reuses the same primitive):**

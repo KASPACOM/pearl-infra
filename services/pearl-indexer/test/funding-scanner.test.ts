@@ -128,6 +128,52 @@ test('classifySpend marks refund when the spend txid is predeclared', () => {
   assert.equal(result.classificationData.matchedBy, 'refund_txid');
 });
 
+test('classifySpend uses distinct OTC release and refund destination metadata for fee-adjusted spends', () => {
+  const release = classifySpend({
+    watch: watch({
+      release_address: 'tprl1pbuyer',
+      refund_address: 'tprl1psellerrefund',
+      releaseTemplate: {
+        outputs: [{ address: 'tprl1pbuyer', amountGrains: '12500000000' }],
+      },
+      refundTemplate: {
+        outputs: [{ address: 'tprl1psellerrefund', amountGrains: '12500000000' }],
+      },
+    }),
+    spendTxid: 'release1',
+    spentOutpoint: 'funding:0',
+    spendingOutputs: [
+      {
+        txid: 'release1',
+        vout: 0,
+        amountGrains: '12499999000',
+        scriptPubKey: { hex: '51', address: 'tprl1pbuyer' },
+      },
+    ],
+  });
+  const refund = classifySpend({
+    watch: watch({
+      release_address: 'tprl1pbuyer',
+      refund_address: 'tprl1psellerrefund',
+    }),
+    spendTxid: 'refund1',
+    spentOutpoint: 'funding:0',
+    spendingOutputs: [
+      {
+        txid: 'refund1',
+        vout: 0,
+        amountGrains: '12499999000',
+        scriptPubKey: { hex: '51', address: 'tprl1psellerrefund' },
+      },
+    ],
+  });
+
+  assert.equal(release.classification, 'release');
+  assert.equal(release.classificationData.matchedBy, 'release_address');
+  assert.equal(refund.classification, 'refund');
+  assert.equal(refund.classificationData.matchedBy, 'refund_address');
+});
+
 test('classifySpend marks unknown_spend when no release or refund policy matches', () => {
   const result = classifySpend({
     watch: watch({

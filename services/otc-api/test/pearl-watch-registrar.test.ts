@@ -17,6 +17,12 @@ test('builds Pearl indexer watch registration metadata from an OTC trade', () =>
   assert.equal(registration.metadata.expected_amount_grains, trade.pearlEscrow.expectedAmountGrains);
   assert.equal(registration.metadata.pearl_funding_deadline, trade.deadlines.pearlFundingDeadline);
   assert.equal(registration.metadata.taproot_output_script_hex, trade.pearlEscrow.taprootOutputScriptHex);
+  assert.equal(registration.metadata.release_address, trade.buyerPearlAddress);
+  assert.equal(registration.metadata.refund_address, trade.sellerPearlRefundAddress);
+  assert.equal(registration.metadata.buyer_pearl_address, trade.buyerPearlAddress);
+  assert.equal(registration.metadata.seller_pearl_refund_address, trade.sellerPearlRefundAddress);
+  assert.deepEqual(registration.metadata.release_template, trade.pearlEscrow.releaseTemplate);
+  assert.deepEqual(registration.metadata.refund_template, trade.pearlEscrow.refundTemplate);
 });
 
 test('posts Pearl escrow watch registration to the indexer API', async () => {
@@ -74,6 +80,12 @@ const trade: OtcTrade = {
     requiredConfirmations: 3,
     escrowScriptType: 'p2tr',
     taprootOutputScriptHex: `5120${'22'.repeat(32)}`,
+    releaseTemplate: {
+      outputs: [{ address: 'tprl1pbuyer', amountGrains: '100999990000' }],
+    },
+    refundTemplate: {
+      outputs: [{ address: 'tprl1psellerrefund', amountGrains: '100999990000' }],
+    },
   },
   usdcEscrow: {
     network: 'base',

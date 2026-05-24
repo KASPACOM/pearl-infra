@@ -560,6 +560,11 @@ Loophole tracker after PR #74:
     operator `POST /otc/admin/trades/:id/live-proof-evidence`, public
     `GET /otc/trades/:id/live-proof-evidence`, and verifier fallback from API
     evidence when `OTC_FULL_FLOW_BASE_TX_HASHES` is omitted.
+- [x] Pearl watch spend classification metadata — OTC watch registration now
+  records distinct `release_address` and `refund_address` destinations plus
+  release/refund templates, and quote acceptance rejects identical Pearl
+  release/refund destinations so fee-adjusted spends classify as `release` or
+  `refund` instead of `unknown_spend`.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
   no release/refund/sign/broadcast actions, and admin list/detail, filters,
   note/manual-review actions, failed alert-delivery replay, and the public
@@ -1035,6 +1040,11 @@ blockers visible for planning. See
     public routes after process shutdown.
     - 2026-05-24: durable evidence is recorded in the OTC side-effect ledger by
       an operator route and replayed by the public evidence route/verifier.
+  - [x] 11.9.f Register first-class Pearl release/refund destination metadata
+    on OTC escrow watches so fee-adjusted spend classification is deterministic.
+    - 2026-05-24: real OTC escrow watches include `release_address`,
+      `refund_address`, release/refund templates, and accept-time distinct
+      destination validation.
 - [x] 11.10 Record the testnet2/Base Sepolia escrow-run evidence.
   - 2026-05-21: `trade_f674c08e2d0a278abed79e3e` proves the full testnet2/Base
     Sepolia release path. The next gate is productizing repeatable proof replay

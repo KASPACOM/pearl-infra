@@ -50,10 +50,18 @@ export function createPearlEscrowWatchRegistration(trade: OtcTrade): PearlEscrow
       pearl_funding_deadline: trade.deadlines.pearlFundingDeadline,
       refund_available_at: trade.deadlines.refundAvailableAt,
       settlement_deadline: trade.deadlines.settlementDeadline,
+      release_address: trade.buyerPearlAddress,
+      refund_address: trade.sellerPearlRefundAddress,
+      buyer_pearl_address: trade.buyerPearlAddress,
+      seller_pearl_refund_address: trade.sellerPearlRefundAddress,
+      ...(trade.pearlEscrow.releaseTxid ? { release_txid: trade.pearlEscrow.releaseTxid } : {}),
+      ...(trade.pearlEscrow.refundTxid ? { refund_txid: trade.pearlEscrow.refundTxid } : {}),
       ...(trade.pearlEscrow.escrowScriptType ? { escrow_script_type: trade.pearlEscrow.escrowScriptType } : {}),
       ...(trade.pearlEscrow.taprootOutputScriptHex
         ? { taproot_output_script_hex: trade.pearlEscrow.taprootOutputScriptHex }
         : {}),
+      ...(trade.pearlEscrow.releaseTemplate ? { release_template: trade.pearlEscrow.releaseTemplate } : {}),
+      ...(trade.pearlEscrow.refundTemplate ? { refund_template: trade.pearlEscrow.refundTemplate } : {}),
     },
   };
 }

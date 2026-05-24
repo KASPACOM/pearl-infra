@@ -98,12 +98,14 @@ test('Pg.register inserts when no row exists', async () => {
 test('Pg.register returns existing row when params are identical', async () => {
   const pg = new FakePg();
   pg.setFixture(/SELECT watch_id.*FROM watched_addresses WHERE watch_id = \$1 FOR UPDATE/s, [pgRow()]);
+  pg.setFixture(/UPDATE watched_addresses\s+SET metadata = metadata \|\| \$2::jsonb/s, [pgRow()]);
   const repo = new PgWatchedAddressRepository(pg);
 
   const result = await repo.register(input());
 
   assert.equal(result.created, false);
   assert.equal(result.watch.watchId, 'watch-1');
+  assert.equal(result.watch.metadata.expected_amount_grains, '12500000000');
   assert.ok(!pg.calls.some((c) => /INSERT INTO watched_addresses/.test(c.text)));
 });
 
@@ -126,17 +128,23 @@ test('Pg.register throws WatchConflictError on differing scalars', async () => {
   assert.ok(pg.calls.some((c) => c.text === 'ROLLBACK'));
 });
 
-test('Pg.register ignores metadata diff (per design)', async () => {
+test('Pg.register merges metadata on matching re-register', async () => {
   const pg = new FakePg();
   pg.setFixture(
     /SELECT watch_id.*FROM watched_addresses WHERE watch_id = \$1 FOR UPDATE/s,
-    [pgRow({ metadata: { something: 'else' } })],
+    [pgRow({ metadata: { expected_amount_grains: '12500000000' } })],
+  );
+  pg.setFixture(
+    /UPDATE watched_addresses\s+SET metadata = metadata \|\| \$2::jsonb/s,
+    [pgRow({ metadata: { expected_amount_grains: '12500000000', release_address: 'tprl1pbuyer' } })],
   );
   const repo = new PgWatchedAddressRepository(pg);
 
-  const result = await repo.register(input());
+  const result = await repo.register(input({ metadata: { release_address: 'tprl1pbuyer' } }));
 
   assert.equal(result.created, false);
+  assert.equal(result.watch.metadata.expected_amount_grains, '12500000000');
+  assert.equal(result.watch.metadata.release_address, 'tprl1pbuyer');
 });
 
 test('Pg.get returns null when no row', async () => {
@@ -277,14 +285,15 @@ test('Memory.register inserts then reads back', async () => {
   assert.equal(fetched.spends.length, 0);
 });
 
-test('Memory.register idempotent on identical params', async () => {
+test('Memory.register merges metadata on matching params', async () => {
   const repo = new MemoryWatchedAddressRepository();
   await repo.register(input());
 
-  const second = await repo.register(input({ metadata: { totally: 'different' } }));
+  const second = await repo.register(input({ metadata: { release_address: 'tprl1pbuyer' } }));
 
   assert.equal(second.created, false);
   assert.equal(second.watch.metadata.expected_amount_grains, '12500000000');
+  assert.equal(second.watch.metadata.release_address, 'tprl1pbuyer');
 });
 
 test('Memory.register conflicts on differing scalars', async () => {
