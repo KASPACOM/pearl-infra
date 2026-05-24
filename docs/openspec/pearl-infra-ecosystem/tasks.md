@@ -208,6 +208,11 @@ Merged implementation checkpoints:
   escrows, buyer/seller signer-ownership proofs bound to quote terms, public
   release-intent templates, FE custody/release-signing choices, and dev env
   defaults for multisig custody.
+- Open PR #99 — binds public order execution to maker signer proofs:
+  order creation now requires a maker BIP340 signer proof, order-priced quotes
+  carry maker accept prefill, order-linked quote accept requires multisig and
+  verifies maker/taker signer ownership, and order fill plus trade/event
+  persistence is atomic in Postgres.
 
 Review snapshot after PR #90 follow-up audit: PRs #71-#89 are merged into `dev`.
 The bridge service and PRL-side proof strategy now fail closed for the known
@@ -250,7 +255,7 @@ Current Pearl OTC code/workflow status:
   support/error alert form. PR #96 adds the public multisig custody and release
   intent UX while keeping direct release/refund execution controls absent.
 
-Current delegation queue after PR #96:
+Current delegation queue after PR #99:
 
 - Bridge proof/scanner owner: PR #88 closed the strategy loopholes in code and
   tests, and the 2026-05-20 simnet proof rerun passed with
@@ -279,6 +284,9 @@ Current delegation queue after PR #96:
   signing/broadcast boundary with real txids. Pearl testnet2 is no longer a
   mandatory gate because there is no usable faucet/liquidity; after simnet,
   the next live gate is explicitly approved low-cap mainnet.
+- OTC order execution owner: build the remaining `/market` taker UX that calls
+  `POST /otc/orders/:orderId/quotes`, carries the returned maker prefill into
+  quote accept, and shows order-linked open trades in the user dashboard.
 - Oyster/dev ops owner: after PR #96 merges, add the dev
   `PEARL_ESCROW_ARBITER_PUBKEY` secret, switch the dev API allocator to
   `p2tr_multisig`, deploy the new API/web images, and smoke the browser path
@@ -1054,6 +1062,8 @@ through one-time wallet challenges before creating user/profile records.
   - 2026-05-24: Added `005_orders_points.sql`, `POST /otc/orders`,
     `GET /otc/orders`, `GET /otc/market/stats`, `GET
     /otc/market/recent-trades`, and wallet-proved user dashboard routes.
+  - 2026-05-24 hardening pass: market stats now count partially-filled
+    orders as active order volume instead of dropping residual liquidity.
 - [x] 12.6 Add the public order book and market dashboard UI: best price,
   size, active volume, total volume, total successful trades, and verified
   user count.
@@ -1070,3 +1080,12 @@ through one-time wallet challenges before creating user/profile records.
   - 2026-05-24: Added `otc_points_ledger`, deterministic point-event
     idempotency, profile point summaries, referral signup points, and 10%
     upstream referral activity bonuses.
+- [x] 12.10 Bind public order quote acceptance to maker signer ownership and
+  atomic order fills.
+  - 2026-05-24: Added order-linked quote creation, maker accept prefill,
+    maker order signer proofs bound to amount/price/min fill/expiry/addresses,
+    order-linked multisig accept checks, taker quote signer proof regression
+    coverage, and Postgres atomic trade/event/order-fill persistence.
+- [ ] 12.11 Build the taker trading UX from `/market` into order quote
+  creation and quote acceptance, including open-trade/my-trade status views
+  for order-linked trades.

@@ -335,6 +335,7 @@ function createOrderMakerSignerProofMessage(input: {
     `amount_prl=${input.amountPrl}`,
     `price_usdc_per_prl=${input.priceUsdcPerPrl}`,
     `min_fill_prl=${input.minFillPrl ?? ''}`,
+    'expires_at=',
     `maker_role=${input.side === 'buy_prl' ? 'buyer' : 'seller'}`,
     `maker_pearl_address=${input.makerPearlAddress.trim()}`,
     `maker_usdc_address=${input.makerUsdcAddress.trim().toLowerCase()}`,

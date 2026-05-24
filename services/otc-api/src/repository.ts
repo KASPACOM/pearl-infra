@@ -26,6 +26,18 @@ export interface TradeIdempotencyRecord {
   requestHash?: string;
 }
 
+export interface SaveAcceptedTradeInput {
+  trade: OtcTrade;
+  clientRequestId: string;
+  requestHash?: string;
+  event: TradeEvent;
+  orderFill?: {
+    orderId: string;
+    amountPrl: string;
+    updatedAt: string;
+  };
+}
+
 export interface PearlEscrowAllocationInput {
   tradeId: string;
   allocatorKey: string;
@@ -54,6 +66,7 @@ export interface OtcRepository {
   findQuoteByClientRequestId(clientRequestId: string): Promise<OtcQuote | undefined>;
   findQuoteIdempotencyByClientRequestId(clientRequestId: string): Promise<QuoteIdempotencyRecord | undefined>;
   saveTrade(trade: OtcTrade, clientRequestId: string, requestHash?: string): Promise<void>;
+  saveAcceptedTrade(input: SaveAcceptedTradeInput): Promise<void>;
   findTradeById(tradeId: string): Promise<OtcTrade | undefined>;
   listTrades(): Promise<OtcTrade[]>;
   findTradeByQuoteId(quoteId: string): Promise<OtcTrade | undefined>;
@@ -166,6 +179,14 @@ export class InMemoryOtcRepository implements OtcRepository {
     this.tradeClientRequests.set(clientRequestId, trade.tradeId);
     this.tradeByQuote.set(trade.quoteId, trade.tradeId);
     if (requestHash) this.tradeRequestHashes.set(clientRequestId, requestHash);
+  }
+
+  async saveAcceptedTrade(input: SaveAcceptedTradeInput): Promise<void> {
+    if (input.orderFill) {
+      await this.reserveOrderFill(input.orderFill.orderId, input.orderFill.amountPrl, input.orderFill.updatedAt);
+    }
+    await this.saveTrade(input.trade, input.clientRequestId, input.requestHash);
+    await this.appendEvent(input.event);
   }
 
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
@@ -377,7 +398,7 @@ export class InMemoryOtcRepository implements OtcRepository {
   }
 
   async listOpenOrdersForStats(): Promise<OtcOrder[]> {
-    return Array.from(this.orders.values()).filter((order) => order.status === 'open');
+    return Array.from(this.orders.values()).filter((order) => order.status === 'open' || order.status === 'partially_filled');
   }
 
   async listOrdersByUser(userId: string): Promise<OtcOrder[]> {
@@ -616,14 +637,71 @@ export class PgOtcRepository implements OtcRepository {
     const result = await this.client.query(
       `INSERT INTO otc_trades (trade_id, quote_id, client_request_id, request_hash, state, trade)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-       ON CONFLICT (client_request_id) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       [trade.tradeId, trade.quoteId, clientRequestId, requestHash ?? null, trade.state, JSON.stringify(trade)],
     );
     if ((result.rowCount ?? 0) === 0) {
       const existing = await this.findTradeIdempotencyByClientRequestId(clientRequestId);
-      if (!existing) throw new Error(`trade insert failed: ${clientRequestId}`);
-      assertIdempotencyHashMatch('trade', clientRequestId, existing.requestHash, requestHash);
+      if (existing) {
+        assertIdempotencyHashMatch('trade', clientRequestId, existing.requestHash, requestHash);
+        return;
+      }
+      if (await this.findTradeByQuoteId(trade.quoteId)) {
+        throw new Error('quote already accepted');
+      }
+      throw new Error(`trade insert failed: ${clientRequestId}`);
     }
+  }
+
+  async saveAcceptedTrade(input: SaveAcceptedTradeInput): Promise<void> {
+    await this.client.withTransaction(async (tx) => {
+      const result = await tx.query(
+        `INSERT INTO otc_trades (trade_id, quote_id, client_request_id, request_hash, state, trade)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+         ON CONFLICT DO NOTHING`,
+        [
+          input.trade.tradeId,
+          input.trade.quoteId,
+          input.clientRequestId,
+          input.requestHash ?? null,
+          input.trade.state,
+          JSON.stringify(input.trade),
+        ],
+      );
+      if ((result.rowCount ?? 0) === 0) {
+        const existing = await findTradeIdempotencyByClientRequestIdWithClient(tx, input.clientRequestId);
+        if (existing) {
+          assertIdempotencyHashMatch('trade', input.clientRequestId, existing.requestHash, input.requestHash);
+          return;
+        }
+        if (await findTradeByQuoteIdWithClient(tx, input.trade.quoteId)) {
+          throw new Error('quote already accepted');
+        }
+        throw new Error(`trade insert failed: ${input.clientRequestId}`);
+      }
+      if (input.orderFill) {
+        const fillResult = await tx.query(
+          `UPDATE otc_orders
+              SET remaining_prl = remaining_prl - $2::numeric,
+                  status = CASE WHEN remaining_prl - $2::numeric = 0 THEN 'filled' ELSE 'partially_filled' END,
+                  updated_at = $3
+            WHERE order_id = $1
+              AND status IN ('open', 'partially_filled')
+              AND remaining_prl >= $2::numeric
+              AND (expires_at IS NULL OR expires_at > $3)`,
+          [input.orderFill.orderId, input.orderFill.amountPrl, input.orderFill.updatedAt],
+        );
+        if ((fillResult.rowCount ?? 0) === 0) {
+          throw new Error('order is no longer fillable for requested amount');
+        }
+      }
+      await tx.query(
+        `INSERT INTO otc_trade_events (trade_id, source_event_id, event, observed_at)
+         VALUES ($1, $2, $3::jsonb, $4)
+         ON CONFLICT (trade_id, source_event_id) DO NOTHING`,
+        [input.event.tradeId, input.event.sourceEventId, JSON.stringify(input.event), input.event.observedAt],
+      );
+    });
   }
 
   async findTradeById(tradeId: string): Promise<OtcTrade | undefined> {
@@ -1101,8 +1179,8 @@ export class PgOtcRepository implements OtcRepository {
               remaining_prl, price_usdc_per_prl, min_fill_prl, status,
               expires_at, created_at, updated_at
          FROM otc_orders
-        WHERE status = $1`,
-      ['open'],
+        WHERE status IN ($1, $2)`,
+      ['open', 'partially_filled'],
     );
     return result.rows.map(rowToOrder);
   }
@@ -1275,6 +1353,23 @@ async function findUserByWalletWithClient(
 async function findUserByIdWithClient(client: PgQueryClient, userId: string): Promise<OtcUser | undefined> {
   const result = await client.query<UserRow>(USER_SELECT_BY_ID_SQL, [userId]);
   return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+}
+
+async function findTradeIdempotencyByClientRequestIdWithClient(
+  client: PgQueryClient,
+  clientRequestId: string,
+): Promise<TradeIdempotencyRecord | undefined> {
+  const result = await client.query<TradeRow>('SELECT trade, request_hash FROM otc_trades WHERE client_request_id = $1', [
+    clientRequestId,
+  ]);
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return { trade: row.trade, ...(row.request_hash ? { requestHash: row.request_hash } : {}) };
+}
+
+async function findTradeByQuoteIdWithClient(client: PgQueryClient, quoteId: string): Promise<OtcTrade | undefined> {
+  const result = await client.query<TradeRow>('SELECT trade FROM otc_trades WHERE quote_id = $1', [quoteId]);
+  return result.rows[0]?.trade;
 }
 
 function rowToSideEffect(row: SideEffectRow): OtcSideEffect {

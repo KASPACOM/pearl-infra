@@ -262,6 +262,7 @@ export class OtcTradeService {
       amountPrl: normalizeAmountString(request.amountPrl),
       priceUsdcPerPrl: normalizeAmountString(request.priceUsdcPerPrl),
       minFillPrl: request.minFillPrl ? normalizeAmountString(request.minFillPrl) : undefined,
+      expiresAt: request.expiresAt ? new Date(request.expiresAt).toISOString() : undefined,
       makerPearlAddress: request.makerPearlAddress,
       makerUsdcAddress,
       makerPearlPubkey: request.makerPearlPubkey,
@@ -651,8 +652,6 @@ export class OtcTradeService {
     if (await this.repository.findTradeByQuoteId(quoteId)) {
       throw new Error('quote already accepted');
     }
-    assertEscrowModeMatchesAllocator(request.pearlEscrowMode, this.config);
-    assertMultisigSignerProofs(quoteId, request, this.config);
     const orderLink = await this.repository.findOrderQuoteLinkByQuoteId(quoteId);
     const linkedOrder = orderLink ? await this.repository.findOrderById(orderLink.orderId) : undefined;
     if (orderLink && !linkedOrder) {
@@ -662,6 +661,8 @@ export class OtcTradeService {
       assertOrderAcceptMatchesMaker(linkedOrder, request, this.config);
       assertOrderFillable(linkedOrder, orderLink.amountPrl, acceptedAt);
     }
+    assertEscrowModeMatchesAllocator(request.pearlEscrowMode, this.config);
+    assertMultisigSignerProofs(quoteId, request, this.config, linkedOrder);
     this.assertPearlEscrowWatchRegistrarConfigured();
 
     const tradeId = createStableId('trade', [quote.quoteId, request.clientRequestId]);
@@ -708,17 +709,22 @@ export class OtcTradeService {
       updatedAt: timestamp,
     };
 
-    await this.repository.saveTrade(trade, request.clientRequestId, requestHash);
-    if (linkedOrder && orderLink) {
-      await this.repository.reserveOrderFill(linkedOrder.orderId, orderLink.amountPrl, timestamp);
-    }
-    await this.repository.appendEvent({
+    const acceptedEvent = {
       tradeId,
       fromState: 'quoted',
       toState: 'pearl_escrow_pending',
       source: 'system',
       sourceEventId: createStableId('event', [tradeId, 'accept']),
       observedAt: timestamp,
+    } as const;
+    await this.repository.saveAcceptedTrade({
+      trade,
+      clientRequestId: request.clientRequestId,
+      requestHash,
+      event: acceptedEvent,
+      ...(linkedOrder && orderLink
+        ? { orderFill: { orderId: linkedOrder.orderId, amountPrl: orderLink.amountPrl, updatedAt: timestamp } }
+        : {}),
     });
     await this.ensurePearlEscrowWatch(trade);
 
@@ -1567,38 +1573,62 @@ function validateAcceptQuoteRequest(request: AcceptQuoteRequest, pearlNetwork: O
   if (request.sellerPearlPubkeyProof != null) assertLikelySchnorrSignature(request.sellerPearlPubkeyProof, 'sellerPearlPubkeyProof');
 }
 
-function assertMultisigSignerProofs(quoteId: string, request: AcceptQuoteRequest, config: OtcApiConfig): void {
+function assertMultisigSignerProofs(
+  quoteId: string,
+  request: AcceptQuoteRequest,
+  config: OtcApiConfig,
+  linkedOrder?: OtcOrder,
+): void {
   if ((request.pearlEscrowMode ?? defaultPearlEscrowMode(config)) !== 'multisig') {
     return;
   }
 
   assertLikelyPearlPubkey(request.buyerPearlPubkey, 'buyerPearlPubkey');
   assertLikelyPearlPubkey(request.sellerPearlPubkey, 'sellerPearlPubkey');
-  assertLikelySchnorrSignature(request.buyerPearlPubkeyProof, 'buyerPearlPubkeyProof');
-  assertLikelySchnorrSignature(request.sellerPearlPubkeyProof, 'sellerPearlPubkeyProof');
 
   const releaseSigningMode = request.pearlReleaseSigningMode ?? 'manual_after_base_deposit';
-  if (!verifyPearlSignerProof({
-    quoteId,
-    role: 'buyer',
-    pearlAddress: request.buyerPearlAddress,
-    usdcAddress: request.buyerUsdcAddress,
-    pearlPubkey: request.buyerPearlPubkey,
-    releaseSigningMode,
-    signatureHex: request.buyerPearlPubkeyProof,
-  })) {
-    throw new Error('buyerPearlPubkeyProof does not verify against buyerPearlPubkey and accept terms');
+  const makerRole = linkedOrder?.side === 'buy_prl' ? 'buyer' : linkedOrder?.side === 'sell_prl' ? 'seller' : undefined;
+  if (makerRole !== 'buyer') {
+    assertSignerProof({
+      quoteId,
+      role: 'buyer',
+      pearlAddress: request.buyerPearlAddress,
+      usdcAddress: request.buyerUsdcAddress,
+      pearlPubkey: request.buyerPearlPubkey,
+      releaseSigningMode,
+      signatureHex: request.buyerPearlPubkeyProof,
+      fieldName: 'buyerPearlPubkeyProof',
+    });
   }
+  if (makerRole !== 'seller') {
+    assertSignerProof({
+      quoteId,
+      role: 'seller',
+      pearlAddress: request.sellerPearlRefundAddress,
+      usdcAddress: request.sellerUsdcReceiveAddress,
+      pearlPubkey: request.sellerPearlPubkey,
+      releaseSigningMode,
+      signatureHex: request.sellerPearlPubkeyProof,
+      fieldName: 'sellerPearlPubkeyProof',
+    });
+  }
+}
+
+function assertSignerProof(input: Omit<VerifyPearlSignerProofInput, 'signatureHex'> & {
+  signatureHex?: string;
+  fieldName: 'buyerPearlPubkeyProof' | 'sellerPearlPubkeyProof';
+}): void {
+  assertLikelySchnorrSignature(input.signatureHex, input.fieldName);
   if (!verifyPearlSignerProof({
-    quoteId,
-    role: 'seller',
-    pearlAddress: request.sellerPearlRefundAddress,
-    usdcAddress: request.sellerUsdcReceiveAddress,
-    pearlPubkey: request.sellerPearlPubkey,
-    releaseSigningMode,
-    signatureHex: request.sellerPearlPubkeyProof,
+    quoteId: input.quoteId,
+    role: input.role,
+    pearlAddress: input.pearlAddress,
+    usdcAddress: input.usdcAddress,
+    pearlPubkey: input.pearlPubkey,
+    releaseSigningMode: input.releaseSigningMode,
+    signatureHex: input.signatureHex,
   })) {
-    throw new Error('sellerPearlPubkeyProof does not verify against sellerPearlPubkey and accept terms');
+    throw new Error(`${input.fieldName} does not verify against signer pubkey and accept terms`);
   }
 }
 
@@ -1625,6 +1655,7 @@ function assertOrderMakerSignerProof(input: {
   amountPrl: string;
   priceUsdcPerPrl: string;
   minFillPrl?: string;
+  expiresAt?: string;
   makerPearlAddress: string;
   makerUsdcAddress: string;
   makerPearlPubkey: string;
@@ -1647,6 +1678,7 @@ function createOrderMakerSignerProofMessage(input: Omit<Parameters<typeof assert
     `amount_prl=${input.amountPrl}`,
     `price_usdc_per_prl=${input.priceUsdcPerPrl}`,
     `min_fill_prl=${input.minFillPrl ?? ''}`,
+    `expires_at=${input.expiresAt ?? ''}`,
     `maker_role=${input.side === 'buy_prl' ? 'buyer' : 'seller'}`,
     `maker_pearl_address=${input.makerPearlAddress.trim()}`,
     `maker_usdc_address=${input.makerUsdcAddress.trim().toLowerCase()}`,

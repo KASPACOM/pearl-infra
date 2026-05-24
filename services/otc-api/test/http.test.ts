@@ -3,12 +3,14 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import type { AddressInfo } from 'node:net';
 
+import { createPearlSignerProofMessage, type PearlReleaseSigningMode, type PearlSignerProofRole } from '@kaspacom/pearl-sdk';
 import { Wallet } from 'ethers';
 import * as ecc from 'tiny-secp256k1';
 
 import { createOtcHttpServer } from '../src/http.ts';
+import { createConfiguredPearlEscrowAllocator } from '../src/pearl-escrow-allocator.ts';
 import { InMemoryOtcRepository } from '../src/repository.ts';
-import { OtcTradeService, type PearlEscrowAllocator } from '../src/trade-service.ts';
+import { OtcTradeService, type PearlEscrowAllocator, type PearlEscrowWatchRegistrar } from '../src/trade-service.ts';
 import type { OtcApiConfig } from '../src/types.ts';
 
 const config: OtcApiConfig = {
@@ -34,6 +36,8 @@ const operatorToken = 'test-operator-token';
 const supportToken = 'test-support-token';
 const operatorHeaders = { authorization: `Bearer ${operatorToken}` };
 const supportHeaders = { authorization: `Bearer ${supportToken}` };
+const BUYER_TESTNET_ADDRESS = 'tprl1pet7ep3czdu9k4wvdlz2fp5p8x2yp7t6ttyqg2c6cmh0lgeuu9lasga5cef';
+const SELLER_TESTNET_REFUND_ADDRESS = 'tprl1pgxxyvcmdncdxs06cudd5yvmwwahaesaj6n3eu7st7x4sw9hrchaqpcq7p3';
 
 const escrowAllocator: PearlEscrowAllocator = {
   async allocateEscrow({ tradeId, config: allocatorConfig }) {
@@ -46,12 +50,30 @@ const escrowAllocator: PearlEscrowAllocator = {
   },
 };
 
-async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {
+async function withServer<T>(fn: (baseUrl: string) => Promise<T>, serviceConfig: OtcApiConfig = config): Promise<T> {
+  const allocator = serviceConfig.pearlEscrowAllocator === 'mock'
+    ? escrowAllocator
+    : createConfiguredPearlEscrowAllocator(serviceConfig);
+  const watchRegistrar: PearlEscrowWatchRegistrar | undefined = serviceConfig.pearlEscrowAllocator === 'mock'
+    ? undefined
+    : {
+        async registerPearlEscrowWatch(trade) {
+          return {
+            watchId: `otc:${trade.tradeId}:pearl-escrow`,
+            address: trade.pearlEscrow.address,
+            network: trade.pearlEscrow.network,
+            requiredConfirmations: trade.pearlEscrow.requiredConfirmations,
+            metadata: { trade_id: trade.tradeId },
+          };
+        },
+      };
   const service = new OtcTradeService(
     new InMemoryOtcRepository(),
-    config,
-    escrowAllocator,
+    serviceConfig,
+    allocator,
+    undefined,
     () => new Date('2026-05-16T12:00:00.000Z'),
+    watchRegistrar,
   );
   const server = createOtcHttpServer(service, {
     adminToken,
@@ -93,6 +115,7 @@ function signOrderMakerProof(input: {
   amountPrl: string;
   priceUsdcPerPrl: string;
   minFillPrl?: string;
+  expiresAt?: string;
   makerPearlAddress: string;
   makerUsdcAddress: string;
   makerPearlPubkey: string;
@@ -105,6 +128,7 @@ function signOrderMakerProof(input: {
     `amount_prl=${input.amountPrl}`,
     `price_usdc_per_prl=${input.priceUsdcPerPrl}`,
     `min_fill_prl=${input.minFillPrl ?? ''}`,
+    `expires_at=${input.expiresAt ?? ''}`,
     `maker_role=${input.side === 'buy_prl' ? 'buyer' : 'seller'}`,
     `maker_pearl_address=${input.makerPearlAddress.trim()}`,
     `maker_usdc_address=${input.makerUsdcAddress.trim().toLowerCase()}`,
@@ -113,6 +137,20 @@ function signOrderMakerProof(input: {
   ].join('\n');
   const privateKey = Buffer.from(input.privateKeySeed.padStart(64, '0'), 'hex');
   return Buffer.from(ecc.signSchnorr(createHash('sha256').update(message).digest(), privateKey)).toString('hex');
+}
+
+function signQuoteSignerProof(input: {
+  quoteId: string;
+  role: PearlSignerProofRole;
+  pearlAddress: string;
+  usdcAddress: string;
+  pearlPubkey: string;
+  releaseSigningMode: PearlReleaseSigningMode;
+  privateKeySeed: string;
+}): string {
+  const privateKey = Buffer.from(input.privateKeySeed.padStart(64, '0'), 'hex');
+  const messageHash = createHash('sha256').update(createPearlSignerProofMessage(input)).digest();
+  return Buffer.from(ecc.signSchnorr(messageHash, privateKey)).toString('hex');
 }
 
 test('registers wallet-owned users with referral links and wallet-proved profile updates', async () => {
@@ -210,7 +248,7 @@ test('registers wallet-owned users with referral links and wallet-proved profile
       address: referredWallet.address,
     });
     const orderChallenge = (await orderChallengeResponse.json()) as { challengeId: string; message: string };
-    const makerPearlAddress = 'tprl1pmakerbuyer';
+    const makerPearlAddress = BUYER_TESTNET_ADDRESS;
     const makerPearlPubkey = xOnlyPublicKey('05');
     const orderResponse = await postJson(baseUrl, '/otc/orders', {
       userId: referred.userId,
@@ -263,7 +301,7 @@ test('registers wallet-owned users with referral links and wallet-proved profile
       challengeId: orderQuoteChallenge.challengeId,
       signature: await referrerWallet.signMessage(orderQuoteChallenge.message),
       amountPrl: '50.00000000',
-      pearlAddress: 'tprl1ptakerbuyer',
+      pearlAddress: SELLER_TESTNET_REFUND_ADDRESS,
       usdcAddress: referrerWallet.address,
       clientRequestId: 'order-quote-http-1',
     });
@@ -280,11 +318,54 @@ test('registers wallet-owned users with referral links and wallet-proved profile
     assert.equal(orderQuote.acceptPrefill.buyerUsdcAddress, referredWallet.address);
     assert.equal(orderQuote.acceptPrefill.buyerPearlPubkey, makerPearlPubkey);
 
+    const takerSellerPearlAddress = SELLER_TESTNET_REFUND_ADDRESS;
+    const takerSellerPearlPubkey = xOnlyPublicKey('06');
+    const acceptOrderQuoteResponse = await postJson(baseUrl, `/otc/quotes/${orderQuote.quote.quoteId}/accept`, {
+      buyerPearlAddress: makerPearlAddress,
+      buyerUsdcAddress: referredWallet.address,
+      sellerPearlRefundAddress: takerSellerPearlAddress,
+      sellerUsdcReceiveAddress: referrerWallet.address,
+      pearlEscrowMode: 'multisig',
+      pearlReleaseSigningMode: 'manual_after_base_deposit',
+      buyerPearlPubkey: makerPearlPubkey,
+      sellerPearlPubkey: takerSellerPearlPubkey,
+      sellerPearlPubkeyProof: signQuoteSignerProof({
+        quoteId: orderQuote.quote.quoteId,
+        role: 'seller',
+        pearlAddress: takerSellerPearlAddress,
+        usdcAddress: referrerWallet.address,
+        pearlPubkey: takerSellerPearlPubkey,
+        releaseSigningMode: 'manual_after_base_deposit',
+        privateKeySeed: '06',
+      }),
+      clientRequestId: 'order-quote-accept-http-1',
+    });
+    const acceptedOrderQuoteBody = await acceptOrderQuoteResponse.json();
+    assert.equal(acceptOrderQuoteResponse.status, 201, JSON.stringify(acceptedOrderQuoteBody));
+    const acceptedOrderQuote = acceptedOrderQuoteBody as {
+      tradeId: string;
+      amountPrl: string;
+      pearlEscrowMode: string;
+    };
+    assert.equal(acceptedOrderQuote.amountPrl, '50.00000000');
+    assert.equal(acceptedOrderQuote.pearlEscrowMode, 'multisig');
+
+    const partiallyFilledOrdersResponse = await fetch(`${baseUrl}/otc/orders?side=buy_prl&status=partially_filled`);
+    assert.equal(partiallyFilledOrdersResponse.status, 200);
+    const partiallyFilledOrders = (await partiallyFilledOrdersResponse.json()) as {
+      total: number;
+      items: Array<{ orderId: string; remainingPrl: string; status: string }>;
+    };
+    assert.equal(partiallyFilledOrders.total, 1);
+    assert.equal(partiallyFilledOrders.items[0].orderId, order.orderId);
+    assert.equal(partiallyFilledOrders.items[0].remainingPrl, '200.00000000');
+    assert.equal(partiallyFilledOrders.items[0].status, 'partially_filled');
+
     const statsResponse = await fetch(`${baseUrl}/otc/market/stats`);
     assert.equal(statsResponse.status, 200);
     const stats = (await statsResponse.json()) as { openOrders: number; activeOrderVolumePrl: string; verifiedUsers: number };
     assert.equal(stats.openOrders, 1);
-    assert.equal(stats.activeOrderVolumePrl, '250.00000000');
+    assert.equal(stats.activeOrderVolumePrl, '200.00000000');
     assert.equal(stats.verifiedUsers, 2);
 
     const dashboardChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
@@ -323,7 +404,7 @@ test('registers wallet-owned users with referral links and wallet-proved profile
     };
     assert.equal(referrerDashboard.points.bySource.referral_signup, 50);
     assert.equal(referrerDashboard.points.bySource.referral_activity_bonus, 3);
-  });
+  }, { ...config, pearlEscrowAllocator: 'p2tr_multisig', pearlEscrowArbiterPubkey: xOnlyPublicKey('04') });
 });
 
 test('fails closed for Pearl wallet users until address ownership verification exists', async () => {
