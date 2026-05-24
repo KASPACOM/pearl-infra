@@ -1150,6 +1150,11 @@ through one-time wallet challenges before creating user/profile records.
     summaries for linked wallets, profile/contact status, referral attribution,
     order count, trade count, and points total. Added `/admin/users` with a
     compact operator search/detail view.
+  - 2026-05-24 hardening pass: support-read user search now returns redacted
+    email local-parts, linked wallet addresses, wallet pubkeys, and referral
+    source URLs, while operator/admin roles keep full support detail. Invalid
+    `wallet_type` filters fail closed with HTTP 400 instead of broadening the
+    query.
   - Still deferred: destructive/sensitive account actions stay out of the UI
     until an explicit operator RBAC policy exists.
 - [x] 12.12 Build the taker trading UX from `/market` into order quote

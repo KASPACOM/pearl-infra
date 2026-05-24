@@ -323,11 +323,11 @@ async function handleAdminRequest(
       statusCode: 200,
       body: await service.listAdminUsers({
         search: url.searchParams.get('search') ?? undefined,
-        walletType: parseWalletType(url.searchParams.get('wallet_type')),
+        walletType: parseWalletTypeStrict(url.searchParams.get('wallet_type')),
         referrerUserId: url.searchParams.get('referrer_user_id') ?? undefined,
         cursor: url.searchParams.get('cursor') ?? undefined,
         limit: parseOptionalInteger(url.searchParams.get('limit')),
-      }),
+      }, { redaction: getAdminRedaction(admin) }),
     };
   }
 
@@ -528,8 +528,14 @@ function parseOrderStatus(value: string | null): OtcOrderStatus | undefined {
     : undefined;
 }
 
-function parseWalletType(value: string | null): 'evm' | 'pearl' | undefined {
-  return value === 'evm' || value === 'pearl' ? value : undefined;
+function parseWalletTypeStrict(value: string | null): 'evm' | 'pearl' | undefined {
+  if (value == null || value.trim() === '') {
+    return undefined;
+  }
+  if (value === 'evm' || value === 'pearl') {
+    return value;
+  }
+  throw new HttpError(400, 'bad_request', 'wallet_type must be evm or pearl');
 }
 
 function parseOrderSort(value: string | null): OrderBookQuery['sort'] | undefined {

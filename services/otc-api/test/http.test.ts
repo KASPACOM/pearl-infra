@@ -713,15 +713,34 @@ test('lists wallet users for admin search and referral support', async () => {
     });
     assert.equal(searchResponse.status, 200);
     const searchPage = (await searchResponse.json()) as {
-      items: Array<{ userId: string; email?: string; wallets: Array<{ address: string }>; walletCount: number; pointTotal: number }>;
+      items: Array<{ userId: string; email?: string; wallets: Array<{ address: string }>; walletCount: number; pointTotal: number; redaction: string }>;
       total: number;
     };
     assert.equal(searchPage.total, 1);
     assert.equal(searchPage.items[0].userId, referred.userId);
-    assert.equal(searchPage.items[0].email, 'desk-referred@example.com');
-    assert.equal(searchPage.items[0].wallets[0].address, referredWallet.address);
+    assert.equal(searchPage.items[0].email, '[redacted]@example.com');
+    assert.notEqual(searchPage.items[0].wallets[0].address, referredWallet.address);
+    assert.match(searchPage.items[0].wallets[0].address, /^0x[0-9a-fA-F]{4}\.\.\.[0-9a-fA-F]{4}$/);
     assert.equal(searchPage.items[0].walletCount, 1);
     assert.equal(searchPage.items[0].pointTotal, 25);
+    assert.equal(searchPage.items[0].redaction, 'support');
+
+    const operatorSearchResponse = await fetch(`${baseUrl}/otc/admin/users?search=${encodeURIComponent(referredWallet.address.slice(0, 12))}`, {
+      headers: operatorHeaders,
+    });
+    assert.equal(operatorSearchResponse.status, 200);
+    const operatorSearchPage = (await operatorSearchResponse.json()) as {
+      items: Array<{ email?: string; wallets: Array<{ address: string }>; redaction: string }>;
+    };
+    assert.equal(operatorSearchPage.items[0].email, 'desk-referred@example.com');
+    assert.equal(operatorSearchPage.items[0].wallets[0].address, referredWallet.address);
+    assert.equal(operatorSearchPage.items[0].redaction, 'operator');
+
+    const invalidWalletTypeResponse = await fetch(`${baseUrl}/otc/admin/users?wallet_type=evmm`, {
+      headers: supportHeaders,
+    });
+    assert.equal(invalidWalletTypeResponse.status, 400);
+    assert.match(await invalidWalletTypeResponse.text(), /wallet_type must be evm or pearl/);
 
     const referralResponse = await fetch(`${baseUrl}/otc/admin/users?referrer_user_id=${encodeURIComponent(referrer.userId)}`, {
       headers: supportHeaders,
