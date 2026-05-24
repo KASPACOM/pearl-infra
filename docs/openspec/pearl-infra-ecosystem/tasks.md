@@ -1106,3 +1106,7 @@ through one-time wallet challenges before creating user/profile records.
     wallet, create order-backed quotes through `POST /otc/orders/:orderId/quotes`,
     store server maker prefill for the accept page, and route takers into
     quote acceptance with only the taker signer proof required.
+  - 2026-05-24 audit: Persisted taker settlement fields on order quote links,
+    added `GET /otc/quotes/:quoteId/order-context` for server-authoritative
+    accept-page prefill, clear stale local drafts when no server context
+    exists, and sort merged open/partially-filled offers by best price.

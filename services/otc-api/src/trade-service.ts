@@ -53,6 +53,7 @@ import type {
   OtcSideEffect,
   OrderBookPage,
   OrderBookQuery,
+  OrderQuoteAcceptContext,
   OrderQuoteResponse,
   PearlReleaseSigningIntent,
   PrepareUsdcCreateTradeRequest,
@@ -307,9 +308,8 @@ export class OtcTradeService {
       throw new Error('maker cannot take their own order');
     }
 
-    const makerRole = order.side === 'buy_prl' ? 'buyer' : 'seller';
-    const takerRole = makerRole === 'buyer' ? 'seller' : 'buyer';
     const takerUsdcAddress = getAddress(request.usdcAddress);
+    const makerRole = getOrderMakerRole(order);
     const quoteRequest: CreateQuoteRequest = {
       side: order.side,
       amountPrl: normalizeAmountString(request.amountPrl),
@@ -324,21 +324,41 @@ export class OtcTradeService {
       quoteId: quote.quoteId,
       orderId: order.orderId,
       amountPrl: quote.amountPrl,
+      takerPearlAddress: request.pearlAddress,
+      takerUsdcAddress,
       createdAt: this.now().toISOString(),
     });
     return {
       quote,
       order,
       makerRole,
-      acceptPrefill: {
-        pearlReleaseSigningMode: order.pearlReleaseSigningMode,
-        ...(makerRole === 'buyer'
-          ? { buyerPearlAddress: order.makerPearlAddress, buyerUsdcAddress: order.makerUsdcAddress, buyerPearlPubkey: order.makerPearlPubkey }
-          : { sellerPearlRefundAddress: order.makerPearlAddress, sellerUsdcReceiveAddress: order.makerUsdcAddress, sellerPearlPubkey: order.makerPearlPubkey }),
-        ...(takerRole === 'buyer'
-          ? { buyerPearlAddress: request.pearlAddress, buyerUsdcAddress: takerUsdcAddress }
-          : { sellerPearlRefundAddress: request.pearlAddress, sellerUsdcReceiveAddress: takerUsdcAddress }),
-      },
+      acceptPrefill: createOrderQuoteAcceptPrefill(order, request.pearlAddress, takerUsdcAddress),
+    };
+  }
+
+  async getOrderQuoteAcceptContext(quoteId: string): Promise<OrderQuoteAcceptContext> {
+    assertNonEmptyBounded(quoteId, 'quoteId', 80);
+    const link = await this.repository.findOrderQuoteLinkByQuoteId(quoteId);
+    if (!link) {
+      throw new Error(`order quote link not found: ${quoteId}`);
+    }
+    const order = await this.repository.findOrderById(link.orderId);
+    if (!order) {
+      throw new Error(`order not found: ${link.orderId}`);
+    }
+    const quote = await this.repository.findQuoteById(quoteId);
+    if (!quote) {
+      throw new Error(`quote not found: ${quoteId}`);
+    }
+    if (!link.takerPearlAddress || !link.takerUsdcAddress) {
+      throw new Error(`quote missing order taker settlement fields: ${quoteId}`);
+    }
+    const makerRole = getOrderMakerRole(order);
+    return {
+      quoteId,
+      order,
+      makerRole,
+      acceptPrefill: createOrderQuoteAcceptPrefill(order, link.takerPearlAddress, link.takerUsdcAddress),
     };
   }
 
@@ -1707,11 +1727,29 @@ function assertOrderFillable(order: OtcOrder, amountPrl: string, now: Date): voi
   }
 }
 
+function getOrderMakerRole(order: OtcOrder): 'buyer' | 'seller' {
+  return order.side === 'buy_prl' ? 'buyer' : 'seller';
+}
+
+function createOrderQuoteAcceptPrefill(order: OtcOrder, takerPearlAddress: string, takerUsdcAddress: string): Partial<AcceptQuoteRequest> {
+  const makerRole = getOrderMakerRole(order);
+  const takerRole = makerRole === 'buyer' ? 'seller' : 'buyer';
+  return {
+    pearlReleaseSigningMode: order.pearlReleaseSigningMode,
+    ...(makerRole === 'buyer'
+      ? { buyerPearlAddress: order.makerPearlAddress, buyerUsdcAddress: order.makerUsdcAddress, buyerPearlPubkey: order.makerPearlPubkey }
+      : { sellerPearlRefundAddress: order.makerPearlAddress, sellerUsdcReceiveAddress: order.makerUsdcAddress, sellerPearlPubkey: order.makerPearlPubkey }),
+    ...(takerRole === 'buyer'
+      ? { buyerPearlAddress: takerPearlAddress, buyerUsdcAddress: takerUsdcAddress }
+      : { sellerPearlRefundAddress: takerPearlAddress, sellerUsdcReceiveAddress: takerUsdcAddress }),
+  };
+}
+
 function assertOrderAcceptMatchesMaker(order: OtcOrder, request: AcceptQuoteRequest, config: OtcApiConfig): void {
   if ((request.pearlEscrowMode ?? defaultPearlEscrowMode(config)) !== 'multisig') {
     throw new Error('order-linked quotes require multisig Pearl escrow');
   }
-  const makerRole = order.side === 'buy_prl' ? 'buyer' : 'seller';
+  const makerRole = getOrderMakerRole(order);
   if (request.pearlReleaseSigningMode !== order.pearlReleaseSigningMode) {
     throw new Error('order-linked quote release signing mode does not match maker order');
   }

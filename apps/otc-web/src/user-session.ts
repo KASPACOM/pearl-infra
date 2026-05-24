@@ -14,7 +14,7 @@ export interface OrderQuoteDraft {
 }
 
 export function readStoredUser(): OtcUser | undefined {
-  if (typeof window === 'undefined') return undefined;
+  if (typeof window === 'undefined' || !('localStorage' in window)) return undefined;
   const raw = window.localStorage.getItem(USER_STORAGE_KEY);
   if (!raw) return undefined;
   try {
@@ -25,13 +25,13 @@ export function readStoredUser(): OtcUser | undefined {
 }
 
 export function storeUser(user: OtcUser): void {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && 'localStorage' in window) {
     window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
   }
 }
 
 export function readStoredReferralCode(): string | undefined {
-  if (typeof window === 'undefined') return undefined;
+  if (typeof window === 'undefined' || !('localStorage' in window)) return undefined;
   const fromUrl = new URLSearchParams(getBrowserSearch()).get('ref')?.trim();
   if (fromUrl) {
     window.localStorage.setItem(REFERRAL_STORAGE_KEY, fromUrl);

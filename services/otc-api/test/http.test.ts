@@ -318,6 +318,21 @@ test('registers wallet-owned users with referral links and wallet-proved profile
     assert.equal(orderQuote.acceptPrefill.buyerUsdcAddress, referredWallet.address);
     assert.equal(orderQuote.acceptPrefill.buyerPearlPubkey, makerPearlPubkey);
 
+    const orderContextResponse = await fetch(`${baseUrl}/otc/quotes/${orderQuote.quote.quoteId}/order-context`);
+    assert.equal(orderContextResponse.status, 200);
+    const orderContext = (await orderContextResponse.json()) as {
+      makerRole: string;
+      acceptPrefill: {
+        buyerPearlAddress: string;
+        sellerPearlRefundAddress: string;
+        sellerUsdcReceiveAddress: string;
+      };
+    };
+    assert.equal(orderContext.makerRole, 'buyer');
+    assert.equal(orderContext.acceptPrefill.buyerPearlAddress, makerPearlAddress);
+    assert.equal(orderContext.acceptPrefill.sellerPearlRefundAddress, SELLER_TESTNET_REFUND_ADDRESS);
+    assert.equal(orderContext.acceptPrefill.sellerUsdcReceiveAddress, referrerWallet.address);
+
     const takerSellerPearlAddress = SELLER_TESTNET_REFUND_ADDRESS;
     const takerSellerPearlPubkey = xOnlyPublicKey('06');
     const acceptOrderQuoteResponse = await postJson(baseUrl, `/otc/quotes/${orderQuote.quote.quoteId}/accept`, {

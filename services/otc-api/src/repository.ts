@@ -575,6 +575,8 @@ type OrderQuoteLinkRow = Record<string, unknown> & {
   quote_id: string;
   order_id: string;
   amount_prl: string | number;
+  taker_pearl_address?: string | null;
+  taker_usdc_address?: string | null;
   created_at: Date | string;
 }
 
@@ -1225,16 +1227,16 @@ export class PgOtcRepository implements OtcRepository {
 
   async saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void> {
     await this.client.query(
-      `INSERT INTO otc_order_quote_links (quote_id, order_id, amount_prl, created_at)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO otc_order_quote_links (quote_id, order_id, amount_prl, taker_pearl_address, taker_usdc_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (quote_id) DO NOTHING`,
-      [link.quoteId, link.orderId, link.amountPrl, link.createdAt],
+      [link.quoteId, link.orderId, link.amountPrl, link.takerPearlAddress ?? null, link.takerUsdcAddress ?? null, link.createdAt],
     );
   }
 
   async findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined> {
     const result = await this.client.query<OrderQuoteLinkRow>(
-      `SELECT quote_id, order_id, amount_prl, created_at
+      `SELECT quote_id, order_id, amount_prl, taker_pearl_address, taker_usdc_address, created_at
          FROM otc_order_quote_links
         WHERE quote_id = $1`,
       [quoteId],
@@ -1479,6 +1481,8 @@ function rowToOrderQuoteLink(row: OrderQuoteLinkRow): OtcOrderQuoteLink {
     quoteId: row.quote_id,
     orderId: row.order_id,
     amountPrl: String(row.amount_prl),
+    ...(row.taker_pearl_address ? { takerPearlAddress: row.taker_pearl_address } : {}),
+    ...(row.taker_usdc_address ? { takerUsdcAddress: row.taker_usdc_address } : {}),
     createdAt: formatPgDate(row.created_at),
   };
 }

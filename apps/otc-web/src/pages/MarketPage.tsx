@@ -42,9 +42,10 @@ export function MarketPage() {
     ])
       .then(([apiStats, openOrders, partiallyFilledOrders, apiTrades]) => {
         if (!active) return;
+        const mergedOrders = [...openOrders.items, ...partiallyFilledOrders.items].sort(compareMarketOrders);
         setStats(apiStats);
         setOrders({
-          items: [...openOrders.items, ...partiallyFilledOrders.items],
+          items: mergedOrders,
           total: openOrders.total + partiallyFilledOrders.total,
           limit: openOrders.limit + partiallyFilledOrders.limit,
         });
@@ -74,6 +75,7 @@ export function MarketPage() {
     if (!snapshot.address) throw new Error('Wallet did not return an address.');
     setWallet(snapshot);
     const client = createOtcClient();
+    const referralCode = readStoredReferralCode();
     const challenge = await client.createWalletChallenge({
       walletType: 'evm',
       network: 'base_sepolia',
@@ -83,7 +85,7 @@ export function MarketPage() {
     const registered = await client.registerUser({
       challengeId: challenge.challengeId,
       signature,
-      ...(readStoredReferralCode() ? { referralCode: readStoredReferralCode() } : {}),
+      ...(referralCode ? { referralCode } : {}),
       sourceUrl: typeof window === 'undefined' ? undefined : window.location.href,
     });
     storeUser(registered);
@@ -229,4 +231,14 @@ export function MarketPage() {
       </div>
     </section>
   );
+}
+
+function compareMarketOrders(left: OtcOrder, right: OtcOrder): number {
+  const leftPrice = Number(left.priceUsdcPerPrl);
+  const rightPrice = Number(right.priceUsdcPerPrl);
+  const priceOrder = left.side === 'buy_prl' ? rightPrice - leftPrice : leftPrice - rightPrice;
+  if (priceOrder !== 0) return priceOrder;
+  const sizeOrder = Number(right.remainingPrl) - Number(left.remainingPrl);
+  if (sizeOrder !== 0) return sizeOrder;
+  return right.createdAt.localeCompare(left.createdAt);
 }

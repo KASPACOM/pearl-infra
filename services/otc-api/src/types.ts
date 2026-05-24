@@ -428,11 +428,20 @@ export interface OtcOrderQuoteLink {
   quoteId: string;
   orderId: string;
   amountPrl: string;
+  takerPearlAddress?: string;
+  takerUsdcAddress?: string;
   createdAt: string;
 }
 
 export interface OrderQuoteResponse {
   quote: import('@kaspacom/pearl-sdk').OtcQuote;
+  order: OtcOrder;
+  makerRole: 'buyer' | 'seller';
+  acceptPrefill: Partial<AcceptQuoteRequest>;
+}
+
+export interface OrderQuoteAcceptContext {
+  quoteId: string;
   order: OtcOrder;
   makerRole: 'buyer' | 'seller';
   acceptPrefill: Partial<AcceptQuoteRequest>;

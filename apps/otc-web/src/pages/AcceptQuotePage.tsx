@@ -6,13 +6,16 @@ import { demoQuote, demoTrade, DEMO_NOW } from '../demo-data.js';
 import { buildAcceptQuotePageModel } from '../page-models.js';
 import { BrandLoader, Field } from '../components/Primitives.js';
 import { getBrowserPathname, getBrowserSearch, getQuoteIdFromPath, getQuoteRoleFromSearch } from '../routing.js';
-import { readOrderQuoteDraft } from '../user-session.js';
+import type { AcceptQuoteRequest, OrderQuoteAcceptContext } from '../otc-api-client.js';
+import { readOrderQuoteDraft, storeOrderQuoteDraft } from '../user-session.js';
+
+type AcceptOrderQuoteContext = Pick<OrderQuoteAcceptContext, 'quoteId' | 'makerRole' | 'acceptPrefill'>;
 
 export function AcceptQuotePage() {
   const quoteId = getQuoteIdFromPath(getBrowserPathname()) ?? demoQuote.quoteId;
   const routeQuoteId = getQuoteIdFromPath(getBrowserPathname());
-  const orderQuoteDraft = readOrderQuoteDraft(routeQuoteId);
-  const acceptPrefill = orderQuoteDraft?.acceptPrefill;
+  const [orderQuoteContext, setOrderQuoteContext] = useState<AcceptOrderQuoteContext | undefined>(() => readOrderQuoteDraft(routeQuoteId));
+  const acceptPrefill = orderQuoteContext?.acceptPrefill;
   const [quote, setQuote] = useState<OtcQuote | undefined>(() => (routeQuoteId ? undefined : demoQuote));
   const [buyerPearlAddress, setBuyerPearlAddress] = useState(routeQuoteId ? acceptPrefill?.buyerPearlAddress ?? '' : demoTrade.buyerPearlAddress);
   const [buyerUsdcAddress, setBuyerUsdcAddress] = useState(routeQuoteId ? acceptPrefill?.buyerUsdcAddress ?? '' : demoTrade.buyerUsdcAddress);
@@ -23,7 +26,7 @@ export function AcceptQuotePage() {
     routeQuoteId ? acceptPrefill?.sellerUsdcReceiveAddress ?? '' : demoTrade.sellerUsdcReceiveAddress,
   );
   const [pearlEscrowMode, setPearlEscrowMode] = useState<PearlEscrowMode>(
-    routeQuoteId && orderQuoteDraft ? 'multisig' : getDefaultPearlEscrowMode,
+    routeQuoteId && orderQuoteContext ? 'multisig' : getDefaultPearlEscrowMode,
   );
   const [pearlReleaseSigningMode, setPearlReleaseSigningMode] = useState<PearlReleaseSigningMode>(
     acceptPrefill?.pearlReleaseSigningMode ?? 'preauthorize_release',
@@ -56,11 +59,34 @@ export function AcceptQuotePage() {
       return undefined;
     }
     let active = true;
-    void createOtcClient()
-      .getQuote(routeQuoteId)
-      .then((apiQuote) => {
-        if (active) {
-          setQuote(apiQuote);
+    const client = createOtcClient();
+    void Promise.all([
+      client.getQuote(routeQuoteId),
+      client.getOrderQuoteAcceptContext(routeQuoteId).catch(() => undefined),
+    ])
+      .then(([apiQuote, apiOrderContext]) => {
+        if (!active) return;
+        setQuote(apiQuote);
+        if (apiOrderContext) {
+          setOrderQuoteContext(apiOrderContext);
+          storeOrderQuoteDraft({
+            quoteId: apiOrderContext.quoteId,
+            orderId: apiOrderContext.order.orderId,
+            makerRole: apiOrderContext.makerRole,
+            acceptPrefill: apiOrderContext.acceptPrefill,
+          });
+          applyAcceptPrefill(apiOrderContext.acceptPrefill, {
+            setBuyerPearlAddress,
+            setBuyerUsdcAddress,
+            setSellerPearlRefundAddress,
+            setSellerUsdcReceiveAddress,
+            setBuyerPearlPubkey,
+            setSellerPearlPubkey,
+            setPearlReleaseSigningMode,
+          });
+          setPearlEscrowMode('multisig');
+        } else {
+          setOrderQuoteContext(undefined);
         }
       })
       .catch((loadErrorValue) => {
@@ -107,7 +133,7 @@ export function AcceptQuotePage() {
     },
     role,
     routeQuoteId ? new Date() : DEMO_NOW,
-    { makerRole: orderQuoteDraft?.makerRole },
+    { makerRole: orderQuoteContext?.makerRole },
   );
   const buyerSignerProofMessage = createPearlSignerProofMessage({
     quoteId,
@@ -202,7 +228,7 @@ export function AcceptQuotePage() {
               <Field label="Seller Pearl public key" error={model.errors.sellerPearlPubkey}>
                 <input value={sellerPearlPubkey} onChange={onSellerPearlPubkeyChange} spellCheck={false} />
               </Field>
-              {orderQuoteDraft?.makerRole !== 'buyer' ? (
+              {orderQuoteContext?.makerRole !== 'buyer' ? (
                 <>
                   <Field label="Buyer signer proof message">
                     <textarea value={buyerSignerProofMessage} readOnly rows={7} spellCheck={false} />
@@ -212,7 +238,7 @@ export function AcceptQuotePage() {
                   </Field>
                 </>
               ) : null}
-              {orderQuoteDraft?.makerRole !== 'seller' ? (
+              {orderQuoteContext?.makerRole !== 'seller' ? (
                 <>
                   <Field label="Seller signer proof message">
                     <textarea value={sellerSignerProofMessage} readOnly rows={7} spellCheck={false} />
@@ -248,4 +274,25 @@ export function AcceptQuotePage() {
       </div>
     </section>
   );
+}
+
+function applyAcceptPrefill(
+  prefill: Partial<AcceptQuoteRequest>,
+  setters: {
+    setBuyerPearlAddress(value: string): void;
+    setBuyerUsdcAddress(value: string): void;
+    setSellerPearlRefundAddress(value: string): void;
+    setSellerUsdcReceiveAddress(value: string): void;
+    setBuyerPearlPubkey(value: string): void;
+    setSellerPearlPubkey(value: string): void;
+    setPearlReleaseSigningMode(value: PearlReleaseSigningMode): void;
+  },
+): void {
+  if (prefill.buyerPearlAddress) setters.setBuyerPearlAddress(prefill.buyerPearlAddress);
+  if (prefill.buyerUsdcAddress) setters.setBuyerUsdcAddress(prefill.buyerUsdcAddress);
+  if (prefill.sellerPearlRefundAddress) setters.setSellerPearlRefundAddress(prefill.sellerPearlRefundAddress);
+  if (prefill.sellerUsdcReceiveAddress) setters.setSellerUsdcReceiveAddress(prefill.sellerUsdcReceiveAddress);
+  if (prefill.buyerPearlPubkey) setters.setBuyerPearlPubkey(prefill.buyerPearlPubkey);
+  if (prefill.sellerPearlPubkey) setters.setSellerPearlPubkey(prefill.sellerPearlPubkey);
+  if (prefill.pearlReleaseSigningMode) setters.setPearlReleaseSigningMode(prefill.pearlReleaseSigningMode);
 }
