@@ -1043,8 +1043,10 @@ blockers visible for planning. See
   - [x] 11.9.f Register first-class Pearl release/refund destination metadata
     on OTC escrow watches so fee-adjusted spend classification is deterministic.
     - 2026-05-24: real OTC escrow watches include `release_address`,
-      `refund_address`, release/refund templates, and accept-time distinct
-      destination validation.
+      `refund_address`, bounded release/refund amount windows, release/refund
+      templates, accept-time distinct destination validation, and
+      fill-missing-only metadata enrichment on re-register. Txid hints must
+      also satisfy the output policy before a spend is classified.
 - [x] 11.10 Record the testnet2/Base Sepolia escrow-run evidence.
   - 2026-05-21: `trade_f674c08e2d0a278abed79e3e` proves the full testnet2/Base
     Sepolia release path. The next gate is productizing repeatable proof replay

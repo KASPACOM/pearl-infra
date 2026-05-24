@@ -116,16 +116,53 @@ test('classifySpend marks release when the spend matches the release template ou
   assert.equal(result.classificationData.matchedBy, 'release_template');
 });
 
-test('classifySpend marks refund when the spend txid is predeclared', () => {
+test('classifySpend marks refund when the predeclared txid also matches output policy', () => {
   const result = classifySpend({
-    watch: watch({ refund_txid: 'refund1' }),
+    watch: watch({
+      refund_txid: 'refund1',
+      refund_address: 'tprl1psellerrefund',
+      refund_amount_min_grains: '12499999000',
+      refund_amount_max_grains: '12500000000',
+    }),
     spendTxid: 'refund1',
     spentOutpoint: 'funding:0',
-    spendingOutputs: [],
+    spendingOutputs: [
+      {
+        txid: 'refund1',
+        vout: 0,
+        amountGrains: '12499999000',
+        scriptPubKey: { hex: '51', address: 'tprl1psellerrefund' },
+      },
+    ],
   });
 
   assert.equal(result.classification, 'refund');
-  assert.equal(result.classificationData.matchedBy, 'refund_txid');
+  assert.equal(result.classificationData.matchedBy, 'refund_txid_and_refund_address');
+});
+
+test('classifySpend rejects predeclared txid when the outputs violate policy', () => {
+  const result = classifySpend({
+    watch: watch({
+      release_txid: 'release1',
+      release_address: 'tprl1pbuyer',
+      release_amount_min_grains: '12499999000',
+      release_amount_max_grains: '12500000000',
+    }),
+    spendTxid: 'release1',
+    spentOutpoint: 'funding:0',
+    spendingOutputs: [
+      {
+        txid: 'release1',
+        vout: 0,
+        amountGrains: '1',
+        scriptPubKey: { hex: '51', address: 'tprl1pbuyer' },
+      },
+    ],
+  });
+
+  assert.equal(result.classification, 'unknown_spend');
+  assert.equal(result.classificationData.reason, 'txid_output_policy_mismatch');
+  assert.equal(result.classificationData.matchedTxidKind, 'release');
 });
 
 test('classifySpend uses distinct OTC release and refund destination metadata for fee-adjusted spends', () => {
@@ -133,6 +170,10 @@ test('classifySpend uses distinct OTC release and refund destination metadata fo
     watch: watch({
       release_address: 'tprl1pbuyer',
       refund_address: 'tprl1psellerrefund',
+      release_amount_min_grains: '12499999000',
+      release_amount_max_grains: '12500000000',
+      refund_amount_min_grains: '12499999000',
+      refund_amount_max_grains: '12500000000',
       releaseTemplate: {
         outputs: [{ address: 'tprl1pbuyer', amountGrains: '12500000000' }],
       },
@@ -155,6 +196,10 @@ test('classifySpend uses distinct OTC release and refund destination metadata fo
     watch: watch({
       release_address: 'tprl1pbuyer',
       refund_address: 'tprl1psellerrefund',
+      release_amount_min_grains: '12499999000',
+      release_amount_max_grains: '12500000000',
+      refund_amount_min_grains: '12499999000',
+      refund_amount_max_grains: '12500000000',
     }),
     spendTxid: 'refund1',
     spentOutpoint: 'funding:0',
@@ -174,11 +219,63 @@ test('classifySpend uses distinct OTC release and refund destination metadata fo
   assert.equal(refund.classificationData.matchedBy, 'refund_address');
 });
 
+test('classifySpend rejects dust output to a release address without amount bounds match', () => {
+  const result = classifySpend({
+    watch: watch({
+      release_address: 'tprl1pbuyer',
+      refund_address: 'tprl1psellerrefund',
+      release_amount_min_grains: '12499999000',
+      release_amount_max_grains: '12500000000',
+      refund_amount_min_grains: '12499999000',
+      refund_amount_max_grains: '12500000000',
+    }),
+    spendTxid: 'spend1',
+    spentOutpoint: 'funding:0',
+    spendingOutputs: [
+      {
+        txid: 'spend1',
+        vout: 0,
+        amountGrains: '1',
+        scriptPubKey: { hex: '51', address: 'tprl1pbuyer' },
+      },
+    ],
+  });
+
+  assert.equal(result.classification, 'unknown_spend');
+  assert.equal(result.classificationData.reason, 'no_release_or_refund_template_match');
+});
+
+test('classifySpend rejects direct release address metadata without amount bounds', () => {
+  const result = classifySpend({
+    watch: watch({
+      release_address: 'tprl1pbuyer',
+      refund_address: 'tprl1psellerrefund',
+    }),
+    spendTxid: 'spend1',
+    spentOutpoint: 'funding:0',
+    spendingOutputs: [
+      {
+        txid: 'spend1',
+        vout: 0,
+        amountGrains: '12499999000',
+        scriptPubKey: { hex: '51', address: 'tprl1pbuyer' },
+      },
+    ],
+  });
+
+  assert.equal(result.classification, 'unknown_spend');
+  assert.equal(result.classificationData.reason, 'no_release_or_refund_template_match');
+});
+
 test('classifySpend marks unknown_spend when no release or refund policy matches', () => {
   const result = classifySpend({
     watch: watch({
       release_address: 'tprl1pbuyer',
       refund_address: 'tprl1psellerrefund',
+      release_amount_min_grains: '12499999000',
+      release_amount_max_grains: '12500000000',
+      refund_amount_min_grains: '12499999000',
+      refund_amount_max_grains: '12500000000',
     }),
     spendTxid: 'spend1',
     spentOutpoint: 'funding:0',
@@ -305,6 +402,8 @@ test('FundingScannerSink catches same-block funding and spend', async () => {
     requiredConfirmations: 1,
     metadata: {
       refund_address: 'tprl1psellerrefund',
+      refund_amount_min_grains: '99999000',
+      refund_amount_max_grains: '100000000',
       expected_amount_grains: '100000000',
       pearl_funding_deadline_height: 200,
     },

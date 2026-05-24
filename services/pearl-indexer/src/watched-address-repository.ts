@@ -157,9 +157,9 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
         }
         const updated = await tx.query<WatchedAddressRow>(
           `UPDATE watched_addresses
-              SET metadata = metadata || $2::jsonb,
+              SET metadata = $2::jsonb || metadata,
                   updated_at = CASE
-                    WHEN metadata = metadata || $2::jsonb THEN updated_at
+                    WHEN metadata = $2::jsonb || metadata THEN updated_at
                     ELSE now()
                   END
             WHERE watch_id = $1
@@ -412,7 +412,7 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
       if (diffs.length > 0) {
         throw new WatchConflictError(input.watchId, diffs);
       }
-      const mergedMetadata = { ...existing.metadata, ...(input.metadata ?? {}) };
+      const mergedMetadata = { ...(input.metadata ?? {}), ...existing.metadata };
       const updated: WatchedAddress = {
         ...existing,
         metadata: mergedMetadata,
