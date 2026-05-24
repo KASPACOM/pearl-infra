@@ -55,13 +55,16 @@ Current state after PR #81:
      must still come from bridge-service matching against an approved pending
      exit, unique release txid, clean reconciliation, and cap limits.
 
-4. Complete OTC live evidence.
-   - Run the real Base Sepolia `createTrade`, `deposit`, and terminal
-     `release` or `refund` leg.
-   - Pair it with real PRL signing/broadcast evidence and the live proof
-     verifier. Because no usable Pearl testnet faucet/liquidity exists, the
-     live PRL evidence path after simnet is explicitly approved low-cap
-     mainnet.
+4. Productize OTC live evidence.
+   - The 2026-05-21 testnet2/Base Sepolia proof recorded real PRL
+     funding/release, Base `createTrade`, `approve`, `deposit`, and `release`
+     txids, plus public proof fields.
+   - Move that proof from the one-off in-memory runner into durable Postgres or
+     a live API process so the verifier can rerun from public routes after
+     shutdown.
+   - PR #106 plus the 2026-05-24 review hardening covers paste/submit signed
+     release broadcast. Native browser Pearl wallet signing and first-class
+     refund signing UX remain open.
 
 5. Finish production Oyster release.
    - Populate prod secrets, execute prod image path, configure prod DNS, and

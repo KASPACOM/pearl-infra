@@ -604,6 +604,7 @@ function mapError(error: unknown): JsonResponse {
   if (
     message.includes('signing intent is not ready') ||
     message.includes('broadcast requires') ||
+    message.includes('broadcast is already reserved') ||
     message.includes('does not match server template') ||
     message.includes('missing witness signatures')
   ) {

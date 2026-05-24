@@ -58,14 +58,24 @@ The verifier must prove:
 - indexed Pearl escrow outpoint, release/refund txid, and required
   confirmations match public proof.
 
-## Still Blocked Until Live Inputs Exist
+## Recorded Testnet2 Run
 
-This verifier closes the repeatable evidence harness gap. It does not remove
-the need for a real trade run with:
+The first successful real cross-chain run is recorded in
+[`full-otc-testnet2-evidence-20260521.md`](full-otc-testnet2-evidence-20260521.md).
+It used real Pearl testnet2 funding/release transactions and real Base Sepolia
+native-USDC escrow create/deposit/release transactions.
 
-- wallet-funded PRL into a unique escrow address;
-- real Base Sepolia `createTrade`, `deposit`, and `release` or `refund` txids;
-- a real PRL signing/broadcast path. The current Oyster build still cannot
-  arbitrary-sign raw transactions, so the next run must use either a non-Oyster
-  signer path or the controlled Oyster `sendmany` workaround documented in the
-  wallet-backed simnet evidence.
+Important follow-up: the proof runner used a local in-memory OTC API process, so
+this verifier cannot be rerun after that process exits unless the trade is
+persisted in Postgres or replayed through a live API instance.
+
+## Remaining Productization
+
+The verifier closes the repeatable evidence harness gap, but the successful
+testnet2 run also exposed two productization requirements:
+
+- persist live proof trades before shutdown so the verifier can be rerun from
+  public routes;
+- include release/refund destination metadata in Pearl watches, preferably with
+  distinct release and refund addresses, so fee-adjusted spends classify as
+  `release` or `refund` instead of `unknown_spend`.

@@ -85,6 +85,7 @@ export interface OtcRepository {
   appendEvent(event: TradeEvent): Promise<void>;
   listEvents(tradeId: string): Promise<TradeEvent[]>;
   saveSideEffect(sideEffect: OtcSideEffect): Promise<{ sideEffect: OtcSideEffect; created: boolean }>;
+  updateSideEffect(sideEffect: OtcSideEffect): Promise<OtcSideEffect>;
   findSideEffectByIdempotencyKey(idempotencyKey: string): Promise<OtcSideEffect | undefined>;
   listSideEffects(tradeId: string): Promise<OtcSideEffect[]>;
   saveWalletChallenge(challenge: OtcUserWalletChallenge): Promise<void>;
@@ -287,6 +288,14 @@ export class InMemoryOtcRepository implements OtcRepository {
     }
     this.sideEffects.set(sideEffect.idempotencyKey, sideEffect);
     return { sideEffect, created: true };
+  }
+
+  async updateSideEffect(sideEffect: OtcSideEffect): Promise<OtcSideEffect> {
+    if (!this.sideEffects.has(sideEffect.idempotencyKey)) {
+      throw new Error(`side effect not found: ${sideEffect.idempotencyKey}`);
+    }
+    this.sideEffects.set(sideEffect.idempotencyKey, sideEffect);
+    return sideEffect;
   }
 
   async findSideEffectByIdempotencyKey(idempotencyKey: string): Promise<OtcSideEffect | undefined> {
@@ -1074,6 +1083,48 @@ export class PgOtcRepository implements OtcRepository {
     }
     assertIdempotencyHashMatch('side effect', sideEffect.idempotencyKey, existing.requestHash, sideEffect.requestHash);
     return { sideEffect: existing, created: false };
+  }
+
+  async updateSideEffect(sideEffect: OtcSideEffect): Promise<OtcSideEffect> {
+    const result = await this.client.query<SideEffectRow>(
+      `UPDATE otc_side_effects
+          SET request_hash = $2,
+              trade_id = $3,
+              effect_type = $4,
+              status = $5,
+              actor = $6,
+              source_event_id = $7,
+              tx_hash = $8,
+              outpoint = $9,
+              block_number = $10,
+              block_hash = $11,
+              chain_id = $12,
+              metadata = $13::jsonb,
+              updated_at = now()
+        WHERE idempotency_key = $1
+        RETURNING idempotency_key, request_hash, trade_id, effect_type, status, actor, source_event_id,
+                  tx_hash, outpoint, block_number, block_hash, chain_id, metadata,
+                  created_at, updated_at`,
+      [
+        sideEffect.idempotencyKey,
+        sideEffect.requestHash ?? null,
+        sideEffect.tradeId,
+        sideEffect.effectType,
+        sideEffect.status,
+        sideEffect.actor,
+        sideEffect.sourceEventId ?? null,
+        sideEffect.txHash ?? null,
+        sideEffect.outpoint ?? null,
+        sideEffect.blockNumber ?? null,
+        sideEffect.blockHash ?? null,
+        sideEffect.chainId ?? null,
+        JSON.stringify(sideEffect.metadata),
+      ],
+    );
+    if ((result.rowCount ?? 0) === 0) {
+      throw new Error(`side effect not found: ${sideEffect.idempotencyKey}`);
+    }
+    return rowToSideEffect(result.rows[0]);
   }
 
   async findSideEffectByIdempotencyKey(idempotencyKey: string): Promise<OtcSideEffect | undefined> {

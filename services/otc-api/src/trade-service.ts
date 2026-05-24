@@ -1270,23 +1270,28 @@ export class OtcTradeService {
     }
     const signedTxHex = normalizeEvenHex(request.signedTxHex, 'signedTxHex');
     const signedTxid = assertSignedTransactionMatchesTemplate(signedTxHex, intent.unsignedTxHex);
+    const reservedSideEffect = await this.reservePearlBroadcastSideEffect(tradeId, action, request.idempotencyKey, intent, signedTxid);
+    if (!reservedSideEffect.created) {
+      if (reservedSideEffect.sideEffect.status === 'submitted' && reservedSideEffect.sideEffect.txHash) {
+        return {
+          tradeId,
+          action,
+          broadcastTxid: reservedSideEffect.sideEffect.txHash,
+          txTemplateHash: String(reservedSideEffect.sideEffect.metadata.txTemplateHash ?? intent.txTemplateHash),
+          sideEffect: reservedSideEffect.sideEffect,
+        };
+      }
+      throw new Error(`Pearl ${action} broadcast is already reserved for this idempotency key`);
+    }
     const broadcastTxid = normalizeTxid(await this.pearlSignedTransactionBroadcaster.sendRawTransaction(signedTxHex), 'broadcastTxid');
     if (broadcastTxid !== signedTxid) {
       throw new Error(`Pearl broadcaster returned unexpected txid: ${broadcastTxid} != ${signedTxid}`);
     }
-    const sideEffect = await this.saveSideEffect(tradeId, {
-      idempotencyKey: request.idempotencyKey,
-      effectType: action === 'release' ? 'pearl_release' : 'pearl_refund',
+    const sideEffect = await this.repository.updateSideEffect({
+      ...reservedSideEffect.sideEffect,
       status: 'submitted',
-      actor: 'user',
-      sourceEventId: createStableId('event', [tradeId, `pearl-${action}-broadcast`, request.idempotencyKey]),
       txHash: broadcastTxid,
-      outpoint: intent.inputOutpoint,
-      metadata: {
-        action,
-        txTemplateHash: intent.txTemplateHash,
-        destinationAddress: intent.destinationAddress ?? '',
-      },
+      updatedAt: this.now().toISOString(),
     });
     return {
       tradeId,
@@ -1295,6 +1300,29 @@ export class OtcTradeService {
       txTemplateHash: intent.txTemplateHash,
       sideEffect,
     };
+  }
+
+  private async reservePearlBroadcastSideEffect(
+    tradeId: string,
+    action: 'release' | 'refund',
+    idempotencyKey: string,
+    intent: PearlReleaseSigningIntent,
+    signedTxid: string,
+  ): Promise<{ sideEffect: OtcSideEffect; created: boolean }> {
+    return this.saveSideEffectWithCreated(tradeId, {
+      idempotencyKey,
+      effectType: action === 'release' ? 'pearl_release' : 'pearl_refund',
+      status: 'prepared',
+      actor: 'user',
+      sourceEventId: createStableId('event', [tradeId, `pearl-${action}-broadcast`, idempotencyKey]),
+      txHash: signedTxid,
+      outpoint: intent.inputOutpoint,
+      metadata: {
+        action,
+        txTemplateHash: intent.txTemplateHash ?? '',
+        destinationAddress: intent.destinationAddress ?? '',
+      },
+    });
   }
 
   private async getPearlEscrowSigningIntent(
@@ -2337,8 +2365,8 @@ function assertSignedTransactionMatchesTemplate(signedTxHex: string, unsignedTxH
       throw new Error('signed Pearl transaction output does not match server template');
     }
   });
-  if (!signed.ins.some((input) => input.witness.length > 0)) {
-    throw new Error('signed Pearl transaction is missing witness signatures');
+  if (signed.ins.some((input) => input.witness.length === 0)) {
+    throw new Error('signed Pearl transaction is missing witness signatures for one or more inputs');
   }
   return signed.getId();
 }
