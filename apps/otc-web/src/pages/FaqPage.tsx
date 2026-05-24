@@ -50,7 +50,7 @@ const FAQ_GROUPS = [
       {
         question: 'Can users trigger release or refund from the app?',
         answer:
-          'No. The user and admin screens do not expose release, refund, signing, broadcast, or trade-term edit controls. Settlement execution remains behind backend policy and operator review.',
+          'Checkout can submit a fully signed Pearl release transaction after the trade reaches release-pending state and the backend validates it against the server template. The app still does not create signatures itself, expose unsafe refund controls, or let users edit settlement terms.',
       },
       {
         question: 'How do I ask for help?',

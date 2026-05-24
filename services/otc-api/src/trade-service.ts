@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 import { getAddress, isAddress, verifyMessage } from 'ethers';
+import { Transaction } from 'bitcoinjs-lib';
 
 import {
   assertTradeTransition,
@@ -72,6 +73,8 @@ import type {
   ReplaySupportAlertRequest,
   RecordSupportAlertRequest,
   RecordSideEffectRequest,
+  SubmitPearlSignedTransactionRequest,
+  SubmitPearlSignedTransactionResponse,
   NotificationPreferencesResponse,
   UnsubscribeNotificationRequest,
   UnsubscribeNotificationResponse,
@@ -103,6 +106,10 @@ export interface PearlEscrowAllocator {
     config: OtcApiConfig;
     deadlines: OtcTradeDeadlines;
   }): Promise<OtcTrade['pearlEscrow']>;
+}
+
+export interface PearlSignedTransactionBroadcaster {
+  sendRawTransaction(signedTxHex: string): Promise<string>;
 }
 
 export interface SupportAlertOptions {
@@ -152,6 +159,7 @@ export class OtcTradeService {
   private readonly pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar;
   private readonly pearlProofReader?: PearlProofReader;
   private readonly supportAlertNotifier?: SupportAlertNotifier;
+  private readonly pearlSignedTransactionBroadcaster?: PearlSignedTransactionBroadcaster;
   private readonly supportAlertRateLimitBuckets = new Map<string, number[]>();
   private readonly now: () => Date;
 
@@ -164,6 +172,7 @@ export class OtcTradeService {
     pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar,
     pearlProofReader?: PearlProofReader,
     supportAlertNotifier?: SupportAlertNotifier,
+    pearlSignedTransactionBroadcaster?: PearlSignedTransactionBroadcaster,
   ) {
     this.repository = repository;
     this.config = config;
@@ -177,6 +186,7 @@ export class OtcTradeService {
     this.pearlEscrowWatchRegistrar = pearlEscrowWatchRegistrar;
     this.pearlProofReader = pearlProofReader;
     this.supportAlertNotifier = supportAlertNotifier;
+    this.pearlSignedTransactionBroadcaster = pearlSignedTransactionBroadcaster;
   }
 
   async createWalletChallenge(request: CreateWalletChallengeRequest): Promise<CreateWalletChallengeResponse> {
@@ -1235,11 +1245,67 @@ export class OtcTradeService {
   }
 
   async getPearlReleaseSigningIntent(tradeId: string): Promise<PearlReleaseSigningIntent> {
+    return this.getPearlEscrowSigningIntent(tradeId, 'release');
+  }
+
+  async getPearlRefundSigningIntent(tradeId: string): Promise<PearlReleaseSigningIntent> {
+    return this.getPearlEscrowSigningIntent(tradeId, 'refund');
+  }
+
+  async submitPearlSignedTransaction(
+    tradeId: string,
+    action: 'release' | 'refund',
+    request: SubmitPearlSignedTransactionRequest,
+  ): Promise<SubmitPearlSignedTransactionResponse> {
+    assertNonEmptyBounded(request.idempotencyKey, 'idempotencyKey', 128);
+    assertNonEmptyBounded(request.signedTxHex, 'signedTxHex', 200_000);
+    if (!this.pearlSignedTransactionBroadcaster) {
+      throw new Error('Pearl signed transaction broadcaster unavailable');
+    }
     const trade = await this.getTrade(tradeId);
-    const signerSets = getReleaseSignerSets(trade);
+    assertPearlBroadcastState(action, trade.state);
+    const intent = await this.getPearlEscrowSigningIntent(tradeId, action);
+    if (intent.status !== 'ready' || !intent.unsignedTxHex || !intent.txTemplateHash || !intent.inputOutpoint) {
+      throw new Error(intent.reason ?? `Pearl ${action} signing intent is not ready`);
+    }
+    const signedTxHex = normalizeEvenHex(request.signedTxHex, 'signedTxHex');
+    const signedTxid = assertSignedTransactionMatchesTemplate(signedTxHex, intent.unsignedTxHex);
+    const broadcastTxid = normalizeTxid(await this.pearlSignedTransactionBroadcaster.sendRawTransaction(signedTxHex), 'broadcastTxid');
+    if (broadcastTxid !== signedTxid) {
+      throw new Error(`Pearl broadcaster returned unexpected txid: ${broadcastTxid} != ${signedTxid}`);
+    }
+    const sideEffect = await this.saveSideEffect(tradeId, {
+      idempotencyKey: request.idempotencyKey,
+      effectType: action === 'release' ? 'pearl_release' : 'pearl_refund',
+      status: 'submitted',
+      actor: 'user',
+      sourceEventId: createStableId('event', [tradeId, `pearl-${action}-broadcast`, request.idempotencyKey]),
+      txHash: broadcastTxid,
+      outpoint: intent.inputOutpoint,
+      metadata: {
+        action,
+        txTemplateHash: intent.txTemplateHash,
+        destinationAddress: intent.destinationAddress ?? '',
+      },
+    });
+    return {
+      tradeId,
+      action,
+      broadcastTxid,
+      txTemplateHash: intent.txTemplateHash,
+      sideEffect,
+    };
+  }
+
+  private async getPearlEscrowSigningIntent(
+    tradeId: string,
+    action: 'release' | 'refund',
+  ): Promise<PearlReleaseSigningIntent> {
+    const trade = await this.getTrade(tradeId);
+    const signerSets = action === 'release' ? getReleaseSignerSets(trade) : getRefundSignerSets(trade);
     const base: Omit<PearlReleaseSigningIntent, 'status'> = {
       tradeId,
-      action: 'release',
+      action,
       signingMode: trade.pearlReleaseSigningMode,
       signerSets,
       workerCanFinishWithArbiter: signerSets.some((set) => set.includes('arbiter')),
@@ -1266,7 +1332,7 @@ export class OtcTradeService {
     const escrow = pearlEscrowPackageFromTrade(fundedTrade);
     const unsignedTx = createPearlEscrowUnsignedTx({
       escrow,
-      kind: 'release',
+      kind: action,
       feeGrains: this.config.pearlReleaseFeeGrains ?? '0',
     });
     return {
@@ -1278,7 +1344,7 @@ export class OtcTradeService {
       inputAmountGrains: unsignedTx.inputAmountGrains,
       outputAmountGrains: unsignedTx.outputAmountGrains,
       feeGrains: unsignedTx.feeGrains,
-      destinationAddress: fundedTrade.buyerPearlAddress,
+      destinationAddress: action === 'release' ? fundedTrade.buyerPearlAddress : fundedTrade.sellerPearlRefundAddress,
     };
   }
 
@@ -2229,6 +2295,54 @@ function parseSchnorrSignature(signatureHex: string): Uint8Array {
   return Buffer.from(normalized, 'hex');
 }
 
+function normalizeEvenHex(value: string, field: string): string {
+  const normalized = value.trim().replace(/^0x/i, '').toLowerCase();
+  if (!normalized || normalized.length % 2 !== 0 || !/^[0-9a-f]+$/.test(normalized)) {
+    throw new Error(`${field} must be non-empty even-length hex`);
+  }
+  return normalized;
+}
+
+function normalizeTxid(value: string, field: string): string {
+  const normalized = normalizeEvenHex(value, field);
+  if (normalized.length !== 64) {
+    throw new Error(`${field} must be 32-byte hex`);
+  }
+  return normalized;
+}
+
+function assertSignedTransactionMatchesTemplate(signedTxHex: string, unsignedTxHex: string): string {
+  const signed = Transaction.fromHex(signedTxHex);
+  const template = Transaction.fromHex(normalizeEvenHex(unsignedTxHex, 'unsignedTxHex'));
+  if (signed.ins.length !== template.ins.length || signed.outs.length !== template.outs.length) {
+    throw new Error('signed Pearl transaction shape does not match server template');
+  }
+  if (signed.version !== template.version || signed.locktime !== template.locktime) {
+    throw new Error('signed Pearl transaction header does not match server template');
+  }
+  signed.ins.forEach((input, index) => {
+    const expected = template.ins[index];
+    if (
+      !expected ||
+      input.index !== expected.index ||
+      input.sequence !== expected.sequence ||
+      !input.hash.equals(expected.hash)
+    ) {
+      throw new Error('signed Pearl transaction input does not match server template');
+    }
+  });
+  signed.outs.forEach((output, index) => {
+    const expected = template.outs[index];
+    if (!expected || output.value !== expected.value || !output.script.equals(expected.script)) {
+      throw new Error('signed Pearl transaction output does not match server template');
+    }
+  });
+  if (!signed.ins.some((input) => input.witness.length > 0)) {
+    throw new Error('signed Pearl transaction is missing witness signatures');
+  }
+  return signed.getId();
+}
+
 function assertPositiveAmount(
   value: unknown,
   field: string,
@@ -2627,13 +2741,29 @@ function pearlEscrowPackageFromTrade(trade: OtcTrade): PearlEscrowPackage {
 }
 
 function getReleaseSignerSets(trade: OtcTrade): string[][] {
-  const template = trade.pearlEscrow.releaseTemplate;
+  return getTemplateSignerSets(trade.pearlEscrow.releaseTemplate);
+}
+
+function getRefundSignerSets(trade: OtcTrade): string[][] {
+  return getTemplateSignerSets(trade.pearlEscrow.refundTemplate);
+}
+
+function getTemplateSignerSets(template: unknown): string[][] {
   if (!template || typeof template !== 'object') return [];
   const policy = (template as { signingPolicy?: { requiredSigners?: string[]; alternativeSignerSets?: string[][] } }).signingPolicy;
   return [
     ...(policy?.requiredSigners?.length ? [policy.requiredSigners] : []),
     ...(policy?.alternativeSignerSets ?? []),
   ];
+}
+
+function assertPearlBroadcastState(action: 'release' | 'refund', state: TradeState): void {
+  if (action === 'release' && state !== 'release_pending') {
+    throw new Error(`Pearl release broadcast requires release_pending trade state: ${state}`);
+  }
+  if (action === 'refund' && state !== 'refund_pending') {
+    throw new Error(`Pearl refund broadcast requires refund_pending trade state: ${state}`);
+  }
 }
 
 function assertPearlTxTemplate(value: unknown, field: string): PearlEscrowTxTemplate {

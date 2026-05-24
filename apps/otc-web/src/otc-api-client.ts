@@ -114,7 +114,7 @@ export interface UsdcEscrowVerification {
 
 export interface PearlReleaseSigningIntent {
   tradeId: string;
-  action: 'release';
+  action: 'release' | 'refund';
   status: 'ready' | 'not_ready';
   signingMode?: 'preauthorize_release' | 'manual_after_base_deposit';
   reason?: string;
@@ -127,6 +127,13 @@ export interface PearlReleaseSigningIntent {
   destinationAddress?: string;
   signerSets: string[][];
   workerCanFinishWithArbiter: boolean;
+}
+
+export interface SubmitPearlSignedTransactionResponse {
+  tradeId: string;
+  action: 'release' | 'refund';
+  broadcastTxid: string;
+  txTemplateHash: string;
 }
 
 export interface AdminTradeQuery {
@@ -545,6 +552,18 @@ export class OtcApiClient {
 
   getPearlReleaseSigningIntent(tradeId: string): Promise<PearlReleaseSigningIntent> {
     return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/pearl-release/intent`);
+  }
+
+  getPearlRefundSigningIntent(tradeId: string): Promise<PearlReleaseSigningIntent> {
+    return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/pearl-refund/intent`);
+  }
+
+  submitPearlSignedTransaction(
+    tradeId: string,
+    action: 'release' | 'refund',
+    request: { idempotencyKey: string; signedTxHex: string },
+  ): Promise<SubmitPearlSignedTransactionResponse> {
+    return this.post(`/otc/trades/${encodeURIComponent(tradeId)}/pearl-${action}/broadcast`, request);
   }
 
   createWalletChallenge(request: CreateWalletChallengeRequest): Promise<CreateWalletChallengeResponse> {

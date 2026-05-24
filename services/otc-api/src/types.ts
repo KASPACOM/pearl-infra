@@ -57,6 +57,9 @@ export interface OtcApiConfig {
   baseRpcUrl?: string;
   pearlIndexerWatchUrl?: string;
   pearlIndexerWatchTimeoutMs?: number;
+  pearlRpcUrl?: string;
+  pearlRpcUser?: string;
+  pearlRpcPass?: string;
   adminApiToken?: string;
   adminApiTokens?: string;
   supportAlertWebhookUrl?: string;
@@ -131,7 +134,7 @@ export interface UsdcCreateTradeIntent {
 
 export interface PearlReleaseSigningIntent {
   tradeId: string;
-  action: 'release';
+  action: 'release' | 'refund';
   status: 'ready' | 'not_ready';
   signingMode?: PearlReleaseSigningMode;
   reason?: string;
@@ -144,6 +147,19 @@ export interface PearlReleaseSigningIntent {
   destinationAddress?: string;
   signerSets: string[][];
   workerCanFinishWithArbiter: boolean;
+}
+
+export interface SubmitPearlSignedTransactionRequest {
+  idempotencyKey: string;
+  signedTxHex: string;
+}
+
+export interface SubmitPearlSignedTransactionResponse {
+  tradeId: string;
+  action: 'release' | 'refund';
+  broadcastTxid: string;
+  txTemplateHash: string;
+  sideEffect: OtcSideEffect;
 }
 
 export interface RecordSideEffectRequest {

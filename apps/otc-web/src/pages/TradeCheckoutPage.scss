@@ -83,6 +83,19 @@
   }
 }
 
+.checkout-release-package__submit {
+  display: grid;
+  gap: 8px;
+
+  small {
+    color: var(--om-muted);
+  }
+
+  code {
+    overflow-wrap: anywhere;
+  }
+}
+
 .checkout-page__panel-title {
   display: flex;
   align-items: baseline;

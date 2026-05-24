@@ -45,24 +45,39 @@ test('posts quote and accept requests to the OTC HTTP routes', async () => {
   assert.equal(calls[2].init.method, 'POST');
 });
 
-test('gets trade and proof routes', async () => {
-  const calls: string[] = [];
+test('gets trade, proof, and Pearl signing routes', async () => {
+  const calls: Array<{ url: string; method?: string }> = [];
   const client = new OtcApiClient({
     baseUrl: 'https://api.example.test',
-    fetcher: async (url) => {
-      calls.push(String(url));
-      return jsonResponse(url.toString().endsWith('/proof') ? { tradeId: 'trade_1', events: [] } : { tradeId: 'trade_1' });
+    fetcher: async (url, init) => {
+      calls.push({ url: String(url), method: init?.method });
+      if (url.toString().endsWith('/proof')) return jsonResponse({ tradeId: 'trade_1', events: [] });
+      if (url.toString().endsWith('/intent')) return jsonResponse({ tradeId: 'trade_1', action: 'release', status: 'ready', signerSets: [], workerCanFinishWithArbiter: false });
+      if (url.toString().endsWith('/broadcast')) return jsonResponse({ tradeId: 'trade_1', action: 'release', broadcastTxid: 'aa'.repeat(32), txTemplateHash: `sha256:${'bb'.repeat(32)}` }, 202);
+      return jsonResponse({ tradeId: 'trade_1' });
     },
   });
 
   const trade = await client.getTrade('trade_1');
   const proof = await client.getProof('trade_1');
+  const releaseIntent = await client.getPearlReleaseSigningIntent('trade_1');
+  const refundIntent = await client.getPearlRefundSigningIntent('trade_1');
+  const submitted = await client.submitPearlSignedTransaction('trade_1', 'release', {
+    idempotencyKey: 'submit-1',
+    signedTxHex: '0200000000',
+  });
 
   assert.equal(trade.tradeId, 'trade_1');
   assert.equal(proof.tradeId, 'trade_1');
+  assert.equal(releaseIntent.status, 'ready');
+  assert.equal(refundIntent.status, 'ready');
+  assert.equal(submitted.broadcastTxid, 'aa'.repeat(32));
   assert.deepEqual(calls, [
-    'https://api.example.test/otc/trades/trade_1',
-    'https://api.example.test/otc/trades/trade_1/proof',
+    { url: 'https://api.example.test/otc/trades/trade_1', method: 'GET' },
+    { url: 'https://api.example.test/otc/trades/trade_1/proof', method: 'GET' },
+    { url: 'https://api.example.test/otc/trades/trade_1/pearl-release/intent', method: 'GET' },
+    { url: 'https://api.example.test/otc/trades/trade_1/pearl-refund/intent', method: 'GET' },
+    { url: 'https://api.example.test/otc/trades/trade_1/pearl-release/broadcast', method: 'POST' },
   ]);
 });
 
