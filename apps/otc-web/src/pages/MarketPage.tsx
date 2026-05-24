@@ -4,7 +4,14 @@ import { createClientRequestId, createOtcClient } from '../api.js';
 import { connectInjectedEvmWallet, signInjectedEvmMessage, type EvmWalletSnapshot } from '../evm-wallet.js';
 import type { MarketStats, OrderBookPage, OtcOrder, OtcUser, RecentTradeSummary } from '../otc-api-client.js';
 import { BrandLoader, DataRow } from '../components/Primitives.js';
-import { readStoredReferralAttribution, readStoredUser, storeOrderQuoteDraft, storeUser } from '../user-session.js';
+import {
+  getFirstLinkedEvmAddress,
+  isEvmWalletLinked,
+  readStoredReferralAttribution,
+  readStoredUser,
+  storeOrderQuoteDraft,
+  storeUser,
+} from '../user-session.js';
 
 const emptyStats: MarketStats = {
   successfulTrades: 0,
@@ -66,7 +73,7 @@ export function MarketPage() {
     setSelectedOrder(order);
     setFillAmountPrl(order.minFillPrl ?? order.remainingPrl);
     setTakerPearlAddress('');
-    setTakerUsdcAddress(wallet.address ?? user?.wallet.address ?? '');
+    setTakerUsdcAddress(wallet.address ?? getFirstLinkedEvmAddress(user) ?? '');
     setError(undefined);
   }
 
@@ -74,6 +81,14 @@ export function MarketPage() {
     const snapshot = await connectInjectedEvmWallet();
     if (!snapshot.address) throw new Error('Wallet did not return an address.');
     setWallet(snapshot);
+    const storedUser = readStoredUser();
+    if (storedUser) {
+      setUser(storedUser);
+      if (isEvmWalletLinked(storedUser, snapshot.address)) {
+        return { wallet: { ...snapshot, address: snapshot.address }, user: storedUser };
+      }
+      throw new Error('This EVM wallet is not linked to your stored OTC profile. Link it from Profile before filling an order.');
+    }
     const client = createOtcClient();
     const referralAttribution = readStoredReferralAttribution();
     const challenge = await client.createWalletChallenge({

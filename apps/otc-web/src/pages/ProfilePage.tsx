@@ -4,7 +4,7 @@ import { createOtcClient } from '../api.js';
 import { connectInjectedEvmWallet, signInjectedEvmMessage, type EvmWalletSnapshot } from '../evm-wallet.js';
 import type { OtcNotificationPreference, OtcNotificationType, OtcUser, OtcUserDashboard } from '../otc-api-client.js';
 import { BrandLoader, DataRow, Field } from '../components/Primitives.js';
-import { readStoredReferralAttribution, readStoredUser, storeUser } from '../user-session.js';
+import { getLinkedWallets, isEvmWalletLinked, readStoredReferralAttribution, readStoredUser, storeUser } from '../user-session.js';
 
 const emailPreferenceTypes: Array<{ type: OtcNotificationType; label: string }> = [
   { type: 'trade_status', label: 'Trade status' },
@@ -51,7 +51,7 @@ export function ProfilePage() {
       setWallet(snapshot);
       if (!snapshot.address) throw new Error('Wallet did not return an address.');
       if (user) {
-        if (isWalletLinked(user, snapshot.address)) {
+        if (isEvmWalletLinked(user, snapshot.address)) {
           await loadDashboard(user, snapshot);
           await loadNotificationPreferences(user, snapshot);
         } else {
@@ -341,7 +341,7 @@ export function ProfilePage() {
           <button className="om-button om-button--primary" onClick={connectProfile} disabled={status === 'working'}>
             {status === 'working' ? <BrandLoader compact label="Signing..." /> : 'Connect wallet'}
           </button>
-          {user && wallet.address && !isWalletLinked(user, wallet.address) ? (
+          {user && wallet.address && !isEvmWalletLinked(user, wallet.address) ? (
             <div className="profile-link-wallet">
               <Field label="Account proof challenge">
                 <input value={linkAuthChallengeId} onChange={(event) => setLinkAuthChallengeId(event.target.value)} spellCheck={false} />
@@ -536,20 +536,12 @@ function createOrderMakerSignerProofMessage(input: {
   ].join('\n');
 }
 
-function getLinkedWallets(user: OtcUser) {
-  return user.wallets?.length ? user.wallets : [user.wallet];
-}
-
 function formatWalletLabel(wallet: OtcUser['wallet']): string {
   return `${wallet.walletType}:${wallet.network}:${shortAddress(wallet.address)}`;
 }
 
 function shortAddress(address: string): string {
   return address.length > 18 ? `${address.slice(0, 10)}...${address.slice(-6)}` : address;
-}
-
-function isWalletLinked(user: OtcUser, address: string): boolean {
-  return getLinkedWallets(user).some((wallet) => wallet.walletType === 'evm' && wallet.address.toLowerCase() === address.toLowerCase());
 }
 
 function normalizeProofPubkey(value: string): string {

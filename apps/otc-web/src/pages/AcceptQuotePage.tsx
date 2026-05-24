@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { createPearlSignerProofMessage, type OtcQuote, type PearlEscrowMode, type PearlReleaseSigningMode } from '@kaspacom/pearl-sdk';
+import type { OtcQuote, PearlEscrowMode, PearlReleaseSigningMode } from '@kaspacom/pearl-sdk';
+import { createPearlSignerProofMessage } from '@kaspacom/pearl-sdk/otc-signer-proof';
 
 import { createClientRequestId, createOtcClient, getDefaultPearlEscrowMode } from '../api.js';
 import { demoQuote, demoTrade, DEMO_NOW } from '../demo-data.js';
