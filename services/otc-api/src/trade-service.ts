@@ -219,6 +219,9 @@ export class OtcTradeService {
       await this.assertConsumeWalletChallenge(challenge.challengeId, now);
       return existing;
     }
+    if (request.notificationEmailEnabled === true) {
+      throw new Error('email notifications require a verified email');
+    }
 
     const referredByCode = extractReferralCode(request);
     const userId = createRandomId('user');
@@ -683,7 +686,7 @@ export class OtcTradeService {
           profile: {
             userId: input.userId,
             ...(input.request.email ? { email: normalizeEmail(input.request.email) } : {}),
-            notificationEmailEnabled: input.request.notificationEmailEnabled ?? false,
+            notificationEmailEnabled: false,
           },
           ...(input.referredBy ? { referredBy: input.referredBy } : {}),
         });

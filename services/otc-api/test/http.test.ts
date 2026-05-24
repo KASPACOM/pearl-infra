@@ -171,11 +171,30 @@ test('registers wallet-owned users with referral links and wallet-proved profile
     };
     assert.match(referrerChallenge.message, /Pearl OTC user wallet v1/);
 
-    const referrerResponse = await postJson(baseUrl, '/otc/users', {
+    const unverifiedNotificationResponse = await postJson(baseUrl, '/otc/users', {
       challengeId: referrerChallenge.challengeId,
       signature: await referrerWallet.signMessage(referrerChallenge.message),
       email: 'REFERRER@EXAMPLE.COM',
       notificationEmailEnabled: true,
+    });
+    assert.equal(unverifiedNotificationResponse.status, 400);
+    assert.match(await unverifiedNotificationResponse.text(), /verified email/);
+
+    const retryReferrerChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referrerWallet.address,
+    });
+    assert.equal(retryReferrerChallengeResponse.status, 201);
+    const retryReferrerChallenge = (await retryReferrerChallengeResponse.json()) as {
+      challengeId: string;
+      message: string;
+    };
+    const referrerResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: retryReferrerChallenge.challengeId,
+      signature: await referrerWallet.signMessage(retryReferrerChallenge.message),
+      email: 'REFERRER@EXAMPLE.COM',
+      notificationEmailEnabled: false,
     });
     assert.equal(referrerResponse.status, 201);
     const referrer = (await referrerResponse.json()) as {
@@ -186,7 +205,7 @@ test('registers wallet-owned users with referral links and wallet-proved profile
     };
     assert.equal(referrer.wallet.address, referrerWallet.address);
     assert.equal(referrer.profile.email, 'referrer@example.com');
-    assert.equal(referrer.profile.notificationEmailEnabled, true);
+    assert.equal(referrer.profile.notificationEmailEnabled, false);
 
     const lookupResponse = await fetch(`${baseUrl}/otc/users/referrals/${referrer.referralCode.toLowerCase()}`);
     assert.equal(lookupResponse.status, 200);
