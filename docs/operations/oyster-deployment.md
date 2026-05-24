@@ -27,6 +27,11 @@ The workflow:
    URL and Pearl escrow-mode default;
 4. updates the matching ArgoCD deployment image tags in `KASPACOM/argo-cd`.
 
+On `main`, the workflow first verifies that `prod/oyster-otc-api` exists in
+AWS Secrets Manager and contains the required runtime keys. This prevents a
+green-looking prod image update when the pods would fail startup after Argo
+sync.
+
 Required GitHub secrets:
 
 | Secret | Purpose |
@@ -89,3 +94,17 @@ check, production is blocked by:
 - missing `oyster-otc-api` and `oyster-otc-web` Argo Application CRs in the prod
   cluster;
 - unresolved `oyster.kaspa.com` and `api-oyster.kaspa.com` DNS records.
+
+To finish production, use this order:
+
+1. Create `prod/oyster-otc-api` with the required keys, using prod-safe
+   values. Until explicit mainnet approval, keep Pearl on `testnet2` and Base
+   on `base_sepolia`.
+2. Promote `dev` to `main` through a reviewed PR so the prod ECR images are
+   built from the intended commit.
+3. Bootstrap the prod `oyster-otc-api` and `oyster-otc-web` Argo Application
+   CRs.
+4. Wait for the ALBs, then create Cloudflare CNAME records for
+   `oyster.kaspa.com` and `api-oyster.kaspa.com`.
+5. Run prod HTTPS smoke checks for `/healthz`, quote, support-alert, and
+   admin-auth before allowing user traffic.
