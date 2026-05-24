@@ -360,6 +360,7 @@ export interface OtcUser {
   userId: string;
   referralCode: string;
   wallet: OtcUserWallet;
+  wallets: OtcUserWallet[];
   profile: OtcUserProfile;
   referredBy?: OtcReferralAttribution;
   createdAt: string;
@@ -374,6 +375,15 @@ export interface RegisterUserRequest {
   sourceUrl?: string;
   email?: string;
   notificationEmailEnabled?: boolean;
+}
+
+export interface LinkUserWalletRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  walletChallengeId: string;
+  walletSignature: string;
+  walletPublicKeyHex?: string;
 }
 
 export interface UpdateUserProfileRequest {

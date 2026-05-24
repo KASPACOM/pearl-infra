@@ -40,6 +40,7 @@ import type {
   CreateQuoteRequest,
   CreateWalletChallengeRequest,
   CreateWalletChallengeResponse,
+  LinkUserWalletRequest,
   MarkManualReviewRequest,
   MarketStats,
   MarkManualReviewOptions,
@@ -54,6 +55,7 @@ import type {
   OtcNotificationType,
   OtcUser,
   OtcUserDashboard,
+  OtcUserWallet,
   OtcUserWalletChallenge,
   OtcUserProfile,
   OtcOrderQuoteLink,
@@ -251,21 +253,42 @@ export class OtcTradeService {
     return user;
   }
 
+  async linkUserWallet(userId: string, request: LinkUserWalletRequest): Promise<OtcUser> {
+    const { user } = await this.verifyUserWalletChallenge(userId, {
+      challengeId: request.challengeId,
+      signature: request.signature,
+      ...(request.publicKeyHex ? { publicKeyHex: request.publicKeyHex } : {}),
+    });
+    const walletChallenge = await this.assertUsableWalletChallenge(request.walletChallengeId);
+    verifyWalletChallenge(walletChallenge, request.walletSignature, request.walletPublicKeyHex);
+    const existing = await this.repository.findUserByWallet(
+      walletChallenge.walletType,
+      walletChallenge.network,
+      walletChallenge.address,
+    );
+    if (existing && existing.userId !== user.userId) {
+      throw new Error('wallet already belongs to another user');
+    }
+    const now = this.now().toISOString();
+    await this.assertConsumeWalletChallenge(request.challengeId, now);
+    await this.assertConsumeWalletChallenge(request.walletChallengeId, now);
+    return this.repository.addUserWallet(user.userId, {
+      walletType: walletChallenge.walletType,
+      network: walletChallenge.network,
+      address: walletChallenge.address,
+      ...(request.walletPublicKeyHex
+        ? {
+            publicKeyHex: walletChallenge.walletType === 'pearl'
+              ? normalizeProofPubkeyForUser(request.walletPublicKeyHex)
+              : request.walletPublicKeyHex.trim(),
+          }
+        : {}),
+      verifiedAt: now,
+    });
+  }
+
   async updateUserProfile(userId: string, request: UpdateUserProfileRequest): Promise<OtcUserProfile> {
-    assertNonEmptyBounded(userId, 'userId', 80);
-    const user = await this.repository.findUserById(userId);
-    if (!user) {
-      throw new Error(`user not found: ${userId}`);
-    }
-    const challenge = await this.assertUsableWalletChallenge(request.challengeId);
-    if (
-      challenge.walletType !== user.wallet.walletType ||
-      challenge.network !== user.wallet.network ||
-      challenge.address.toLowerCase() !== user.wallet.address.toLowerCase()
-    ) {
-      throw new Error('wallet challenge does not belong to user');
-    }
-    verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
+    const { user, challenge } = await this.verifyUserWalletChallenge(userId, request);
     const updatedAt = this.now().toISOString();
     await this.assertConsumeWalletChallenge(challenge.challengeId, updatedAt);
     const normalizedEmail = request.email === undefined ? undefined : normalizeEmail(request.email);
@@ -818,19 +841,23 @@ export class OtcTradeService {
     userId: string,
     request: UserDashboardRequest,
   ): Promise<{ user: OtcUser; challenge: OtcUserWalletChallenge }> {
+    const verified = await this.verifyUserWalletChallenge(userId, request);
+    await this.assertConsumeWalletChallenge(verified.challenge.challengeId, this.now().toISOString());
+    return verified;
+  }
+
+  private async verifyUserWalletChallenge(
+    userId: string,
+    request: UserDashboardRequest,
+  ): Promise<{ user: OtcUser; challenge: OtcUserWalletChallenge }> {
     assertNonEmptyBounded(userId, 'userId', 80);
     const user = await this.repository.findUserById(userId);
     if (!user) throw new Error(`user not found: ${userId}`);
     const challenge = await this.assertUsableWalletChallenge(request.challengeId);
-    if (
-      challenge.walletType !== user.wallet.walletType ||
-      challenge.network !== user.wallet.network ||
-      challenge.address.toLowerCase() !== user.wallet.address.toLowerCase()
-    ) {
+    if (!getUserWallets(user).some((wallet) => walletMatchesChallenge(wallet, challenge))) {
       throw new Error('wallet challenge does not belong to user');
     }
     verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
-    await this.assertConsumeWalletChallenge(challenge.challengeId, this.now().toISOString());
     return { user, challenge };
   }
 
@@ -2186,10 +2213,23 @@ function assertOrderMakerSignerProof(input: {
 }
 
 function assertVerifiedBaseEvmUserWallet(user: OtcUser, baseNetwork: string): string {
-  if (user.wallet.walletType !== 'evm' || user.wallet.network !== baseNetwork) {
+  const wallet = getUserWallets(user).find((candidate) => candidate.walletType === 'evm' && candidate.network === baseNetwork);
+  if (!wallet) {
     throw new Error('trading actions require a verified Base EVM wallet user');
   }
-  return getAddress(user.wallet.address);
+  return getAddress(wallet.address);
+}
+
+function getUserWallets(user: OtcUser): OtcUserWallet[] {
+  return user.wallets.length > 0 ? user.wallets : [user.wallet];
+}
+
+function walletMatchesChallenge(wallet: OtcUserWallet, challenge: OtcUserWalletChallenge): boolean {
+  return (
+    wallet.walletType === challenge.walletType &&
+    wallet.network === challenge.network &&
+    wallet.address.toLowerCase() === challenge.address.toLowerCase()
+  );
 }
 
 function createOrderMakerSignerProofMessage(input: Omit<Parameters<typeof assertOrderMakerSignerProof>[0], 'signatureHex'>): string {

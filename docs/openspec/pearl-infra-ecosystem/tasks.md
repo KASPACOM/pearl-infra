@@ -1158,9 +1158,17 @@ through one-time wallet challenges before creating user/profile records.
     added `GET /otc/quotes/:quoteId/order-context` for server-authoritative
     accept-page prefill, clear stale local drafts when no server context
     exists, and sort merged open/partially-filled offers by best price.
-- [ ] 12.13 Add multi-wallet account linking so one user can prove both a Base
+- [x] 12.13 Add multi-wallet account linking so one user can prove both a Base
   EVM wallet and one or more Pearl wallets/signers.
-  - Missing: wallet-link challenge route, additional wallet rows per user,
-    primary wallet/profile selection, UI for linked wallet management, and
-    trading flows that accept a Pearl account identity plus verified Base EVM
-    payment wallet without weakening USDC ownership checks.
+  - 2026-05-24: Added `POST /otc/users/:userId/wallets` with dual ownership
+    proofs: one challenge from an already-linked account wallet and one from
+    the new wallet. Users now hydrate all `otc_user_wallets`, linked wallets
+    remain globally unique, and profile/dashboard/update challenges authorize
+    against any linked wallet.
+  - 2026-05-24: Market trading now accepts a Pearl-created account once it has
+    a verified linked Base EVM wallet; order creation and order-quote creation
+    still require the submitted USDC address to match that verified Base
+    wallet, preserving the `12.10` fail-closed ownership check.
+  - 2026-05-24 evidence: `npm test` passes with 299 tests, 297 passing and 2
+    skipped, including regression coverage for Pearl-only user -> Base wallet
+    link -> order creation as the same user.

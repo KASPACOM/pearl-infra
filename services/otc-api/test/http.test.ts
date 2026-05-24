@@ -548,6 +548,7 @@ test('registers Pearl wallet users with address-bound BIP340 ownership proof', a
   await withServer(async (baseUrl) => {
     const publicKeyHex = xOnlyPublicKey('07');
     const address = createPearlP2trPayment({ network: 'testnet2', internalPubkey: publicKeyHex }).address;
+    const linkedBaseWallet = new Wallet('0x7f68c73b4d9b963b491e2d4e3aaf104b160ec34f277a791221aabc685f38ac86');
     const challengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
       walletType: 'pearl',
       network: 'testnet2',
@@ -570,6 +571,7 @@ test('registers Pearl wallet users with address-bound BIP340 ownership proof', a
     assert.equal(user.wallet.network, 'testnet2');
     assert.equal(user.wallet.address, address);
     assert.equal(user.wallet.publicKeyHex, publicKeyHex);
+    assert.equal((user as { wallets?: unknown[] }).wallets?.length, 1);
 
     const orderChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
       walletType: 'pearl',
@@ -602,6 +604,70 @@ test('registers Pearl wallet users with address-bound BIP340 ownership proof', a
     assert.equal(orderResponse.status, 400);
     const orderError = (await orderResponse.json()) as { message: string };
     assert.match(orderError.message, /trading actions require a verified Base EVM wallet user/);
+
+    const linkAuthChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'pearl',
+      network: 'testnet2',
+      address,
+    });
+    const linkAuthChallenge = (await linkAuthChallengeResponse.json()) as { challengeId: string; message: string };
+    const linkBaseChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: linkedBaseWallet.address,
+    });
+    const linkBaseChallenge = (await linkBaseChallengeResponse.json()) as { challengeId: string; message: string };
+    const linkResponse = await postJson(baseUrl, `/otc/users/${user.userId}/wallets`, {
+      challengeId: linkAuthChallenge.challengeId,
+      signature: signUserWalletChallenge(linkAuthChallenge.message, '07'),
+      publicKeyHex,
+      walletChallengeId: linkBaseChallenge.challengeId,
+      walletSignature: await linkedBaseWallet.signMessage(linkBaseChallenge.message),
+    });
+    assert.equal(linkResponse.status, 201);
+    const linkedUser = (await linkResponse.json()) as {
+      userId: string;
+      wallet: { walletType: string; address: string };
+      wallets: Array<{ walletType: string; network: string; address: string }>;
+    };
+    assert.equal(linkedUser.userId, user.userId);
+    assert.equal(linkedUser.wallet.walletType, 'evm');
+    assert.equal(linkedUser.wallet.address, linkedBaseWallet.address);
+    assert.equal(linkedUser.wallets.length, 2);
+    assert.ok(linkedUser.wallets.some((wallet) => wallet.walletType === 'pearl' && wallet.address === address));
+    assert.ok(linkedUser.wallets.some((wallet) => wallet.walletType === 'evm' && wallet.address === linkedBaseWallet.address));
+
+    const linkedOrderChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: linkedBaseWallet.address,
+    });
+    const linkedOrderChallenge = (await linkedOrderChallengeResponse.json()) as { challengeId: string; message: string };
+    const linkedOrderResponse = await postJson(baseUrl, '/otc/orders', {
+      userId: user.userId,
+      challengeId: linkedOrderChallenge.challengeId,
+      signature: await linkedBaseWallet.signMessage(linkedOrderChallenge.message),
+      side: 'buy_prl',
+      makerPearlAddress: BUYER_TESTNET_ADDRESS,
+      makerUsdcAddress: linkedBaseWallet.address,
+      makerPearlPubkey: publicKeyHex,
+      makerPearlPubkeyProof: signOrderMakerProof({
+        makerUserId: user.userId,
+        side: 'buy_prl',
+        amountPrl: '1.00000000',
+        priceUsdcPerPrl: '0.150000',
+        makerPearlAddress: BUYER_TESTNET_ADDRESS,
+        makerUsdcAddress: linkedBaseWallet.address,
+        makerPearlPubkey: publicKeyHex,
+        privateKeySeed: '07',
+      }),
+      amountPrl: '1.00000000',
+      priceUsdcPerPrl: '0.150000',
+    });
+    const linkedOrderBody = await linkedOrderResponse.json();
+    assert.equal(linkedOrderResponse.status, 201, JSON.stringify(linkedOrderBody));
+    assert.equal((linkedOrderBody as { makerUserId: string; makerUsdcAddress: string }).makerUserId, user.userId);
+    assert.equal((linkedOrderBody as { makerUsdcAddress: string }).makerUsdcAddress, linkedBaseWallet.address);
   });
 });
 
