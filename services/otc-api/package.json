@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@kaspacom/pearl-escrow": "0.0.0",
+    "@kaspacom/pearl-rpc": "0.0.0",
     "@kaspacom/pearl-script": "0.0.0",
     "@kaspacom/pearl-sdk": "0.0.0",
     "@kaspacom/usdc-escrow-client": "0.0.0",

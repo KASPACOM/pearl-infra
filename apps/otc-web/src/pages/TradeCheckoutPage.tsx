@@ -19,6 +19,7 @@ import type { PearlReleaseSigningIntent } from '../otc-api-client.js';
 import { getBrowserPathname, getTradeIdFromPath } from '../routing.js';
 
 type CheckoutActionStatus = 'idle' | 'connecting' | 'switching' | 'validating' | 'approving' | 'depositing' | 'submitted' | 'error';
+type ReleaseSubmitStatus = 'idle' | 'submitting' | 'submitted' | 'error';
 
 export function TradeCheckoutPage() {
   const routeTradeId = getTradeIdFromPath(getBrowserPathname());
@@ -34,6 +35,10 @@ export function TradeCheckoutPage() {
   const [approvalTxHash, setApprovalTxHash] = useState<string>();
   const [depositTxHash, setDepositTxHash] = useState<string>();
   const [releaseIntent, setReleaseIntent] = useState<PearlReleaseSigningIntent>();
+  const [signedReleaseTxHex, setSignedReleaseTxHex] = useState('');
+  const [releaseSubmitStatus, setReleaseSubmitStatus] = useState<ReleaseSubmitStatus>('idle');
+  const [releaseSubmitTxid, setReleaseSubmitTxid] = useState<string>();
+  const [releaseSubmitError, setReleaseSubmitError] = useState<string>();
   const [loadError, setLoadError] = useState<string>();
 
   useEffect(() => {
@@ -239,6 +244,23 @@ export function TradeCheckoutPage() {
     }
   }
 
+  async function submitSignedReleaseTransaction() {
+    if (!routeTradeId || releaseIntent?.status !== 'ready' || !signedReleaseTxHex.trim()) return;
+    setReleaseSubmitStatus('submitting');
+    setReleaseSubmitError(undefined);
+    try {
+      const response = await createOtcClient().submitPearlSignedTransaction(routeTradeId, 'release', {
+        idempotencyKey: `checkout:${routeTradeId}:release:${Date.now()}`,
+        signedTxHex: signedReleaseTxHex,
+      });
+      setReleaseSubmitTxid(response.broadcastTxid);
+      setReleaseSubmitStatus('submitted');
+    } catch (error) {
+      setReleaseSubmitStatus('error');
+      setReleaseSubmitError(error instanceof Error ? error.message : 'Signed Pearl release transaction failed to broadcast.');
+    }
+  }
+
   const baseActionBusy = actionStatus !== 'idle' && actionStatus !== 'submitted' && actionStatus !== 'error';
   const baseActionDisabled =
     baseActionBusy ||
@@ -247,6 +269,8 @@ export function TradeCheckoutPage() {
     model.base.depositAction.disabled ||
     (model.base.depositAction.kind === 'deposit_usdc' && (!approvalCall || !depositCall));
   const baseActionLabel = getBaseActionLabel(model.base.depositAction.label, actionStatus);
+  const releaseBroadcastAvailable = releaseIntent?.status === 'ready' && trade.state === 'release_pending';
+  const releaseSubmitReady = Boolean(routeTradeId && releaseBroadcastAvailable && signedReleaseTxHex.trim());
 
   return (
     <section className="checkout-page">
@@ -289,6 +313,28 @@ export function TradeCheckoutPage() {
                 <span>Unsigned transaction</span>
                 <textarea readOnly value={releaseIntent.unsignedTxHex} rows={4} />
               </label>
+            ) : null}
+            {releaseBroadcastAvailable ? (
+              <div className="checkout-release-package__submit">
+                <label className="checkout-release-package__unsigned">
+                  <span>Signed transaction</span>
+                  <textarea
+                    value={signedReleaseTxHex}
+                    rows={4}
+                    onChange={(event) => setSignedReleaseTxHex(event.target.value)}
+                  />
+                </label>
+                <button
+                  className="om-button"
+                  type="button"
+                  disabled={!releaseSubmitReady || releaseSubmitStatus === 'submitting' || releaseSubmitStatus === 'submitted'}
+                  onClick={submitSignedReleaseTransaction}
+                >
+                  {releaseSubmitStatus === 'submitting' ? <BrandLoader compact label="Broadcasting..." /> : 'Broadcast signed transaction'}
+                </button>
+                {releaseSubmitTxid ? <small>Broadcast txid: <code>{releaseSubmitTxid}</code></small> : null}
+                {releaseSubmitError ? <small className="checkout-action__error">{releaseSubmitError}</small> : null}
+              </div>
             ) : null}
           </div>
         </section>

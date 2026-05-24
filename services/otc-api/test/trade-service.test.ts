@@ -3,13 +3,14 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import { canTransitionTrade, createPearlSignerProofMessage, type PearlReleaseSigningMode, type PearlSignerProofRole } from '@kaspacom/pearl-sdk';
+import { Transaction } from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
 
 import { createConfiguredPearlEscrowAllocator } from '../src/pearl-escrow-allocator.ts';
 import type { PearlProofReader } from '../src/pearl-proof-reader.ts';
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import type { SupportAlertNotification, SupportAlertNotifier } from '../src/support-alert-notifier.ts';
-import { OtcTradeService, type PearlEscrowAllocator, type PearlEscrowWatchRegistrar } from '../src/trade-service.ts';
+import { OtcTradeService, type PearlEscrowAllocator, type PearlEscrowWatchRegistrar, type PearlSignedTransactionBroadcaster } from '../src/trade-service.ts';
 import type { OtcApiConfig } from '../src/types.ts';
 import type { UsdcEscrowReader } from '../src/usdc-escrow-reader.ts';
 
@@ -142,6 +143,15 @@ class RecordingSupportAlertNotifier implements SupportAlertNotifier {
   }
 }
 
+class RecordingPearlBroadcaster implements PearlSignedTransactionBroadcaster {
+  readonly signedTxHexes: string[] = [];
+
+  async sendRawTransaction(signedTxHex: string): Promise<string> {
+    this.signedTxHexes.push(signedTxHex);
+    return Transaction.fromHex(signedTxHex).getId();
+  }
+}
+
 function createService(now = new Date('2026-05-16T12:00:00.000Z')): OtcTradeService {
   return new OtcTradeService(new InMemoryOtcRepository(), config, escrowAllocator, () => now);
 }
@@ -176,6 +186,12 @@ function signSignerProof(input: {
   const privateKey = Buffer.from(input.privateKeySeed.padStart(64, '0'), 'hex');
   const messageHash = createHash('sha256').update(createPearlSignerProofMessage(input)).digest();
   return Buffer.from(ecc.signSchnorr(messageHash, privateKey)).toString('hex');
+}
+
+function addDummyWitness(unsignedTxHex: string): string {
+  const tx = Transaction.fromHex(unsignedTxHex);
+  tx.setWitness(0, [Buffer.from('11'.repeat(64), 'hex')]);
+  return tx.toHex();
 }
 
 test('creates an idempotent Base USDC quote', async () => {
@@ -906,6 +922,7 @@ test('builds a Pearl multisig release intent from indexed funding proof', async 
     pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
     pearlReleaseFeeGrains: '1000',
   };
+  const broadcaster = new RecordingPearlBroadcaster();
   const service = new OtcTradeService(
     new InMemoryOtcRepository(),
     multisigConfig,
@@ -914,6 +931,8 @@ test('builds a Pearl multisig release intent from indexed funding proof', async 
     () => new Date('2026-05-16T12:00:00.000Z'),
     new RecordingWatchRegistrar(),
     new StaticPearlFundingProofReader(),
+    undefined,
+    broadcaster,
   );
   const quote = await service.createQuote({
     side: 'buy_prl',
@@ -968,6 +987,36 @@ test('builds a Pearl multisig release intent from indexed funding proof', async 
   assert.equal(intent.destinationAddress, BUYER_TESTNET_ADDRESS);
   assert.match(intent.unsignedTxHex ?? '', /^[0-9a-f]+$/);
   assert.match(intent.txTemplateHash ?? '', /^sha256:[0-9a-f]{64}$/);
+
+  await service.transitionTrade(trade.tradeId, 'pearl_escrow_seen', 'test:pearl-seen');
+  await service.transitionTrade(trade.tradeId, 'pearl_escrow_confirmed', 'test:pearl-confirmed');
+  await service.transitionTrade(trade.tradeId, 'usdc_escrow_pending', 'test:usdc-pending');
+  await service.transitionTrade(trade.tradeId, 'usdc_escrow_confirmed', 'test:usdc-confirmed');
+  await service.transitionTrade(trade.tradeId, 'release_pending', 'test:release-pending');
+
+  const signedTxHex = addDummyWitness(intent.unsignedTxHex ?? '');
+  const submitted = await service.submitPearlSignedTransaction(trade.tradeId, 'release', {
+    idempotencyKey: 'pearl-release-submit-test-1',
+    signedTxHex,
+  });
+
+  assert.equal(submitted.action, 'release');
+  assert.equal(submitted.txTemplateHash, intent.txTemplateHash);
+  assert.equal(submitted.broadcastTxid, Transaction.fromHex(signedTxHex).getId());
+  assert.equal(submitted.sideEffect.effectType, 'pearl_release');
+  assert.equal(submitted.sideEffect.status, 'submitted');
+  assert.equal(submitted.sideEffect.actor, 'user');
+  assert.equal(broadcaster.signedTxHexes.length, 1);
+
+  const tampered = Transaction.fromHex(signedTxHex);
+  tampered.outs[0].value -= 1;
+  await assert.rejects(
+    () => service.submitPearlSignedTransaction(trade.tradeId, 'release', {
+      idempotencyKey: 'pearl-release-submit-test-tampered',
+      signedTxHex: tampered.toHex(),
+    }),
+    /output does not match server template/,
+  );
 });
 
 test('builds admin trade diagnostics and records support alerts', async () => {

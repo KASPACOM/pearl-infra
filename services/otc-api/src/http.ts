@@ -190,6 +190,35 @@ export async function handleOtcHttpRequest(
   }
 
   if (
+    method === 'GET' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'pearl-refund' &&
+    parts[4] === 'intent'
+  ) {
+    return { statusCode: 200, body: await service.getPearlRefundSigningIntent(parts[2]) };
+  }
+
+  if (
+    method === 'POST' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    (parts[3] === 'pearl-release' || parts[3] === 'pearl-refund') &&
+    parts[4] === 'broadcast'
+  ) {
+    return {
+      statusCode: 202,
+      body: await service.submitPearlSignedTransaction(
+        parts[2],
+        parts[3] === 'pearl-release' ? 'release' : 'refund',
+        await readJsonBody(request),
+      ),
+    };
+  }
+
+  if (
     method === 'POST' &&
     parts.length === 5 &&
     parts[0] === 'otc' &&
@@ -570,6 +599,14 @@ function mapError(error: unknown): JsonResponse {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('deadline passed') || message.includes('terminal')) {
+    return { statusCode: 400, body: { error: 'bad_request', message } };
+  }
+  if (
+    message.includes('signing intent is not ready') ||
+    message.includes('broadcast requires') ||
+    message.includes('does not match server template') ||
+    message.includes('missing witness signatures')
+  ) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('rate limit exceeded')) {

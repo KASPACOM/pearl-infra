@@ -1,5 +1,7 @@
 import pg from 'pg';
 
+import { PearlRpcClient, PearlRpcTransactionBroadcaster } from '@kaspacom/pearl-rpc';
+
 import { InMemoryOtcRepository, PgOtcRepository } from './repository.js';
 import { OtcTradeService } from './trade-service.js';
 import { assertOtcApiStartupConfig, readOtcApiConfig, readOtcApiRuntimeConfig } from './config.js';
@@ -28,6 +30,13 @@ const pearlEscrowWatchRegistrar = config.pearlIndexerWatchUrl
 const pearlProofReader = config.pearlIndexerWatchUrl
   ? new HttpPearlProofReader(config.pearlIndexerWatchUrl, config.pearlIndexerWatchTimeoutMs)
   : undefined;
+const pearlSignedTransactionBroadcaster = config.pearlRpcUrl
+  ? new PearlRpcTransactionBroadcaster(new PearlRpcClient({
+      url: config.pearlRpcUrl,
+      user: config.pearlRpcUser,
+      pass: config.pearlRpcPass,
+    }))
+  : undefined;
 const supportAlertNotifier = createConfiguredSupportAlertNotifier(config);
 const service = new OtcTradeService(
   repository,
@@ -38,6 +47,7 @@ const service = new OtcTradeService(
   pearlEscrowWatchRegistrar,
   pearlProofReader,
   supportAlertNotifier,
+  pearlSignedTransactionBroadcaster,
 );
 const server = createOtcHttpServer(service, {
   adminToken: config.adminApiToken,
@@ -52,6 +62,7 @@ server.listen(port, () => {
       persistence: config.databaseUrl ? 'postgres' : 'memory',
       pearlEscrowAllocator: config.pearlEscrowAllocator,
       pearlEscrowWatchRegistrar: config.pearlIndexerWatchUrl ? 'http' : 'disabled',
+      pearlSignedTransactionBroadcaster: pearlSignedTransactionBroadcaster ? 'rpc' : 'disabled',
       usdcEscrowReader: config.baseRpcUrl ? 'ethers' : 'disabled',
       supportAlertNotifier: supportAlertNotifier ? 'enabled' : 'disabled',
       productionConfigRequired: runtime.production,

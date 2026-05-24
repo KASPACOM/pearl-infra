@@ -590,6 +590,14 @@ Loophole tracker after PR #74:
     destination, fee, signer sets, and arbiter-path availability. Still
     missing: browser/wallet signing and submit/broadcast flow for actual
     release/refund signatures.
+  - 2026-05-24: Added backend release/refund signing-intent routes and a
+    signed-transaction broadcast route. Broadcast is gated to `release_pending`
+    or `refund_pending`, validates the signed transaction inputs/outputs/header
+    against the server unsigned template before RPC broadcast, and records the
+    PRL side effect with a server-assigned user actor. Checkout can paste/submit
+    a signed release transaction only once the trade is `release_pending`. Still
+    missing: native browser Pearl wallet signing integration and a first-class
+    refund signing UX.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
   after separate approval, ownership evidence, and live-run evidence.
 
