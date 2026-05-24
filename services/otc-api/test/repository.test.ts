@@ -117,6 +117,32 @@ const sideEffect: OtcSideEffect = {
 };
 
 const fixedAt = new Date('2026-05-16T12:00:00.000Z');
+const userRow = (
+  userId: string,
+  walletType: string,
+  network: string,
+  address: string,
+): Row => ({
+  user_id: userId,
+  referral_code: `${userId.replace(/[^a-z0-9]/gi, '').toUpperCase()}REF`,
+  user_created_at: fixedAt,
+  user_updated_at: fixedAt,
+  wallet_type: walletType,
+  network,
+  address,
+  public_key_hex: null,
+  verified_at: fixedAt,
+  wallet_created_at: fixedAt,
+  email: null,
+  email_verified_at: null,
+  notification_email_enabled: false,
+  profile_created_at: fixedAt,
+  profile_updated_at: fixedAt,
+  referrer_user_id: null,
+  referred_by_code: null,
+  source_url: null,
+  attributed_at: null,
+});
 const pearlEscrowAllocation = {
   tradeId: trade.tradeId,
   allocatorKey: 'p2tr_xpub:testnet2:abc',
@@ -197,6 +223,35 @@ test('PgOtcRepository persists side effects with idempotency keys', async () => 
   assert.equal(result.sideEffect.idempotencyKey, sideEffect.idempotencyKey);
   assert.equal(result.sideEffect.requestHash, sideEffect.requestHash);
   assert.equal(result.sideEffect.chainId, 84532);
+});
+
+test('PgOtcRepository rejects wallet link races that resolve to another user', async () => {
+  const pg = new FakePg();
+  const requestedUserWallet = userRow('user-a', 'pearl', 'testnet2', 'tprl1pauth');
+  const competingOwnerWallet = userRow('user-b', 'evm', 'base_sepolia', '0x2222222222222222222222222222222222222222');
+  let walletLookupCount = 0;
+  pg.setFixture(/WHERE u\.user_id = \$1/s, (params) => (params?.[0] === 'user-a' ? [requestedUserWallet] : []));
+  pg.setFixture(/FROM otc_user_wallets\s+WHERE user_id = \$1/s, (params) =>
+    params?.[0] === 'user-b' ? [competingOwnerWallet] : [requestedUserWallet],
+  );
+  pg.setFixture(/WHERE w\.wallet_type = \$1 AND w\.network = \$2 AND w\.address = \$3/s, () => {
+    walletLookupCount += 1;
+    return walletLookupCount === 1 ? [] : [competingOwnerWallet];
+  });
+  pg.setFixture(/INSERT INTO otc_user_wallets/, []);
+  pg.setFixture(/UPDATE otc_users SET updated_at/, []);
+  const repo = new PgOtcRepository(pg);
+
+  await assert.rejects(
+    () =>
+      repo.addUserWallet('user-a', {
+        walletType: 'evm',
+        network: 'base_sepolia',
+        address: '0x2222222222222222222222222222222222222222',
+        verifiedAt: fixedAt.toISOString(),
+      }),
+    /wallet already belongs to another user/,
+  );
 });
 
 test('InMemoryOtcRepository reserves Pearl escrow allocations idempotently and rejects derivation collisions', async () => {

@@ -21,6 +21,14 @@
   line-height: 1.55;
 }
 
+.profile-link-wallet {
+  border-top: 1px solid var(--om-line);
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
 .profile-page .om-panel h2 {
   margin: 6px 0 12px;
 }
