@@ -44,9 +44,9 @@ platform can claim fully self-serve PRL release/refund from the browser.
   update; the side effect is reserved before RPC, but no API can make Pearl RPC
   and Postgres a single atomic transaction. Operational recovery must reconcile
   reserved/submitted side effects against the Pearl txid/indexer.
-- The May 21 full live proof used a one-off in-memory API runner; the proof must
-  be productized through Postgres or a durable live API process before it can be
-  rerun from public routes after shutdown.
+- The May 21 full live proof used a one-off in-memory API runner; as of
+  2026-05-24, durable `live_proof_evidence` records let persisted trades be
+  rerun from public API routes after shutdown.
 
 ## Evidence
 

@@ -120,9 +120,9 @@ These items block a full production-grade Pearl OTC settlement release:
 3. Keep live evidence repeatable.
    - The one-off 2026-05-21 runner captured the same public-proof fields, but it
      used in-memory API state.
-   - Next action: persist the live proof trade in Postgres or rerun it through a
-     durable API process, then feed the tx hashes into
-     `services/otc-api/test/live-full-otc-evidence.test.ts`.
+   - 2026-05-24 update: the OTC API can now record durable
+     `live_proof_evidence` side effects and expose tx hashes through the public
+     evidence route for `services/otc-api/test/live-full-otc-evidence.test.ts`.
 
 4. Finish the native PRL wallet signing path.
    - PR #106 added backend release/refund intent plus signed transaction

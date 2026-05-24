@@ -9,7 +9,9 @@ or broadcast transactions. It verifies an already-run trade by reading:
 - the Pearl indexer watch history for the trade escrow.
 
 The test is skipped by default in CI and local runs. It only runs when all
-required environment variables are set.
+required environment variables are set. Base transaction hashes can be supplied
+directly through the environment or read from the OTC API durable live evidence
+route.
 
 ## Required Inputs
 
@@ -21,10 +23,39 @@ export OTC_FULL_FLOW_BASE_TX_HASHES=0xcreate,0xdeposit,0xrelease
 export OTC_FULL_FLOW_PEARL_INDEXER_URL=http://127.0.0.1:8088
 ```
 
+`OTC_FULL_FLOW_BASE_TX_HASHES` is optional when the API has durable evidence at
+`GET /otc/trades/:tradeId/live-proof-evidence`.
+
 For a refund path, use the refund tx hash as the final hash and set:
 
 ```bash
 export OTC_FULL_FLOW_EXPECTED_STATUS=refunded
+```
+
+`OTC_FULL_FLOW_EXPECTED_STATUS` is optional when the durable evidence route
+returns `expectedStatus`.
+
+## Record Durable Evidence
+
+After a terminal live run, an operator records the Base lifecycle tx hashes on
+the durable OTC side-effect ledger:
+
+```bash
+curl -X POST "$OTC_FULL_FLOW_API_URL/otc/admin/trades/$OTC_FULL_FLOW_TRADE_ID/live-proof-evidence" \
+  -H "authorization: Bearer $OTC_ADMIN_API_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+    "idempotencyKey": "live-proof-2026-05-24-release-1",
+    "expectedStatus": "released",
+    "baseTxHashes": ["0xcreate...", "0xdeposit...", "0xrelease..."]
+  }'
+```
+
+The public replay route returns the expected terminal status, normalized Base
+tx hashes, the public proof path, and the current public proof:
+
+```bash
+curl "$OTC_FULL_FLOW_API_URL/otc/trades/$OTC_FULL_FLOW_TRADE_ID/live-proof-evidence"
 ```
 
 ## Run
@@ -71,11 +102,10 @@ persisted in Postgres or replayed through a live API instance.
 
 ## Remaining Productization
 
-The verifier closes the repeatable evidence harness gap, but the successful
-testnet2 run also exposed two productization requirements:
+The verifier and durable evidence route close the repeatable evidence harness
+gap for trades persisted in Postgres or another live API repository. The
+successful testnet2 run also exposed one remaining productization requirement:
 
-- persist live proof trades before shutdown so the verifier can be rerun from
-  public routes;
 - include release/refund destination metadata in Pearl watches, preferably with
   distinct release and refund addresses, so fee-adjusted spends classify as
   `release` or `refund` instead of `unknown_spend`.

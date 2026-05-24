@@ -92,7 +92,8 @@ export type OtcSideEffectType =
   | 'pearl_refund'
   | 'support_alert'
   | 'support_alert_delivery'
-  | 'manual_review_note';
+  | 'manual_review_note'
+  | 'live_proof_evidence';
 
 export type OtcSideEffectStatus = 'prepared' | 'submitted' | 'confirmed' | 'failed';
 
@@ -174,6 +175,22 @@ export interface RecordSideEffectRequest {
   blockHash?: string;
   chainId?: number;
   metadata?: Record<string, unknown>;
+}
+
+export interface RecordLiveProofEvidenceRequest {
+  idempotencyKey: string;
+  expectedStatus: 'released' | 'refunded';
+  baseTxHashes: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface LiveProofEvidence {
+  tradeId: string;
+  expectedStatus: 'released' | 'refunded';
+  baseTxHashes: string[];
+  publicProofPath: string;
+  proof: PublicTradeProof;
+  recordedAt: string;
 }
 
 export interface AdminTradeQuery {

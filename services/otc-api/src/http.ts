@@ -182,6 +182,10 @@ export async function handleOtcHttpRequest(
     return { statusCode: 200, body: await service.getPublicProof(parts[2]) };
   }
 
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'trades' && parts[3] === 'live-proof-evidence') {
+    return { statusCode: 200, body: await service.getLiveProofEvidence(parts[2]) };
+  }
+
   if (
     method === 'GET' &&
     parts.length === 5 &&
@@ -356,6 +360,14 @@ async function handleAdminRequest(
     return {
       statusCode: 200,
       body: await service.markManualReview(parts[3], await readJsonBody(request), { actor: admin.actor }),
+    };
+  }
+
+  if (method === 'POST' && parts.length === 5 && parts[2] === 'trades' && parts[4] === 'live-proof-evidence') {
+    requireAdminRole(admin, 'operator');
+    return {
+      statusCode: 201,
+      body: await service.recordLiveProofEvidence(parts[3], await readJsonBody(request), { actor: admin.actor }),
     };
   }
 
@@ -613,7 +625,12 @@ function mapError(error: unknown): JsonResponse {
   if (message.includes('expired') || message.includes('unsupported') || message.includes('not active')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
-  if (message.includes('is required') || message.includes('is invalid')) {
+  if (
+    message.includes('is required') ||
+    message.includes('is invalid') ||
+    message.includes('must include') ||
+    message.includes('does not match expectedStatus')
+  ) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (

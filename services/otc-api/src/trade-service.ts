@@ -44,6 +44,7 @@ import type {
   CreateWalletChallengeRequest,
   CreateWalletChallengeResponse,
   LinkUserWalletRequest,
+  LiveProofEvidence,
   MarkManualReviewRequest,
   MarketStats,
   MarkManualReviewOptions,
@@ -73,6 +74,7 @@ import type {
   RecentTradeSummary,
   ReferralCodeLookup,
   RegisterUserRequest,
+  RecordLiveProofEvidenceRequest,
   RequestEmailVerificationRequest,
   RequestEmailVerificationResponse,
   ReplaySupportAlertRequest,
@@ -1490,8 +1492,60 @@ export class OtcTradeService {
     };
   }
 
+  async recordLiveProofEvidence(
+    tradeId: string,
+    request: RecordLiveProofEvidenceRequest,
+    options: MarkManualReviewOptions = {},
+  ): Promise<LiveProofEvidence> {
+    const trade = await this.getTrade(tradeId);
+    assertNonEmptyBounded(request.idempotencyKey, 'idempotencyKey', 128);
+    assertOneOf(request.expectedStatus, 'expectedStatus', ['released', 'refunded']);
+    const actor = options.actor;
+    assertNonEmptyBounded(actor, 'actor', 128);
+    const baseTxHashes = normalizeBaseTxHashes(request.baseTxHashes);
+    const proof = await this.getPublicProof(tradeId);
+    if (proof.status !== request.expectedStatus) {
+      throw new Error(`public proof status ${proof.status} does not match expectedStatus ${request.expectedStatus}`);
+    }
+    if (trade.state !== request.expectedStatus) {
+      throw new Error(`trade state ${trade.state} does not match expectedStatus ${request.expectedStatus}`);
+    }
+
+    const sideEffect = await this.saveSideEffect(tradeId, {
+      idempotencyKey: request.idempotencyKey,
+      effectType: 'live_proof_evidence',
+      status: 'confirmed',
+      actor,
+      sourceEventId: createStableId('event', [tradeId, 'live-proof-evidence', request.idempotencyKey]),
+      chainId: trade.usdcEscrow.chainId,
+      metadata: {
+        ...(request.metadata ?? {}),
+        expectedStatus: request.expectedStatus,
+        baseTxHashes,
+        publicProofPath: createPublicProofPath(tradeId),
+        recordedProofStatus: proof.status,
+      },
+    });
+    return this.createLiveProofEvidenceFromSideEffect(tradeId, sideEffect);
+  }
+
+  async getLiveProofEvidence(tradeId: string): Promise<LiveProofEvidence> {
+    await this.getTrade(tradeId);
+    const sideEffects = await this.repository.listSideEffects(tradeId);
+    const evidence = sideEffects
+      .filter((effect) => effect.effectType === 'live_proof_evidence')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    if (!evidence) {
+      throw new Error(`live proof evidence not found: ${tradeId}`);
+    }
+    return this.createLiveProofEvidenceFromSideEffect(tradeId, evidence);
+  }
+
   async recordSideEffect(tradeId: string, request: RecordSideEffectRequest): Promise<OtcSideEffect> {
     await this.getTrade(tradeId);
+    if (request.effectType === 'live_proof_evidence') {
+      throw new Error('live_proof_evidence side effects are unsupported on the generic side-effect route');
+    }
     return this.saveSideEffect(tradeId, request);
   }
 
@@ -1760,6 +1814,28 @@ export class OtcTradeService {
       createdAt: timestamp,
       updatedAt: timestamp,
     });
+  }
+
+  private async createLiveProofEvidenceFromSideEffect(
+    tradeId: string,
+    sideEffect: OtcSideEffect,
+  ): Promise<LiveProofEvidence> {
+    if (sideEffect.effectType !== 'live_proof_evidence') {
+      throw new Error(`live proof evidence not found: ${tradeId}`);
+    }
+    const expectedStatus = sideEffect.metadata.expectedStatus;
+    assertOneOf(expectedStatus, 'expectedStatus', ['released', 'refunded']);
+    const baseTxHashes = normalizeBaseTxHashes(sideEffect.metadata.baseTxHashes);
+    return {
+      tradeId,
+      expectedStatus,
+      baseTxHashes,
+      publicProofPath: typeof sideEffect.metadata.publicProofPath === 'string'
+        ? sideEffect.metadata.publicProofPath
+        : createPublicProofPath(tradeId),
+      proof: await this.getPublicProof(tradeId),
+      recordedAt: sideEffect.createdAt,
+    };
   }
 
   private async deliverSupportAlert(trade: OtcTrade, alert: OtcSideEffect): Promise<void> {
@@ -2461,6 +2537,24 @@ function normalizeTxid(value: string, field: string): string {
   return normalized;
 }
 
+function normalizeBaseTxHashes(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length < 3) {
+    throw new Error('baseTxHashes must include create, deposit, and terminal Base transaction hashes');
+  }
+  const seen = new Set<string>();
+  return value.map((hash, index) => {
+    if (typeof hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(hash.trim())) {
+      throw new Error(`baseTxHashes[${index}] is invalid`);
+    }
+    const normalized = hash.trim().toLowerCase();
+    if (seen.has(normalized)) {
+      throw new Error(`baseTxHashes[${index}] is invalid`);
+    }
+    seen.add(normalized);
+    return normalized;
+  });
+}
+
 function assertSignedTransactionMatchesTemplate(signedTxHex: string, unsignedTxHex: string): string {
   const signed = Transaction.fromHex(signedTxHex);
   const template = Transaction.fromHex(normalizeEvenHex(unsignedTxHex, 'unsignedTxHex'));
@@ -2641,6 +2735,10 @@ function summarizePoints(userId: string, events: OtcPointEvent[]): OtcPointsSumm
 function createStableId(prefix: string, parts: readonly string[]): string {
   const hash = createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 24);
   return `${prefix}_${hash}`;
+}
+
+function createPublicProofPath(tradeId: string): string {
+  return `/otc/trades/${encodeURIComponent(tradeId)}/proof`;
 }
 
 function createRandomId(prefix: string): string {

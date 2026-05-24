@@ -20,9 +20,9 @@ import { baseEscrowEventStateFromUsdcTradeState } from '../../settlement-worker/
 const apiUrl = process.env.OTC_FULL_FLOW_API_URL;
 const tradeId = process.env.OTC_FULL_FLOW_TRADE_ID;
 const baseRpcUrl = process.env.OTC_FULL_FLOW_BASE_RPC_URL;
-const baseTxHashes = parseCsv(process.env.OTC_FULL_FLOW_BASE_TX_HASHES);
+const configuredBaseTxHashes = parseCsv(process.env.OTC_FULL_FLOW_BASE_TX_HASHES);
 const pearlIndexerUrl = process.env.OTC_FULL_FLOW_PEARL_INDEXER_URL;
-const expectedStatus = parseExpectedStatus(process.env.OTC_FULL_FLOW_EXPECTED_STATUS);
+const configuredExpectedStatus = parseExpectedStatus(process.env.OTC_FULL_FLOW_EXPECTED_STATUS);
 const BASE_SEPOLIA_CONTRACT = '0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9';
 const TRADE_KEY = `0x${'42'.repeat(32)}`;
 const BUYER_USDC = '0x1111111111111111111111111111111111111111';
@@ -69,12 +69,32 @@ test('live evidence verifier requires a complete Base lifecycle before accepting
   assert.throws(() => assertCompleteBaseLifecycle(releasedWithoutDeposit, 'released'), /Base receipts must include Deposited/);
 });
 
-test('optional live full OTC evidence verifies public proof, Base receipts, and Pearl indexer history', { skip: !apiUrl || !tradeId || !baseRpcUrl || baseTxHashes.length === 0 || !pearlIndexerUrl }, async () => {
+interface LiveProofEvidence {
+  tradeId: string;
+  expectedStatus: 'released' | 'refunded';
+  baseTxHashes: string[];
+  publicProofPath: string;
+  proof: PublicTradeProof;
+  recordedAt: string;
+}
+
+test('optional live full OTC evidence verifies public proof, Base receipts, and Pearl indexer history', { skip: !apiUrl || !tradeId || !baseRpcUrl || !pearlIndexerUrl }, async () => {
   const trade = await fetchJson<OtcTrade>(`${apiUrl}/otc/trades/${encodeURIComponent(tradeId!)}`);
   const proof = await fetchJson<PublicTradeProof>(`${apiUrl}/otc/trades/${encodeURIComponent(tradeId!)}/proof`);
+  const storedEvidence = configuredBaseTxHashes.length > 0 && configuredExpectedStatus
+    ? undefined
+    : await fetchOptionalJson<LiveProofEvidence>(`${apiUrl}/otc/trades/${encodeURIComponent(tradeId!)}/live-proof-evidence`);
+  const baseTxHashes = configuredBaseTxHashes.length > 0 ? configuredBaseTxHashes : storedEvidence?.baseTxHashes ?? [];
+  const expectedStatus = configuredExpectedStatus ?? storedEvidence?.expectedStatus ?? 'released';
 
   assert.equal(trade.tradeId, tradeId);
   assert.equal(proof.tradeId, trade.tradeId);
+  assert.ok(baseTxHashes.length > 0, 'Base tx hashes must be provided by OTC_FULL_FLOW_BASE_TX_HASHES or live-proof-evidence API');
+  if (storedEvidence) {
+    assert.equal(storedEvidence.tradeId, trade.tradeId);
+    assert.equal(storedEvidence.publicProofPath, `/otc/trades/${encodeURIComponent(trade.tradeId)}/proof`);
+    assert.equal(storedEvidence.proof.tradeId, trade.tradeId);
+  }
   assert.equal(proof.status, expectedStatus);
   assert.equal(proof.base.tradeKey, trade.usdcEscrow.tradeKey);
   assert.equal(proof.base.contract.toLowerCase(), trade.usdcEscrow.contract.toLowerCase());
@@ -243,12 +263,23 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function fetchOptionalJson<T>(url: string): Promise<T | undefined> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (response.status === 404) {
+    return undefined;
+  }
+  if (!response.ok) {
+    throw new Error(`${url} returned ${response.status}: ${await response.text()}`);
+  }
+  return (await response.json()) as T;
+}
+
 function parseCsv(value: string | undefined): readonly string[] {
   return value?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
 }
 
-function parseExpectedStatus(value: string | undefined): 'released' | 'refunded' {
-  if (!value) return 'released';
+function parseExpectedStatus(value: string | undefined): 'released' | 'refunded' | undefined {
+  if (!value) return undefined;
   if (value === 'released' || value === 'refunded') return value;
   throw new Error('OTC_FULL_FLOW_EXPECTED_STATUS must be released or refunded');
 }

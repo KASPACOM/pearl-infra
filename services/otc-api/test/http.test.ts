@@ -51,7 +51,7 @@ const escrowAllocator: PearlEscrowAllocator = {
   },
 };
 
-async function withServer<T>(fn: (baseUrl: string) => Promise<T>, serviceConfig: OtcApiConfig = config): Promise<T> {
+async function withServer<T>(fn: (baseUrl: string, service: OtcTradeService) => Promise<T>, serviceConfig: OtcApiConfig = config): Promise<T> {
   const allocator = serviceConfig.pearlEscrowAllocator === 'mock'
     ? escrowAllocator
     : createConfiguredPearlEscrowAllocator(serviceConfig);
@@ -87,7 +87,7 @@ async function withServer<T>(fn: (baseUrl: string) => Promise<T>, serviceConfig:
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
   try {
-    return await fn(`http://127.0.0.1:${address.port}`);
+    return await fn(`http://127.0.0.1:${address.port}`, service);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -937,6 +937,89 @@ test('serves quote, accept, trade, and proof routes', async () => {
     assert.equal(adminDetail.sideEffects.length, 4);
     assert.equal(adminDetail.events.some((event) => event.metadata?.actor === 'operator-user'), true);
     assert.equal(adminDetail.events.some((event) => event.metadata?.actor === 'spoofed-operator'), false);
+  });
+});
+
+test('records and serves durable live proof evidence through operator and public routes', async () => {
+  await withServer(async (baseUrl, service) => {
+    const quoteResponse = await postJson(baseUrl, '/otc/quotes', {
+      side: 'buy_prl',
+      amountPrl: '1000.00000000',
+      settlementAsset: 'USDC',
+      settlementNetwork: 'base',
+      buyerPearlAddress: 'tprl1pbuyer',
+      usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+      clientRequestId: 'quote-http-live-proof-evidence',
+    });
+    assert.equal(quoteResponse.status, 201);
+    const quote = (await quoteResponse.json()) as { quoteId: string };
+    const tradeResponse = await postJson(baseUrl, `/otc/quotes/${quote.quoteId}/accept`, {
+      buyerPearlAddress: 'tprl1pbuyer',
+      buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+      sellerPearlRefundAddress: 'tprl1psellerrefund',
+      sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+      clientRequestId: 'accept-http-live-proof-evidence',
+    });
+    assert.equal(tradeResponse.status, 201);
+    const trade = (await tradeResponse.json()) as { tradeId: string };
+
+    const missingResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/live-proof-evidence`);
+    assert.equal(missingResponse.status, 404);
+
+    await service.transitionTrade(trade.tradeId, 'pearl_escrow_seen', 'http-live-proof:pearl-seen');
+    await service.transitionTrade(trade.tradeId, 'pearl_escrow_confirmed', 'http-live-proof:pearl-confirmed');
+    await service.transitionTrade(trade.tradeId, 'usdc_escrow_pending', 'http-live-proof:usdc-pending');
+    await service.transitionTrade(trade.tradeId, 'usdc_escrow_confirmed', 'http-live-proof:usdc-confirmed');
+    await service.transitionTrade(trade.tradeId, 'release_pending', 'http-live-proof:release-pending');
+    await service.transitionTrade(trade.tradeId, 'released', 'http-live-proof:released');
+
+    const publicRecordResponse = await postJson(baseUrl, `/otc/admin/trades/${trade.tradeId}/live-proof-evidence`, {
+      idempotencyKey: 'http-live-proof-public',
+      expectedStatus: 'released',
+      baseTxHashes: [`0x${'1'.repeat(64)}`, `0x${'2'.repeat(64)}`, `0x${'3'.repeat(64)}`],
+    });
+    assert.equal(publicRecordResponse.status, 401);
+
+    const supportRecordResponse = await postJson(baseUrl, `/otc/admin/trades/${trade.tradeId}/live-proof-evidence`, {
+      idempotencyKey: 'http-live-proof-support',
+      expectedStatus: 'released',
+      baseTxHashes: [`0x${'1'.repeat(64)}`, `0x${'2'.repeat(64)}`, `0x${'3'.repeat(64)}`],
+    }, supportHeaders);
+    assert.equal(supportRecordResponse.status, 403);
+
+    const invalidRecordResponse = await postJson(baseUrl, `/otc/admin/trades/${trade.tradeId}/live-proof-evidence`, {
+      idempotencyKey: 'http-live-proof-invalid',
+      expectedStatus: 'released',
+      baseTxHashes: [`0x${'1'.repeat(64)}`],
+    }, operatorHeaders);
+    assert.equal(invalidRecordResponse.status, 400);
+
+    const recordResponse = await postJson(baseUrl, `/otc/admin/trades/${trade.tradeId}/live-proof-evidence`, {
+      idempotencyKey: 'http-live-proof-record',
+      expectedStatus: 'released',
+      baseTxHashes: [`0x${'A'.repeat(64)}`, `0x${'b'.repeat(64)}`, `0x${'c'.repeat(64)}`],
+    }, operatorHeaders);
+    assert.equal(recordResponse.status, 201);
+    const recordedText = await recordResponse.text();
+    const recorded = JSON.parse(recordedText) as {
+      tradeId: string;
+      expectedStatus: string;
+      baseTxHashes: string[];
+      publicProofPath: string;
+      proof: { status: string };
+    };
+    assert.equal(recordedText.includes('operator-user'), false);
+    assert.equal(recorded.tradeId, trade.tradeId);
+    assert.equal(recorded.expectedStatus, 'released');
+    assert.deepEqual(recorded.baseTxHashes, [`0x${'a'.repeat(64)}`, `0x${'b'.repeat(64)}`, `0x${'c'.repeat(64)}`]);
+    assert.equal(recorded.publicProofPath, `/otc/trades/${trade.tradeId}/proof`);
+    assert.equal(recorded.proof.status, 'released');
+
+    const publicEvidenceResponse = await fetch(`${baseUrl}/otc/trades/${trade.tradeId}/live-proof-evidence`);
+    assert.equal(publicEvidenceResponse.status, 200);
+    const publicEvidence = (await publicEvidenceResponse.json()) as { baseTxHashes: string[]; proof: { status: string } };
+    assert.deepEqual(publicEvidence.baseTxHashes, recorded.baseTxHashes);
+    assert.equal(publicEvidence.proof.status, 'released');
   });
 });
 
