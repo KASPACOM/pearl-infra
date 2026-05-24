@@ -289,6 +289,110 @@ export interface ReferralCodeLookup {
   createdAt: string;
 }
 
+export type OtcOrderStatus = 'open' | 'partially_filled' | 'filled' | 'cancelled' | 'expired';
+export type OtcFundingAsset = 'PRL' | 'USDC';
+export type OtcPointSource = 'signup' | 'referral_signup' | 'trade_completed' | 'order_created' | 'referral_activity_bonus';
+
+export interface OtcOrder {
+  orderId: string;
+  makerUserId: string;
+  side: 'buy_prl' | 'sell_prl';
+  fundingAsset: OtcFundingAsset;
+  amountPrl: string;
+  remainingPrl: string;
+  priceUsdcPerPrl: string;
+  minFillPrl?: string;
+  status: OtcOrderStatus;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrderRequest {
+  userId: string;
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  side: 'buy_prl' | 'sell_prl';
+  amountPrl: string;
+  priceUsdcPerPrl: string;
+  minFillPrl?: string;
+  expiresAt?: string;
+}
+
+export interface OrderBookQuery {
+  side?: 'buy_prl' | 'sell_prl';
+  status?: OtcOrderStatus;
+  minPrl?: string;
+  maxPrl?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  makerUserId?: string;
+  sort?: 'best_price' | 'newest' | 'largest';
+  cursor?: string;
+  limit?: number;
+}
+
+export interface OrderBookPage {
+  items: OtcOrder[];
+  total: number;
+  limit: number;
+  nextCursor?: string;
+}
+
+export interface OtcPointEvent {
+  pointEventId: string;
+  userId: string;
+  source: OtcPointSource;
+  points: number;
+  relatedUserId?: string;
+  tradeId?: string;
+  orderId?: string;
+  referralCode?: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface OtcPointsSummary {
+  userId: string;
+  totalPoints: number;
+  bySource: Partial<Record<OtcPointSource, number>>;
+  recent: OtcPointEvent[];
+}
+
+export interface MarketStats {
+  successfulTrades: number;
+  totalVolumePrl: string;
+  totalVolumeUsdc: string;
+  activeOrderVolumePrl: string;
+  activeEscrowVolumePrl: string;
+  verifiedUsers: number;
+  openOrders: number;
+}
+
+export interface RecentTradeSummary {
+  tradeId: string;
+  side: OtcTrade['side'];
+  amountPrl: string;
+  amountUsdc: string;
+  priceUsdcPerPrl: string;
+  state: TradeState;
+  updatedAt: string;
+}
+
+export interface OtcUserDashboard {
+  user: OtcUser;
+  points: OtcPointsSummary;
+  orders: OtcOrder[];
+  trades: OtcTrade[];
+}
+
+export interface UserDashboardRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+}
+
 export interface RecordSideEffectRequest {
   idempotencyKey: string;
   effectType: OtcSideEffectType;
@@ -367,6 +471,38 @@ export class OtcApiClient {
 
   updateUserProfile(userId: string, request: UpdateUserProfileRequest): Promise<OtcUser['profile']> {
     return this.post(`/otc/users/${encodeURIComponent(userId)}/profile`, request);
+  }
+
+  getMarketStats(): Promise<MarketStats> {
+    return this.get('/otc/market/stats');
+  }
+
+  listRecentTrades(limit = 25): Promise<RecentTradeSummary[]> {
+    return this.get(`/otc/market/recent-trades?limit=${encodeURIComponent(String(limit))}`);
+  }
+
+  listOrders(query: OrderBookQuery = {}): Promise<OrderBookPage> {
+    const params = new URLSearchParams();
+    if (query.side) params.set('side', query.side);
+    if (query.status) params.set('status', query.status);
+    if (query.minPrl) params.set('min_prl', query.minPrl);
+    if (query.maxPrl) params.set('max_prl', query.maxPrl);
+    if (query.minPrice) params.set('min_price', query.minPrice);
+    if (query.maxPrice) params.set('max_price', query.maxPrice);
+    if (query.makerUserId) params.set('maker_user_id', query.makerUserId);
+    if (query.sort) params.set('sort', query.sort);
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (typeof query.limit === 'number') params.set('limit', String(query.limit));
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return this.get(`/otc/orders${suffix}`);
+  }
+
+  createOrder(request: CreateOrderRequest): Promise<OtcOrder> {
+    return this.post('/otc/orders', request);
+  }
+
+  getUserDashboard(userId: string, request: UserDashboardRequest): Promise<OtcUserDashboard> {
+    return this.post(`/otc/users/${encodeURIComponent(userId)}/dashboard`, request);
   }
 
   prepareUsdcCreateTrade(tradeId: string, request: PrepareUsdcCreateTradeRequest, adminToken?: string): Promise<UsdcCreateTradeIntent> {

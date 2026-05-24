@@ -67,6 +67,12 @@ export async function sendAndWaitInjectedEvmTransaction(request: TransactionRequ
   return response.hash;
 }
 
+export async function signInjectedEvmMessage(message: string, expectedAddress?: string): Promise<string> {
+  const provider = new BrowserProvider(getRequiredInjectedProvider());
+  const signer = expectedAddress ? await provider.getSigner(expectedAddress) : await provider.getSigner();
+  return signer.signMessage(message);
+}
+
 export function subscribeInjectedEvmWalletChanges(listener: () => void): () => void {
   const provider = getInjectedProvider();
   if (!provider?.on || !provider.removeListener) {

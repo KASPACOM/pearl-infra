@@ -9,6 +9,8 @@ import './pages/AcceptQuotePage.scss';
 import './pages/AdminTradesPage.scss';
 import './pages/FaqPage.scss';
 import './pages/LandingPage.scss';
+import './pages/MarketPage.scss';
+import './pages/ProfilePage.scss';
 import './pages/PublicProofPage.scss';
 import './pages/RfqPage.scss';
 import './pages/TradeCheckoutPage.scss';

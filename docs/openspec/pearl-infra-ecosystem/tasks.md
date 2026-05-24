@@ -1039,15 +1039,34 @@ through one-time wallet challenges before creating user/profile records.
     public-key ownership verification is implemented.
 - [ ] 12.3 Add frontend referral capture so `?ref=<code>` is persisted through
   quote/order/user registration and shown in the profile referral panel.
+  - 2026-05-24: Profile registration captures `ref=` into local storage,
+    submits it during wallet-owned registration, and shows both own referral
+    code and referred-by attribution. Remaining: carry anonymous referral
+    context through pre-profile quote flows.
 - [ ] 12.4 Add user profile UX for linked wallets, optional email,
   notification preferences, referral code, and referred-by status.
-- [ ] 12.5 Add order book persistence and public market APIs for active orders,
+  - 2026-05-24: Added `/profile` for wallet-owned account creation, optional
+    email/profile update, referral panel, points summary, my offers, and my
+    trades. Remaining: verified email flow and granular notification
+    preferences.
+- [x] 12.5 Add order book persistence and public market APIs for active orders,
   filters, sorting, recent trades, market stats, and volume counters.
-- [ ] 12.6 Add the public order book and market dashboard UI: best price,
+  - 2026-05-24: Added `005_orders_points.sql`, `POST /otc/orders`,
+    `GET /otc/orders`, `GET /otc/market/stats`, `GET
+    /otc/market/recent-trades`, and wallet-proved user dashboard routes.
+- [x] 12.6 Add the public order book and market dashboard UI: best price,
   size, active volume, total volume, total successful trades, and verified
   user count.
+  - 2026-05-24: Added `/market` with buy/sell open offers, funding-asset
+    labels, recent trades, total volume, active order volume, successful
+    trade count, and verified user count.
 - [ ] 12.7 Add notification preferences and delivery jobs for trade status,
   deadline warnings, new matching orders, price alerts, and referral events.
 - [ ] 12.8 Upgrade Telegram from operator alerts to user self-service:
   wallet-linked account binding, `/orders`, `/trades`, `/trade <id>`,
   price alerts, new-order alerts, and private trade-status notifications.
+- [x] 12.9 Add activity points for signup, order creation, completed trades,
+  direct referrals, and 10% referred-user activity bonuses.
+  - 2026-05-24: Added `otc_points_ledger`, deterministic point-event
+    idempotency, profile point summaries, referral signup points, and 10%
+    upstream referral activity bonuses.

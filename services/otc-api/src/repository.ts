@@ -3,11 +3,15 @@ import type { OtcQuote, OtcTrade, TradeEvent } from '@kaspacom/pearl-sdk';
 import type { PgQueryClient, PgTransactionalClient } from './postgres.js';
 import type {
   OtcReferralAttribution,
+  OtcOrder,
+  OtcPointEvent,
   OtcSideEffect,
   OtcUser,
   OtcUserProfile,
   OtcUserWallet,
   OtcUserWalletChallenge,
+  OrderBookPage,
+  OrderBookQuery,
   ReferralCodeLookup,
 } from './types.js';
 
@@ -72,6 +76,14 @@ export interface OtcRepository {
   saveUser(input: SaveUserInput): Promise<OtcUser>;
   updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile>;
   findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined>;
+  countUsers(): Promise<number>;
+  saveOrder(order: OtcOrder): Promise<OtcOrder>;
+  listOrders(query?: OrderBookQuery): Promise<OrderBookPage>;
+  listOpenOrdersForStats(): Promise<OtcOrder[]>;
+  listOrdersByUser(userId: string): Promise<OtcOrder[]>;
+  savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }>;
+  listPointEvents(userId: string): Promise<OtcPointEvent[]>;
+  listTradesForUser(user: OtcUser): Promise<OtcTrade[]>;
 }
 
 export class ReferralCodeCollisionError extends Error {
@@ -116,6 +128,8 @@ export class InMemoryOtcRepository implements OtcRepository {
   private readonly users = new Map<string, OtcUser>();
   private readonly userByWallet = new Map<string, string>();
   private readonly referralByCode = new Map<string, ReferralCodeLookup>();
+  private readonly orders = new Map<string, OtcOrder>();
+  private readonly pointEvents = new Map<string, OtcPointEvent>();
 
   async saveQuote(quote: OtcQuote, clientRequestId: string, requestHash?: string): Promise<void> {
     this.quotes.set(quote.quoteId, quote);
@@ -328,6 +342,65 @@ export class InMemoryOtcRepository implements OtcRepository {
   async findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined> {
     return this.referralByCode.get(referralCode);
   }
+
+  async countUsers(): Promise<number> {
+    return this.users.size;
+  }
+
+  async saveOrder(order: OtcOrder): Promise<OtcOrder> {
+    this.orders.set(order.orderId, order);
+    return order;
+  }
+
+  async listOrders(query: OrderBookQuery = {}): Promise<OrderBookPage> {
+    const limit = normalizeLimit(query.limit);
+    const offset = parseCursor(query.cursor);
+    const filtered = Array.from(this.orders.values()).filter((order) => orderMatchesQuery(order, query));
+    filtered.sort((left, right) => compareOrders(left, right, query.sort));
+    const page = filtered.slice(offset, offset + limit);
+    return {
+      items: page,
+      total: filtered.length,
+      limit,
+      ...(offset + limit < filtered.length ? { nextCursor: String(offset + limit) } : {}),
+    };
+  }
+
+  async listOpenOrdersForStats(): Promise<OtcOrder[]> {
+    return Array.from(this.orders.values()).filter((order) => order.status === 'open');
+  }
+
+  async listOrdersByUser(userId: string): Promise<OtcOrder[]> {
+    return Array.from(this.orders.values())
+      .filter((order) => order.makerUserId === userId)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  async savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }> {
+    const existing = this.pointEvents.get(event.pointEventId);
+    if (existing) return { event: existing, created: false };
+    this.pointEvents.set(event.pointEventId, event);
+    return { event, created: true };
+  }
+
+  async listPointEvents(userId: string): Promise<OtcPointEvent[]> {
+    return Array.from(this.pointEvents.values())
+      .filter((event) => event.userId === userId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async listTradesForUser(user: OtcUser): Promise<OtcTrade[]> {
+    const address = user.wallet.address.toLowerCase();
+    return Array.from(this.trades.values())
+      .filter(
+        (trade) =>
+          trade.buyerUsdcAddress.toLowerCase() === address ||
+          trade.sellerUsdcReceiveAddress.toLowerCase() === address ||
+          trade.buyerPearlAddress.toLowerCase() === address ||
+          trade.sellerPearlRefundAddress.toLowerCase() === address,
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
 }
 
 type QuoteRow = Record<string, unknown> & {
@@ -413,6 +486,35 @@ type ReferralCodeRow = Record<string, unknown> & {
   referral_code: string;
   owner_user_id: string;
   status: 'active' | 'disabled';
+  created_at: Date | string;
+}
+
+type OrderRow = Record<string, unknown> & {
+  order_id: string;
+  maker_user_id: string;
+  side: OtcOrder['side'];
+  funding_asset: OtcOrder['fundingAsset'];
+  amount_prl: string | number;
+  remaining_prl: string | number;
+  price_usdc_per_prl: string | number;
+  min_fill_prl: string | number | null;
+  status: OtcOrder['status'];
+  expires_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  total_count?: string | number;
+}
+
+type PointEventRow = Record<string, unknown> & {
+  point_event_id: string;
+  user_id: string;
+  source: OtcPointEvent['source'];
+  points: string | number;
+  related_user_id: string | null;
+  trade_id: string | null;
+  order_id: string | null;
+  referral_code: string | null;
+  metadata: Record<string, unknown>;
   created_at: Date | string;
 }
 
@@ -842,6 +944,163 @@ export class PgOtcRepository implements OtcRepository {
     );
     return result.rows[0] ? rowToReferralCode(result.rows[0]) : undefined;
   }
+
+  async countUsers(): Promise<number> {
+    const result = await this.client.query<{ count: string | number }>('SELECT count(*) AS count FROM otc_users WHERE status = $1', [
+      'active',
+    ]);
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async saveOrder(order: OtcOrder): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `INSERT INTO otc_orders (
+         order_id, maker_user_id, side, funding_asset, amount_prl, remaining_prl,
+         price_usdc_per_prl, min_fill_prl, status, expires_at, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (order_id) DO UPDATE
+          SET remaining_prl = EXCLUDED.remaining_prl,
+              status = EXCLUDED.status,
+              updated_at = EXCLUDED.updated_at
+       RETURNING order_id, maker_user_id, side, funding_asset, amount_prl,
+                 remaining_prl, price_usdc_per_prl, min_fill_prl, status,
+                 expires_at, created_at, updated_at`,
+      [
+        order.orderId,
+        order.makerUserId,
+        order.side,
+        order.fundingAsset,
+        order.amountPrl,
+        order.remainingPrl,
+        order.priceUsdcPerPrl,
+        order.minFillPrl ?? null,
+        order.status,
+        order.expiresAt ?? null,
+        order.createdAt,
+        order.updatedAt,
+      ],
+    );
+    return rowToOrder(result.rows[0]);
+  }
+
+  async listOrders(query: OrderBookQuery = {}): Promise<OrderBookPage> {
+    const limit = normalizeLimit(query.limit);
+    const offset = parseCursor(query.cursor);
+    const where: string[] = [];
+    const params: unknown[] = [];
+    addOrderFilter(where, params, 'side', query.side);
+    addOrderFilter(where, params, 'status', query.status);
+    addOrderFilter(where, params, 'maker_user_id', query.makerUserId);
+    addOrderRangeFilter(where, params, 'remaining_prl', '>=', query.minPrl);
+    addOrderRangeFilter(where, params, 'remaining_prl', '<=', query.maxPrl);
+    addOrderRangeFilter(where, params, 'price_usdc_per_prl', '>=', query.minPrice);
+    addOrderRangeFilter(where, params, 'price_usdc_per_prl', '<=', query.maxPrice);
+    const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+    const orderSql = getOrderBookSortSql(query.sort, query.side);
+    const result = await this.client.query<OrderRow>(
+      `SELECT order_id, maker_user_id, side, funding_asset, amount_prl,
+              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
+              expires_at, created_at, updated_at,
+              count(*) OVER() AS total_count
+         FROM otc_orders
+         ${whereSql}
+        ORDER BY ${orderSql}
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+    return {
+      items: result.rows.map(rowToOrder),
+      total: Number(result.rows[0]?.total_count ?? 0),
+      limit,
+      ...(offset + limit < Number(result.rows[0]?.total_count ?? 0) ? { nextCursor: String(offset + limit) } : {}),
+    };
+  }
+
+  async listOpenOrdersForStats(): Promise<OtcOrder[]> {
+    const result = await this.client.query<OrderRow>(
+      `SELECT order_id, maker_user_id, side, funding_asset, amount_prl,
+              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
+              expires_at, created_at, updated_at
+         FROM otc_orders
+        WHERE status = $1`,
+      ['open'],
+    );
+    return result.rows.map(rowToOrder);
+  }
+
+  async listOrdersByUser(userId: string): Promise<OtcOrder[]> {
+    const result = await this.client.query<OrderRow>(
+      `SELECT order_id, maker_user_id, side, funding_asset, amount_prl,
+              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
+              expires_at, created_at, updated_at
+         FROM otc_orders
+        WHERE maker_user_id = $1
+        ORDER BY updated_at DESC, order_id ASC`,
+      [userId],
+    );
+    return result.rows.map(rowToOrder);
+  }
+
+  async savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }> {
+    const result = await this.client.query<PointEventRow>(
+      `INSERT INTO otc_points_ledger (
+         point_event_id, user_id, source, points, related_user_id,
+         trade_id, order_id, referral_code, metadata, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+       ON CONFLICT (point_event_id) DO NOTHING
+       RETURNING point_event_id, user_id, source, points, related_user_id,
+                 trade_id, order_id, referral_code, metadata, created_at`,
+      [
+        event.pointEventId,
+        event.userId,
+        event.source,
+        event.points,
+        event.relatedUserId ?? null,
+        event.tradeId ?? null,
+        event.orderId ?? null,
+        event.referralCode ?? null,
+        JSON.stringify(event.metadata),
+        event.createdAt,
+      ],
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      return { event: rowToPointEvent(result.rows[0]), created: true };
+    }
+    const existing = await this.client.query<PointEventRow>(
+      `SELECT point_event_id, user_id, source, points, related_user_id,
+              trade_id, order_id, referral_code, metadata, created_at
+         FROM otc_points_ledger
+        WHERE point_event_id = $1`,
+      [event.pointEventId],
+    );
+    return { event: rowToPointEvent(existing.rows[0]), created: false };
+  }
+
+  async listPointEvents(userId: string): Promise<OtcPointEvent[]> {
+    const result = await this.client.query<PointEventRow>(
+      `SELECT point_event_id, user_id, source, points, related_user_id,
+              trade_id, order_id, referral_code, metadata, created_at
+         FROM otc_points_ledger
+        WHERE user_id = $1
+        ORDER BY created_at DESC, point_event_id ASC`,
+      [userId],
+    );
+    return result.rows.map(rowToPointEvent);
+  }
+
+  async listTradesForUser(user: OtcUser): Promise<OtcTrade[]> {
+    const result = await this.client.query<TradeRow>(
+      `SELECT trade
+         FROM otc_trades
+        WHERE lower(trade->>'buyerUsdcAddress') = lower($1)
+           OR lower(trade->>'sellerUsdcReceiveAddress') = lower($1)
+           OR lower(trade->>'buyerPearlAddress') = lower($1)
+           OR lower(trade->>'sellerPearlRefundAddress') = lower($1)
+        ORDER BY updated_at DESC, trade_id ASC`,
+      [user.wallet.address],
+    );
+    return result.rows.map((row) => row.trade);
+  }
 }
 
 const USER_SELECT_FIELDS = `
@@ -975,6 +1234,38 @@ function rowToReferralCode(row: ReferralCodeRow): ReferralCodeLookup {
   };
 }
 
+function rowToOrder(row: OrderRow): OtcOrder {
+  return {
+    orderId: row.order_id,
+    makerUserId: row.maker_user_id,
+    side: row.side,
+    fundingAsset: row.funding_asset,
+    amountPrl: String(row.amount_prl),
+    remainingPrl: String(row.remaining_prl),
+    priceUsdcPerPrl: String(row.price_usdc_per_prl),
+    ...(row.min_fill_prl == null ? {} : { minFillPrl: String(row.min_fill_prl) }),
+    status: row.status,
+    ...(row.expires_at ? { expiresAt: formatPgDate(row.expires_at) } : {}),
+    createdAt: formatPgDate(row.created_at),
+    updatedAt: formatPgDate(row.updated_at),
+  };
+}
+
+function rowToPointEvent(row: PointEventRow): OtcPointEvent {
+  return {
+    pointEventId: row.point_event_id,
+    userId: row.user_id,
+    source: row.source,
+    points: Number(row.points),
+    ...(row.related_user_id ? { relatedUserId: row.related_user_id } : {}),
+    ...(row.trade_id ? { tradeId: row.trade_id } : {}),
+    ...(row.order_id ? { orderId: row.order_id } : {}),
+    ...(row.referral_code ? { referralCode: row.referral_code } : {}),
+    metadata: row.metadata ?? {},
+    createdAt: formatPgDate(row.created_at),
+  };
+}
+
 function rowToPearlEscrowAllocation(row: PearlEscrowAllocationRow): PearlEscrowAllocation {
   return {
     tradeId: row.trade_id,
@@ -999,6 +1290,55 @@ function formatWalletKey(walletType: OtcUserWallet['walletType'], network: strin
 
 function formatPgDate(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function normalizeLimit(limit: number | undefined): number {
+  return Math.max(1, Math.min(100, Math.floor(limit ?? 25)));
+}
+
+function parseCursor(cursor: string | undefined): number {
+  const parsed = Number(cursor ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function orderMatchesQuery(order: OtcOrder, query: OrderBookQuery): boolean {
+  if (query.side && order.side !== query.side) return false;
+  if (query.status && order.status !== query.status) return false;
+  if (query.makerUserId && order.makerUserId !== query.makerUserId) return false;
+  if (query.minPrl && Number(order.remainingPrl) < Number(query.minPrl)) return false;
+  if (query.maxPrl && Number(order.remainingPrl) > Number(query.maxPrl)) return false;
+  if (query.minPrice && Number(order.priceUsdcPerPrl) < Number(query.minPrice)) return false;
+  if (query.maxPrice && Number(order.priceUsdcPerPrl) > Number(query.maxPrice)) return false;
+  return true;
+}
+
+function compareOrders(left: OtcOrder, right: OtcOrder, sort: OrderBookQuery['sort'] = 'best_price'): number {
+  if (sort === 'newest') return right.createdAt.localeCompare(left.createdAt);
+  if (sort === 'largest') return Number(right.remainingPrl) - Number(left.remainingPrl);
+  if (left.side === 'buy_prl') {
+    return Number(right.priceUsdcPerPrl) - Number(left.priceUsdcPerPrl) || right.createdAt.localeCompare(left.createdAt);
+  }
+  return Number(left.priceUsdcPerPrl) - Number(right.priceUsdcPerPrl) || right.createdAt.localeCompare(left.createdAt);
+}
+
+function addOrderFilter(where: string[], params: unknown[], column: string, value: unknown): void {
+  if (value == null || value === '') return;
+  params.push(value);
+  where.push(`${column} = $${params.length}`);
+}
+
+function addOrderRangeFilter(where: string[], params: unknown[], column: string, operator: string, value: unknown): void {
+  if (value == null || value === '') return;
+  params.push(value);
+  where.push(`${column} ${operator} $${params.length}`);
+}
+
+function getOrderBookSortSql(sort: OrderBookQuery['sort'], side?: OtcOrder['side']): string {
+  if (sort === 'newest') return 'created_at DESC, order_id ASC';
+  if (sort === 'largest') return 'remaining_prl DESC, created_at DESC, order_id ASC';
+  return side === 'buy_prl'
+    ? 'price_usdc_per_prl DESC, remaining_prl DESC, created_at DESC, order_id ASC'
+    : 'price_usdc_per_prl ASC, remaining_prl DESC, created_at DESC, order_id ASC';
 }
 
 function isPgUniqueViolation(error: unknown, constraint: string): boolean {

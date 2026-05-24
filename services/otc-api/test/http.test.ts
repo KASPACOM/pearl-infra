@@ -166,6 +166,82 @@ test('registers wallet-owned users with referral links and wallet-proved profile
     const profile = (await profileResponse.json()) as { email: string; notificationEmailEnabled: boolean };
     assert.equal(profile.email, 'trader@example.com');
     assert.equal(profile.notificationEmailEnabled, true);
+
+    const orderChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const orderChallenge = (await orderChallengeResponse.json()) as { challengeId: string; message: string };
+    const orderResponse = await postJson(baseUrl, '/otc/orders', {
+      userId: referred.userId,
+      challengeId: orderChallenge.challengeId,
+      signature: await referredWallet.signMessage(orderChallenge.message),
+      side: 'buy_prl',
+      amountPrl: '250.00000000',
+      priceUsdcPerPrl: '0.150000',
+      minFillPrl: '25.00000000',
+    });
+    assert.equal(orderResponse.status, 201);
+    const order = (await orderResponse.json()) as {
+      orderId: string;
+      fundingAsset: string;
+      remainingPrl: string;
+      priceUsdcPerPrl: string;
+    };
+    assert.equal(order.fundingAsset, 'USDC');
+    assert.equal(order.remainingPrl, '250.00000000');
+    assert.equal(order.priceUsdcPerPrl, '0.150000');
+
+    const ordersResponse = await fetch(`${baseUrl}/otc/orders?side=buy_prl&status=open&sort=best_price`);
+    assert.equal(ordersResponse.status, 200);
+    const orders = (await ordersResponse.json()) as { total: number; items: Array<{ orderId: string }> };
+    assert.equal(orders.total, 1);
+    assert.equal(orders.items[0].orderId, order.orderId);
+
+    const statsResponse = await fetch(`${baseUrl}/otc/market/stats`);
+    assert.equal(statsResponse.status, 200);
+    const stats = (await statsResponse.json()) as { openOrders: number; activeOrderVolumePrl: string; verifiedUsers: number };
+    assert.equal(stats.openOrders, 1);
+    assert.equal(stats.activeOrderVolumePrl, '250.00000000');
+    assert.equal(stats.verifiedUsers, 2);
+
+    const dashboardChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const dashboardChallenge = (await dashboardChallengeResponse.json()) as { challengeId: string; message: string };
+    const dashboardResponse = await postJson(baseUrl, `/otc/users/${referred.userId}/dashboard`, {
+      challengeId: dashboardChallenge.challengeId,
+      signature: await referredWallet.signMessage(dashboardChallenge.message),
+    });
+    assert.equal(dashboardResponse.status, 200);
+    const dashboard = (await dashboardResponse.json()) as {
+      orders: Array<{ orderId: string }>;
+      points: { totalPoints: number; bySource: Record<string, number> };
+    };
+    assert.equal(dashboard.orders[0].orderId, order.orderId);
+    assert.equal(dashboard.points.totalPoints, 35);
+    assert.equal(dashboard.points.bySource.signup, 25);
+    assert.equal(dashboard.points.bySource.order_created, 10);
+
+    const referrerDashboardChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referrerWallet.address,
+    });
+    const referrerDashboardChallenge = (await referrerDashboardChallengeResponse.json()) as { challengeId: string; message: string };
+    const referrerDashboardResponse = await postJson(baseUrl, `/otc/users/${referrer.userId}/dashboard`, {
+      challengeId: referrerDashboardChallenge.challengeId,
+      signature: await referrerWallet.signMessage(referrerDashboardChallenge.message),
+    });
+    assert.equal(referrerDashboardResponse.status, 200);
+    const referrerDashboard = (await referrerDashboardResponse.json()) as {
+      points: { totalPoints: number; bySource: Record<string, number> };
+    };
+    assert.equal(referrerDashboard.points.bySource.referral_signup, 50);
+    assert.equal(referrerDashboard.points.bySource.referral_activity_bonus, 3);
   });
 });
 
