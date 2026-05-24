@@ -69,3 +69,23 @@ explicitly approved low-cap mainnet run with real txids, public proof, and clean
 reconciliation. Do not change it to Pearl mainnet or Base mainnet until the live
 run evidence, Base ownership acceptance, and explicit mainnet approval items
 are closed.
+
+## 2026-05-24 Deployment State
+
+Dev auto-deploy is working from `dev`. Merge commit
+`b5b5dbbf476bb3defcc521e263fe2919f960a4a2` completed the Deploy Oyster
+workflow, updated Argo image tags, rolled out `oyster-otc-api` and
+`oyster-otc-web` in `dev-a-eu1-cluster`, and passed live HTTPS smoke checks for
+health, quote, accept, Pearl watch registration, public proof, admin search, and
+support-alert delivery.
+
+Production is not automatic from `dev`; it only runs from `main`. As of this
+check, production is blocked by:
+
+- `main` still at `f98b3a2`, 119 commits behind `dev`;
+- empty `kaspacom/oyster-otc-api-prod` and `kaspacom/oyster-otc-web-prod` ECR
+  repos;
+- missing `prod/oyster-otc-api` secret in AWS Secrets Manager `us-east-1`;
+- missing `oyster-otc-api` and `oyster-otc-web` Argo Application CRs in the prod
+  cluster;
+- unresolved `oyster.kaspa.com` and `api-oyster.kaspa.com` DNS records.

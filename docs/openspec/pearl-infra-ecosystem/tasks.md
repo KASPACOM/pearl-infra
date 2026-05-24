@@ -803,6 +803,11 @@ Loophole tracker after PR #74:
     deployment yet.
 - [ ] 9.10.8.e Execute the main/prod deploy path and confirm prod API and web
   images/pods.
+  - 2026-05-24: not ready to execute safely. `main` is still at
+    `f98b3a2`, prod ECR repos exist but contain no images, `prod/oyster-otc-api`
+    is absent from Secrets Manager in `us-east-1`, prod Argo Application CRs
+    are not registered in the prod cluster, and `oyster.kaspa.com` /
+    `api-oyster.kaspa.com` do not resolve.
 - [x] 9.10.9.a Configure dev DNS/Cloudflare records and HTTPS for
   `dev-oyster.kaspa.com` and `dev-api-oyster.kaspa.com`.
 - [ ] 9.10.9.b Configure prod DNS/Cloudflare records for `oyster.kaspa.com`
@@ -810,9 +815,18 @@ Loophole tracker after PR #74:
 - [ ] 9.10.10 Run live `/healthz`, quote, support-alert, and admin-auth smoke
   checks against dev, then main.
   - [x] 9.10.10.a Dev `/healthz` smoke passed over HTTPS.
-  - [x] 9.10.10.b Dev quote creation smoke passed over HTTPS.
-  - [x] 9.10.10.c Dev quote accept smoke passed and registered a Pearl watch.
-  - [x] 9.10.10.d Dev admin-auth smoke passed with the generated admin token.
+    - 2026-05-24: `dev-api-oyster.kaspa.com/healthz` and
+      `dev-oyster.kaspa.com/healthz` returned 200 after auto-deploy of
+      `b5b5dbb`.
+  - [x] 9.10.10.b Dev quote/accept/watch/admin/support smoke passed.
+    - 2026-05-24: created quote `quote_75ffe7359dc8836d6676a3e4` and trade
+      `trade_a8c75adb21131a3734d8e93a`; public trade/proof routes returned
+      200; Pearl indexer watch
+      `otc:trade_a8c75adb21131a3734d8e93a:pearl-escrow` returned 200 with
+      bounded release/refund metadata; admin search returned the trade; support
+      alert delivery was confirmed.
+  - [ ] 9.10.10.c Main/prod smoke checks after prod secrets, Argo Application
+    CRs, prod image build, and DNS are in place.
   - [x] 9.10.10.e Dev support-alert smoke passed with Telegram delivery
     confirmed in admin diagnostics.
   - [ ] 9.10.10.f Switch dev API secret to `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`
@@ -1054,6 +1068,12 @@ blockers visible for planning. See
     Pearl mainnet and Base/Igra txids, public proof, and clean reconciliation.
 - [ ] 11.11 Finish production Oyster release: prod secrets, prod image path,
   prod DNS, and prod `/healthz`, quote, support-alert, admin-auth smoke checks.
+  - 2026-05-24: dev release path is proven on commit `b5b5dbb` via Deploy
+    Oyster, Argo image update, running dev pods, HTTPS health checks, persisted
+    quote/accept, watch registration, admin search, and support-alert smoke.
+    Production remains blocked by missing `prod/oyster-otc-api` secret,
+    unregistered prod Argo Application CRs, empty prod ECR images, unresolved
+    prod DNS, and `main` being 119 commits behind `dev`.
 - [ ] 11.12 Replace shared bearer-token admin auth with a real operator
   identity/session layer before broader support rollout.
 - [ ] 11.13 Produce the `wPRL/USDC` pool plan only after one low-cap bridge
