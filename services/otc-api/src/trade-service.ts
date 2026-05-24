@@ -444,7 +444,7 @@ export class OtcTradeService {
       orderId: saved.orderId,
       metadata: { side: saved.side, funding_asset: saved.fundingAsset },
     });
-    await this.enqueueNewOrderNotifications(saved);
+    await this.tryEnqueueNotifications('new_good_order', () => this.enqueueNewOrderNotifications(saved));
     return saved;
   }
 
@@ -652,6 +652,18 @@ export class OtcTradeService {
       },
       idempotencyParts: [trade.tradeId, trade.state, trade.updatedAt],
     });
+  }
+
+  private async tryEnqueueNotifications(kind: OtcNotificationType, enqueue: () => Promise<number>): Promise<void> {
+    try {
+      await enqueue();
+    } catch (error) {
+      console.warn(JSON.stringify({
+        msg: 'otc notification enqueue failed',
+        notification_kind: kind,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
   }
 
   private async enqueueTradePartyNotifications(input: {
@@ -916,7 +928,7 @@ export class OtcTradeService {
       createdAt,
     });
     if (event.created && (source === 'referral_signup' || source === 'referral_activity_bonus')) {
-      await this.enqueueUserNotifications({
+      await this.tryEnqueueNotifications('referral_event', () => this.enqueueUserNotifications({
         userIds: [user.userId],
         notificationType: 'referral_event',
         payload: {
@@ -927,13 +939,14 @@ export class OtcTradeService {
           referral_code: options.referralCode ?? user.referredBy?.referralCode ?? '',
         },
         idempotencyParts: [event.event.pointEventId],
-      });
+      }));
     }
     if (!event.created || options.applyReferralBonus === false || !user.referredBy) {
       return;
     }
+    const referredBy = user.referredBy;
     const bonusPoints = Math.max(1, Math.floor((points * REFERRAL_ACTIVITY_BONUS_BPS) / 10_000));
-    const referrer = await this.repository.findUserById(user.referredBy.referrerUserId);
+    const referrer = await this.repository.findUserById(referredBy.referrerUserId);
     if (!referrer) return;
     const bonusEvent = await this.repository.savePointEvent({
       pointEventId: createStableId('points', [
@@ -948,12 +961,12 @@ export class OtcTradeService {
       relatedUserId: user.userId,
       ...(options.tradeId ? { tradeId: options.tradeId } : {}),
       ...(options.orderId ? { orderId: options.orderId } : {}),
-      referralCode: user.referredBy.referralCode,
+      referralCode: referredBy.referralCode,
       metadata: { referred_point_event_id: event.event.pointEventId },
       createdAt,
     });
     if (bonusEvent.created) {
-      await this.enqueueUserNotifications({
+      await this.tryEnqueueNotifications('referral_event', () => this.enqueueUserNotifications({
         userIds: [referrer.userId],
         notificationType: 'referral_event',
         payload: {
@@ -961,10 +974,10 @@ export class OtcTradeService {
           event: 'referral_activity_bonus',
           points: String(bonusPoints),
           related_user_id: user.userId,
-          referral_code: user.referredBy.referralCode,
+          referral_code: referredBy.referralCode,
         },
         idempotencyParts: [bonusEvent.event.pointEventId],
-      });
+      }));
     }
   }
 
@@ -1122,9 +1135,9 @@ export class OtcTradeService {
         : {}),
     });
     await this.ensurePearlEscrowWatch(trade);
-    await this.enqueueTradeStatusNotifications(trade);
+    await this.tryEnqueueNotifications('trade_status', () => this.enqueueTradeStatusNotifications(trade));
     if (linkedOrder && orderLink) {
-      await this.enqueueOrderMatchedNotifications(trade, linkedOrder, orderLink);
+      await this.tryEnqueueNotifications('order_matched', () => this.enqueueOrderMatchedNotifications(trade, linkedOrder, orderLink));
     }
 
     return trade;
@@ -1194,7 +1207,7 @@ export class OtcTradeService {
       sourceEventId,
       observedAt: updatedAt,
     });
-    await this.enqueueTradeStatusNotifications(updated);
+    await this.tryEnqueueNotifications('trade_status', () => this.enqueueTradeStatusNotifications(updated));
     if (toState === 'released') {
       await this.awardTradeCompletionPoints(updated);
     }

@@ -467,7 +467,7 @@ export class InMemoryOtcRepository implements OtcRepository {
   async listNotificationDeliveries(query: { status?: OtcNotificationDeliveryStatus; limit?: number } = {}): Promise<OtcNotificationDelivery[]> {
     return Array.from(this.notificationDeliveries.values())
       .filter((delivery) => !query.status || delivery.status === query.status)
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .sort((left, right) => left.nextAttemptAt.localeCompare(right.nextAttemptAt) || left.createdAt.localeCompare(right.createdAt))
       .slice(0, query.limit ?? 100);
   }
 
@@ -481,7 +481,7 @@ export class InMemoryOtcRepository implements OtcRepository {
       ...delivery,
       status: input.status,
       attempts: input.status === 'failed' ? delivery.attempts + 1 : delivery.attempts,
-      ...(input.error ? { lastError: input.error } : {}),
+      ...(input.status === 'sent' ? { lastError: undefined } : input.error ? { lastError: input.error } : {}),
       ...(input.nextAttemptAt ? { nextAttemptAt: input.nextAttemptAt } : {}),
       ...(input.status === 'sent' ? { sentAt: input.updatedAt } : {}),
       updatedAt: input.updatedAt,
@@ -1416,7 +1416,7 @@ export class PgOtcRepository implements OtcRepository {
               next_attempt_at, sent_at, created_at, updated_at
          FROM otc_notification_deliveries
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY created_at ASC
+        ORDER BY next_attempt_at ASC, created_at ASC
         LIMIT $${values.length}`,
       values,
     );
@@ -1431,7 +1431,10 @@ export class PgOtcRepository implements OtcRepository {
       `UPDATE otc_notification_deliveries
           SET status = $2,
               attempts = attempts + CASE WHEN $2 = 'failed' THEN 1 ELSE 0 END,
-              last_error = COALESCE($3, last_error),
+              last_error = CASE
+                WHEN $2 = 'sent' THEN NULL
+                ELSE COALESCE($3, last_error)
+              END,
               next_attempt_at = COALESCE($4, next_attempt_at),
               sent_at = CASE WHEN $2 = 'sent' THEN $5 ELSE sent_at END,
               updated_at = $5

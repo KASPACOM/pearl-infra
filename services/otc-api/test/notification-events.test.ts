@@ -5,7 +5,7 @@ import type { OtcTrade } from '@kaspacom/pearl-sdk';
 
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import { OtcTradeService } from '../src/trade-service.ts';
-import type { OtcApiConfig, OtcUser } from '../src/types.ts';
+import type { OtcApiConfig, OtcNotificationDelivery, OtcUser } from '../src/types.ts';
 
 const now = '2026-05-24T12:00:00.000Z';
 const config: OtcApiConfig = {
@@ -26,6 +26,12 @@ const config: OtcApiConfig = {
   supportAlertRateLimitMax: 5,
   notificationDeadlineWarningWindowMs: 15 * 60 * 1000,
 };
+
+class FailingNotificationRepository extends InMemoryOtcRepository {
+  async saveNotificationDelivery(_delivery: OtcNotificationDelivery): Promise<{ delivery: OtcNotificationDelivery; created: boolean }> {
+    throw new Error('notification db unavailable');
+  }
+}
 
 test('queues trade-status and deadline-warning emails for opted-in trade parties', async () => {
   const repo = new InMemoryOtcRepository();
@@ -63,6 +69,50 @@ test('queues trade-status and deadline-warning emails for opted-in trade parties
     deliveries.map((delivery) => delivery.recipient).sort(),
     ['buyer@example.test', 'buyer@example.test', 'seller@example.test', 'seller@example.test'],
   );
+});
+
+test('does not fail trade transitions when notification enqueue fails after core write', async () => {
+  const repo = new FailingNotificationRepository();
+  const service = new OtcTradeService(repo, config, undefined, () => new Date(now));
+  const buyer = await saveVerifiedUser(repo, {
+    userId: 'user_buyer_enqueue_failure',
+    referralCode: 'BUYER2',
+    address: trade.buyerUsdcAddress,
+    email: 'buyer-failure@example.test',
+  });
+  const seller = await saveVerifiedUser(repo, {
+    userId: 'user_seller_enqueue_failure',
+    referralCode: 'SELLER2',
+    address: trade.sellerUsdcReceiveAddress,
+    email: 'seller-failure@example.test',
+  });
+  await repo.saveNotificationPreferences(buyer.userId, [
+    { notificationType: 'trade_status', channel: 'email', enabled: true },
+  ], now);
+  await repo.saveNotificationPreferences(seller.userId, [
+    { notificationType: 'trade_status', channel: 'email', enabled: true },
+  ], now);
+  await repo.saveTrade(trade, 'trade-client-failing-notification', 'sha256:trade-failing-notification');
+
+  const originalWarn = console.warn;
+  const warnings: string[] = [];
+  console.warn = (message?: unknown) => {
+    warnings.push(String(message));
+  };
+  let updated: OtcTrade | undefined;
+  try {
+    updated = await service.transitionTrade(trade.tradeId, 'pearl_escrow_seen', 'funding-seen-failing-notification');
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.ok(updated);
+  assert.equal(updated.state, 'pearl_escrow_seen');
+  assert.equal(warnings.some((warning) => warning.includes('otc notification enqueue failed')), true);
+  const saved = await repo.findTradeById(trade.tradeId);
+  assert.equal(saved?.state, 'pearl_escrow_seen');
+  const events = await repo.listEvents(trade.tradeId);
+  assert.equal(events.some((event) => event.sourceEventId === 'funding-seen-failing-notification'), true);
 });
 
 async function saveVerifiedUser(

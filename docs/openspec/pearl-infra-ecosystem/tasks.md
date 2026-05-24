@@ -1087,6 +1087,11 @@ through one-time wallet challenges before creating user/profile records.
     processing, notification templates, notification worker runtime, taker-user
     attribution on order quote links, and automatic queueing for trade-status,
     deadline-warning, order-matched, new-order, and referral point events.
+  - 2026-05-24 audit hardening: delivery processing now re-checks the current
+    verified recipient and preference before sending, redacts verification and
+    unsubscribe tokens from provider webhook payloads, processes due retries
+    before future-scheduled rows, and keeps order/trade/points writes successful
+    if non-critical notification enqueueing fails.
   - Missing: explicit user price-alert rule storage/evaluation, provider secret
     deployment, and production smoke evidence for the notification worker.
 - [ ] 12.8 Upgrade Telegram from operator alerts to user self-service:

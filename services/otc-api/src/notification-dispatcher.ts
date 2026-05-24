@@ -49,7 +49,7 @@ export class WebhookEmailNotificationProvider implements EmailNotificationProvid
         notificationType: input.delivery.notificationType,
         deliveryId: input.delivery.deliveryId,
         idempotencyKey: input.delivery.idempotencyKey,
-        payload: input.delivery.payload,
+        payload: redactProviderPayload(input.delivery.payload),
       }),
     });
     if (!response.ok) {
@@ -108,6 +108,16 @@ export class NotificationDeliveryProcessor {
         continue;
       }
       result.processedDeliveries += 1;
+      const allowed = await this.deliveryStillAllowed(delivery, now);
+      if (!allowed.allowed) {
+        result.skippedDeliveries += 1;
+        await this.repository.updateNotificationDelivery(delivery.deliveryId, {
+          status: 'cancelled',
+          error: allowed.reason,
+          updatedAt: now.toISOString(),
+        });
+        continue;
+      }
       const provider = delivery.channel === 'email' ? this.options.emailProvider : undefined;
       if (!provider) {
         result.failedDeliveries += 1;
@@ -151,6 +161,46 @@ export class NotificationDeliveryProcessor {
       }
     }
     return result;
+  }
+
+  private async deliveryStillAllowed(
+    delivery: OtcNotificationDelivery,
+    now: Date,
+  ): Promise<{ allowed: true } | { allowed: false; reason: string }> {
+    if (!delivery.userId) {
+      return delivery.notificationType === 'email_verification'
+        ? { allowed: true }
+        : { allowed: false, reason: 'user-bound notification delivery is missing user id' };
+    }
+    const user = await this.repository.findUserById(delivery.userId);
+    if (!user) {
+      return { allowed: false, reason: 'notification user no longer exists' };
+    }
+    if (delivery.channel === 'email') {
+      if (user.profile.email !== delivery.recipient) {
+        return { allowed: false, reason: 'notification email recipient is no longer current' };
+      }
+      if (delivery.notificationType === 'email_verification') {
+        return { allowed: true };
+      }
+      if (!user.profile.emailVerifiedAt) {
+        return { allowed: false, reason: 'notification email is no longer verified' };
+      }
+    }
+    const preferences = await this.repository.listNotificationPreferences(user.userId);
+    const preference = preferences.find((candidate) =>
+      candidate.notificationType === delivery.notificationType && candidate.channel === delivery.channel
+    );
+    if (!preference?.enabled) {
+      return { allowed: false, reason: 'notification preference is disabled' };
+    }
+    if (delivery.notificationType === 'deadline_warning') {
+      const deadlineAt = stringPayload(delivery.payload, 'deadline_at');
+      if (deadlineAt && new Date(deadlineAt).getTime() <= now.getTime()) {
+        return { allowed: false, reason: 'notification deadline has already passed' };
+      }
+    }
+    return { allowed: true };
   }
 }
 
@@ -232,6 +282,13 @@ function nextRetryAt(delivery: OtcNotificationDelivery, now: Date, retryBaseMs: 
 function stringPayload(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
   return value === undefined || value === null ? '' : String(value);
+}
+
+function redactProviderPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const redacted = { ...payload };
+  delete redacted.verification_token;
+  delete redacted.unsubscribe_token;
+  return redacted;
 }
 
 function unsubscribeLine(payload: Record<string, unknown>): string {
