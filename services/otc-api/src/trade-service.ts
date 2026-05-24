@@ -1520,9 +1520,10 @@ export class OtcTradeService {
     };
   }
 
-  async listAdminUsers(query: AdminUserQuery = {}): Promise<AdminUserListPage> {
+  async listAdminUsers(query: AdminUserQuery = {}, options: AdminTradeDebugOptions = {}): Promise<AdminUserListPage> {
     const page = await this.repository.listUsers(query);
-    const items = await Promise.all(page.items.map((user) => this.createAdminUserSummary(user)));
+    const redaction = options.redaction ?? 'admin';
+    const items = await Promise.all(page.items.map((user) => this.createAdminUserSummary(user, redaction)));
     return {
       items,
       ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
@@ -1554,26 +1555,31 @@ export class OtcTradeService {
     };
   }
 
-  private async createAdminUserSummary(user: OtcUser): Promise<AdminUserSummary> {
+  private async createAdminUserSummary(
+    user: OtcUser,
+    redaction: AdminTradeDebugOptions['redaction'],
+  ): Promise<AdminUserSummary> {
     const [orders, trades, points] = await Promise.all([
       this.repository.listOrdersByUser(user.userId),
       this.repository.listTradesForUser(user),
       this.getUserPoints(user.userId),
     ]);
+    const visibleUser = redactUserForAdmin(user, redaction);
     return {
-      userId: user.userId,
-      referralCode: user.referralCode,
-      ...(user.profile.email ? { email: user.profile.email } : {}),
+      userId: visibleUser.userId,
+      referralCode: visibleUser.referralCode,
+      ...(visibleUser.profile.email ? { email: visibleUser.profile.email } : {}),
       emailVerified: Boolean(user.profile.emailVerifiedAt),
       notificationEmailEnabled: user.profile.notificationEmailEnabled,
-      ...(user.referredBy ? { referredBy: user.referredBy } : {}),
-      wallets: user.wallets,
+      ...(visibleUser.referredBy ? { referredBy: visibleUser.referredBy } : {}),
+      wallets: visibleUser.wallets,
       walletCount: user.wallets.length,
       orderCount: orders.length,
       tradeCount: trades.length,
       pointTotal: points.totalPoints,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      redaction: redaction ?? 'admin',
     };
   }
 
@@ -1939,6 +1945,45 @@ function redactSideEffectForAdmin(
     ...sideEffect,
     metadata,
   };
+}
+
+function redactUserForAdmin(user: OtcUser, redaction: AdminTradeDebugOptions['redaction']): OtcUser {
+  if (redaction !== 'support') {
+    return user;
+  }
+  return {
+    ...user,
+    profile: {
+      ...user.profile,
+      ...(user.profile.email ? { email: redactEmail(user.profile.email) } : {}),
+    },
+    wallets: user.wallets.map((wallet) => ({
+      ...wallet,
+      address: redactValue(wallet.address),
+      ...(wallet.publicKeyHex ? { publicKeyHex: redactValue(wallet.publicKeyHex) } : {}),
+    })),
+    wallet: {
+      ...user.wallet,
+      address: redactValue(user.wallet.address),
+      ...(user.wallet.publicKeyHex ? { publicKeyHex: redactValue(user.wallet.publicKeyHex) } : {}),
+    },
+    ...(user.referredBy
+      ? {
+          referredBy: {
+            ...user.referredBy,
+            ...(user.referredBy.sourceUrl ? { sourceUrl: redactValue(user.referredBy.sourceUrl) } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function redactEmail(value: string): string {
+  const [local, domain] = value.split('@');
+  if (!local || !domain) {
+    return redactValue(value);
+  }
+  return `[redacted]@${domain}`;
 }
 
 function redactValue(value: string): string {

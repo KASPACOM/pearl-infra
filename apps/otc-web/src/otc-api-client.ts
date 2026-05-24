@@ -205,6 +205,7 @@ export interface AdminUserSummary {
   pointTotal: number;
   createdAt: string;
   updatedAt: string;
+  redaction: AdminDebugRedaction;
 }
 
 export interface AdminUserListPage {
