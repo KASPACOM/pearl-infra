@@ -133,6 +133,28 @@ test('requires Pearl signer pubkeys when quote acceptance selects multisig escro
   );
 
   assert.equal(ready.canAccept, true);
+
+  const orderLinkedReady = buildAcceptQuotePageModel(
+    quote,
+    {
+      buyerPearlAddress: 'tprl1pbuyer01',
+      buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+      sellerPearlRefundAddress: 'tprl1pseller01',
+      sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+      pearlEscrowMode: 'multisig',
+      pearlReleaseSigningMode: 'manual_after_base_deposit',
+      buyerPearlPubkey: '11'.repeat(32),
+      sellerPearlPubkey: '22'.repeat(32),
+      sellerPearlPubkeyProof: '44'.repeat(64),
+      clientRequestId: 'accept-client-order-linked',
+    },
+    'seller',
+    NOW,
+    { makerRole: 'buyer' },
+  );
+
+  assert.equal(orderLinkedReady.canAccept, true);
+  assert.equal(orderLinkedReady.errors.buyerPearlPubkeyProof, undefined);
 });
 
 test('checkout model disables USDC deposit after deadline or verification mismatch and never exposes release actions', () => {

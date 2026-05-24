@@ -6,19 +6,30 @@ import { demoQuote, demoTrade, DEMO_NOW } from '../demo-data.js';
 import { buildAcceptQuotePageModel } from '../page-models.js';
 import { BrandLoader, Field } from '../components/Primitives.js';
 import { getBrowserPathname, getBrowserSearch, getQuoteIdFromPath, getQuoteRoleFromSearch } from '../routing.js';
+import { readOrderQuoteDraft } from '../user-session.js';
 
 export function AcceptQuotePage() {
   const quoteId = getQuoteIdFromPath(getBrowserPathname()) ?? demoQuote.quoteId;
   const routeQuoteId = getQuoteIdFromPath(getBrowserPathname());
+  const orderQuoteDraft = readOrderQuoteDraft(routeQuoteId);
+  const acceptPrefill = orderQuoteDraft?.acceptPrefill;
   const [quote, setQuote] = useState<OtcQuote | undefined>(() => (routeQuoteId ? undefined : demoQuote));
-  const [buyerPearlAddress, setBuyerPearlAddress] = useState(routeQuoteId ? '' : demoTrade.buyerPearlAddress);
-  const [buyerUsdcAddress, setBuyerUsdcAddress] = useState(routeQuoteId ? '' : demoTrade.buyerUsdcAddress);
-  const [sellerPearlRefundAddress, setSellerPearlRefundAddress] = useState(routeQuoteId ? '' : demoTrade.sellerPearlRefundAddress);
-  const [sellerUsdcReceiveAddress, setSellerUsdcReceiveAddress] = useState(routeQuoteId ? '' : demoTrade.sellerUsdcReceiveAddress);
-  const [pearlEscrowMode, setPearlEscrowMode] = useState<PearlEscrowMode>(getDefaultPearlEscrowMode);
-  const [pearlReleaseSigningMode, setPearlReleaseSigningMode] = useState<PearlReleaseSigningMode>('preauthorize_release');
-  const [buyerPearlPubkey, setBuyerPearlPubkey] = useState('');
-  const [sellerPearlPubkey, setSellerPearlPubkey] = useState('');
+  const [buyerPearlAddress, setBuyerPearlAddress] = useState(routeQuoteId ? acceptPrefill?.buyerPearlAddress ?? '' : demoTrade.buyerPearlAddress);
+  const [buyerUsdcAddress, setBuyerUsdcAddress] = useState(routeQuoteId ? acceptPrefill?.buyerUsdcAddress ?? '' : demoTrade.buyerUsdcAddress);
+  const [sellerPearlRefundAddress, setSellerPearlRefundAddress] = useState(
+    routeQuoteId ? acceptPrefill?.sellerPearlRefundAddress ?? '' : demoTrade.sellerPearlRefundAddress,
+  );
+  const [sellerUsdcReceiveAddress, setSellerUsdcReceiveAddress] = useState(
+    routeQuoteId ? acceptPrefill?.sellerUsdcReceiveAddress ?? '' : demoTrade.sellerUsdcReceiveAddress,
+  );
+  const [pearlEscrowMode, setPearlEscrowMode] = useState<PearlEscrowMode>(
+    routeQuoteId && orderQuoteDraft ? 'multisig' : getDefaultPearlEscrowMode,
+  );
+  const [pearlReleaseSigningMode, setPearlReleaseSigningMode] = useState<PearlReleaseSigningMode>(
+    acceptPrefill?.pearlReleaseSigningMode ?? 'preauthorize_release',
+  );
+  const [buyerPearlPubkey, setBuyerPearlPubkey] = useState(acceptPrefill?.buyerPearlPubkey ?? '');
+  const [sellerPearlPubkey, setSellerPearlPubkey] = useState(acceptPrefill?.sellerPearlPubkey ?? '');
   const [buyerPearlPubkeyProof, setBuyerPearlPubkeyProof] = useState('');
   const [sellerPearlPubkeyProof, setSellerPearlPubkeyProof] = useState('');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'accepted' | 'error'>('idle');
@@ -96,6 +107,7 @@ export function AcceptQuotePage() {
     },
     role,
     routeQuoteId ? new Date() : DEMO_NOW,
+    { makerRole: orderQuoteDraft?.makerRole },
   );
   const buyerSignerProofMessage = createPearlSignerProofMessage({
     quoteId,
@@ -132,7 +144,12 @@ export function AcceptQuotePage() {
         pearlEscrowMode,
         pearlReleaseSigningMode,
         ...(pearlEscrowMode === 'multisig'
-          ? { buyerPearlPubkey, sellerPearlPubkey, buyerPearlPubkeyProof, sellerPearlPubkeyProof }
+          ? {
+              buyerPearlPubkey,
+              sellerPearlPubkey,
+              ...(buyerPearlPubkeyProof ? { buyerPearlPubkeyProof } : {}),
+              ...(sellerPearlPubkeyProof ? { sellerPearlPubkeyProof } : {}),
+            }
           : {}),
         clientRequestId: createClientRequestId('accept'),
       });
@@ -185,18 +202,26 @@ export function AcceptQuotePage() {
               <Field label="Seller Pearl public key" error={model.errors.sellerPearlPubkey}>
                 <input value={sellerPearlPubkey} onChange={onSellerPearlPubkeyChange} spellCheck={false} />
               </Field>
-              <Field label="Buyer signer proof message">
-                <textarea value={buyerSignerProofMessage} readOnly rows={7} spellCheck={false} />
-              </Field>
-              <Field label="Buyer signer proof signature" error={model.errors.buyerPearlPubkeyProof}>
-                <input value={buyerPearlPubkeyProof} onChange={onBuyerPearlPubkeyProofChange} spellCheck={false} />
-              </Field>
-              <Field label="Seller signer proof message">
-                <textarea value={sellerSignerProofMessage} readOnly rows={7} spellCheck={false} />
-              </Field>
-              <Field label="Seller signer proof signature" error={model.errors.sellerPearlPubkeyProof}>
-                <input value={sellerPearlPubkeyProof} onChange={onSellerPearlPubkeyProofChange} spellCheck={false} />
-              </Field>
+              {orderQuoteDraft?.makerRole !== 'buyer' ? (
+                <>
+                  <Field label="Buyer signer proof message">
+                    <textarea value={buyerSignerProofMessage} readOnly rows={7} spellCheck={false} />
+                  </Field>
+                  <Field label="Buyer signer proof signature" error={model.errors.buyerPearlPubkeyProof}>
+                    <input value={buyerPearlPubkeyProof} onChange={onBuyerPearlPubkeyProofChange} spellCheck={false} />
+                  </Field>
+                </>
+              ) : null}
+              {orderQuoteDraft?.makerRole !== 'seller' ? (
+                <>
+                  <Field label="Seller signer proof message">
+                    <textarea value={sellerSignerProofMessage} readOnly rows={7} spellCheck={false} />
+                  </Field>
+                  <Field label="Seller signer proof signature" error={model.errors.sellerPearlPubkeyProof}>
+                    <input value={sellerPearlPubkeyProof} onChange={onSellerPearlPubkeyProofChange} spellCheck={false} />
+                  </Field>
+                </>
+              ) : null}
               <Field label="Release signing" error={model.errors.pearlReleaseSigningMode}>
                 <select value={pearlReleaseSigningMode} onChange={onReleaseSigningModeChange}>
                   <option value="preauthorize_release">Pre-sign after PRL funding</option>
