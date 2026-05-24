@@ -279,11 +279,10 @@ Current delegation queue after PR #99:
   rehearsal, covering ownership transfer, operator/relayer permissions, cap
   semantics, pause behavior, replay protection, exit liabilities, deployment
   scripts, and verification evidence.
-- OTC evidence owner: finish the remaining live slice of `9.8.10.c`: replace
-  simulated Base events with real Base Sepolia txids, then run the PRL
-  signing/broadcast boundary with real txids. Pearl testnet2 is no longer a
-  mandatory gate because there is no usable faucet/liquidity; after simnet,
-  the next live gate is explicitly approved low-cap mainnet.
+- OTC evidence owner: productize the 2026-05-21 testnet2/Base Sepolia proof by
+  persisting live proof trades in Postgres or replaying them through a durable
+  API process. The remaining evidence blocker is repeatable runtime evidence
+  from public routes, not the one-off transaction proof itself.
 - OTC order execution owner: build the remaining `/market` taker UX that calls
   `POST /otc/orders/:orderId/quotes`, carries the returned maker prefill into
   quote accept, and shows order-linked open trades in the user dashboard.
@@ -549,15 +548,14 @@ Loophole tracker after PR #74:
   unique simnet escrow allocation, wallet-funded PRL proof facts, Base
   deposit/release projection, settlement-worker release/refund decisions, and
   public proof projection.
-- [ ] No live full OTC cross-chain evidence yet — PRL-side simnet
-  release/refund evidence is recorded for `9.6.4`, and automated quote-to-proof
-  coverage exists, but mainnet PRL paths remain blocked until the remaining
-  `9.8.10.c` live slice replaces simulated Base events with real Base Sepolia
-  txids and a real PRL signing/broadcast path.
-- [x] Testnet2 Pearl + Base Sepolia end-to-end evidence is not a required gate
-  right now because no usable Pearl testnet faucet/liquidity is available. The
-  replacement launch gate is: finish simnet evidence, then run explicitly
-  approved low-cap mainnet with public proof and clean reconciliation.
+- [x] Live testnet2/Base Sepolia full OTC cross-chain evidence recorded on
+  2026-05-21: quote, accept, wallet-funded PRL escrow, Base native-USDC
+  create/deposit/release, PRL release signing/broadcast, indexed Pearl release
+  classification, and public-proof fields.
+  - See `docs/operations/full-otc-testnet2-evidence-20260521.md`.
+- [ ] Productize the live proof runner so it persists the trade in Postgres or a
+  live API process and can be rerun through
+  `services/otc-api/test/live-full-otc-evidence.test.ts` after shutdown.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
   no release/refund/sign/broadcast actions, and admin list/detail, filters,
   note/manual-review actions, failed alert-delivery replay, and the public
@@ -598,6 +596,12 @@ Loophole tracker after PR #74:
     a signed release transaction only once the trade is `release_pending`. Still
     missing: native browser Pearl wallet signing integration and a first-class
     refund signing UX.
+  - 2026-05-24 review hardening: signed transaction submission now reserves the
+    Pearl broadcast side-effect idempotency key before Pearl RPC broadcast,
+    returns the existing submitted side effect for safe retries, rejects
+    duplicate in-progress reservations before another RPC call, and requires
+    witness data on every signed transaction input. Evidence is recorded in
+    `docs/operations/pr106-release-broadcast-strategy-review-20260524.md`.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
   after separate approval, ownership evidence, and live-run evidence.
 
@@ -639,7 +643,7 @@ Loophole tracker after PR #74:
   - Settlement-worker tests cover the simnet-shaped funding -> release/refund
     construction -> signer boundary -> broadcaster wrapper path; live `pearld`
     smoke coverage is present but remains opt-in by env.
-- [ ] 9.8.10 Record a full simnet escrow run: quote -> accept -> PRL funding
+- [x] 9.8.10 Record a full escrow run: quote -> accept -> PRL funding
   detection -> Base deposit -> PRL release/refund -> Base release/refund ->
   proof.
   - [x] 9.8.10.a Record live simnet watched-address evidence for the fixture
@@ -647,8 +651,8 @@ Loophole tracker after PR #74:
   - [x] 9.8.10.b Record wallet-funded PRL-side simnet evidence with Oyster,
     unique escrow address, watched-address detection, release spend, and indexer
     spend classification.
-  - [ ] 9.8.10.c Complete the full quote -> accept -> wallet-funded PRL ->
-    Base deposit -> settlement-worker release/refund -> public proof path.
+  - [x] 9.8.10.c Complete the full quote -> accept -> wallet-funded PRL ->
+    Base deposit -> PRL release -> Base release -> public proof path.
     - [x] Add automated full-flow coverage in
       `services/otc-api/test/full-otc-flow.test.ts` for quote acceptance,
       unique simnet escrow watch registration, wallet-funded PRL proof facts,
@@ -679,16 +683,20 @@ Loophole tracker after PR #74:
       Base Sepolia escrow contract `0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9`
       on chain ID `84532`; remaining blocker is wallet-funded PRL plus
       browser-signed Base transactions.
-    - [ ] Replace the simulated Base leg with real Base Sepolia txids and a
-      non-Oyster raw signer path, or update Oyster once arbitrary raw tx
-      signing is implemented.
-- [x] 9.8.11 Replace the unavailable testnet2 escrow-run gate with the
-  simnet-to-low-cap-mainnet path.
-  - No usable Pearl testnet faucet/liquidity is available, so testnet2 cannot
-    be a mandatory blocker. Before any broad mainnet rollout, complete the
-    remaining simnet proof, require explicit mainnet approval, run only low-cap
-    mainnet PRL paths, record real Pearl mainnet and Base/Igra txids, and keep
-    public proof plus reserve reconciliation clean.
+    - [x] Replace the simulated Base leg with real Base Sepolia txids and a
+      non-Oyster raw signer path. The 2026-05-21 testnet2 proof used native
+      Base Sepolia USDC escrow txs and a controlled raw P2TR signer path.
+      Evidence is recorded in
+      `docs/operations/full-otc-testnet2-evidence-20260521.md`.
+    - [ ] Move the one-off testnet2 runner into the durable worker/verifier
+      path so the proof can be replayed from persisted API state.
+- [x] 9.8.11 Record a testnet2/Base Sepolia escrow run with real Pearl and Base
+  Sepolia txids.
+  - 2026-05-21: recorded the full testnet2/Base Sepolia release path in
+    `docs/operations/full-otc-testnet2-evidence-20260521.md`. Before any broad
+    mainnet rollout, still require explicit mainnet approval, low-cap mainnet
+    PRL paths, real Pearl mainnet and Base/Igra txids, public proof, and clean
+    reconciliation.
 - [x] 9.8.12 Build actual frontend/admin screens from the 9.4 page models and
   prove no release action is exposed to users or operators.
   - Rendered RFQ, accept, checkout, public proof, and admin shell screens are
@@ -1002,7 +1010,7 @@ blockers visible for planning. See
   deployed low-cap bridge path.
 - [ ] 11.8 Add bridge proof-page/frontend support for deposit status, exit
   status, reserve backing, blockers, event hashes, quorum counts, and cap usage.
-- [ ] 11.9 Complete the OTC full-flow live evidence run with real Base Sepolia
+- [x] 11.9 Complete the OTC full-flow live evidence run with real Base Sepolia
   `createTrade`, `deposit`, and terminal `release` or `refund` receipts plus a
   real PRL signing/broadcast path.
   - [x] 11.9.a Connect the OTC frontend checkout to real OTC API data,
@@ -1012,18 +1020,20 @@ blockers visible for planning. See
   - [x] 11.9.c Harden the OTC admin frontend/API testing path against public
     token leakage, actor spoofing, stale side-effect evidence, and unverified
     `createTrade` receipts.
-  - [ ] 11.9.d Run the live Base Sepolia browser deposit against an
+  - [x] 11.9.d Run the live Base Sepolia browser deposit against an
     operator-created escrow and record the `TradeCreated`/`Deposited` txids.
-    - Handoff: dev is deployed through PR #94, API/web health checks passed,
-      admin credentials stay server/session-only, and Base Sepolia ownership
-      is accepted by `0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978`. Next live
-      action is wallet signing: operator `createTrade`, buyer USDC
-      `approve`/`deposit`, then evidence verifier recording of the txids.
-- [x] 11.10 Replace the testnet2 escrow-run blocker with the approved
-  simnet-to-low-cap-mainnet path.
-  - No usable Pearl testnet faucet/liquidity exists. After simnet proof, the
-    next gate is explicitly approved low-cap mainnet with real Pearl mainnet
-    and Base/Igra txids, public proof, and clean reconciliation.
+    - 2026-05-21 evidence: testnet2/Base Sepolia run
+      `trade_f674c08e2d0a278abed79e3e` recorded Base `createTrade`, `approve`,
+      `deposit`, and `release` txids plus Pearl funding/release txids. See
+      `docs/operations/full-otc-testnet2-evidence-20260521.md`.
+  - [ ] 11.9.e Productize the one-off live proof runner into a durable
+    Postgres-backed API/worker/verifier path so the evidence can be rerun from
+    public routes after process shutdown.
+- [x] 11.10 Record the testnet2/Base Sepolia escrow-run evidence.
+  - 2026-05-21: `trade_f674c08e2d0a278abed79e3e` proves the full testnet2/Base
+    Sepolia release path. The next gate is productizing repeatable proof replay
+    from durable API state, then explicitly approved low-cap mainnet with real
+    Pearl mainnet and Base/Igra txids, public proof, and clean reconciliation.
 - [ ] 11.11 Finish production Oyster release: prod secrets, prod image path,
   prod DNS, and prod `/healthz`, quote, support-alert, admin-auth smoke checks.
 - [ ] 11.12 Replace shared bearer-token admin auth with a real operator

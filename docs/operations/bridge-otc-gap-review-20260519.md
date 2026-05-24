@@ -87,11 +87,14 @@ These items block a live bridge pilot and any public `wPRL/USDC` pool:
 
 These items block a full production-grade Pearl OTC settlement release:
 
-1. Complete a real full-flow OTC run.
+1. Productize the real full-flow OTC proof.
    - Automated full-flow coverage exists.
    - The live verifier exists.
-   - Still missing: real Base Sepolia `createTrade`, `deposit`, and terminal
-     `release` or `refund` txids plus a real PRL signing/broadcast path.
+   - 2026-05-21 evidence recorded real testnet2 PRL funding/release txids and
+     real Base Sepolia `createTrade`, `approve`, `deposit`, and terminal
+     `release` txids in `full-otc-testnet2-evidence-20260521.md`.
+   - Still missing: durable Postgres/live-API replay of the proof after process
+     shutdown.
 
 2. Decide whether the first mainnet OTC pilot uses the current coordinator
    P2TR model or waits for true multisig escrow.
@@ -114,24 +117,26 @@ These items block a full production-grade Pearl OTC settlement release:
    - Next action: decide whether low-cap mainnet uses this path or the
      constrained coordinator path, then record the approved live signer set.
 
-3. Replace the remaining simulated Base leg in live evidence.
-   - The checker can verify receipts, but the evidence needs actual Base
-   Sepolia receipts from the current escrow contract.
-   - Next action: run the real Base Sepolia leg and feed the tx hashes into
-   `services/otc-api/test/live-full-otc-evidence.test.ts`.
+3. Keep live evidence repeatable.
+   - The one-off 2026-05-21 runner captured the same public-proof fields, but it
+     used in-memory API state.
+   - Next action: persist the live proof trade in Postgres or rerun it through a
+     durable API process, then feed the tx hashes into
+     `services/otc-api/test/live-full-otc-evidence.test.ts`.
 
-4. Resolve the PRL raw signer path.
-   - Oyster currently does not provide arbitrary raw transaction signing for
-     the desired path.
-   - Next action: use a non-Oyster raw signer path or extend Oyster before
-     enabling mainnet PRL release/refund code paths.
+4. Finish the native PRL wallet signing path.
+   - PR #106 added backend release/refund intent plus signed transaction
+     broadcast submission.
+   - 2026-05-24 review hardening reserves the broadcast idempotency key before
+     Pearl RPC, prevents duplicate retry broadcasts, and requires witness data on
+     every input.
+   - Still missing: browser-native Pearl wallet signing and first-class refund
+     signing UX.
 
-5. Move from simnet to explicitly approved low-cap mainnet.
-   - Pearl testnet2 is not a mandatory blocker because there is no usable
-     faucet/liquidity.
-   - Next action: finish the remaining simnet proof, then run only low-cap
-     mainnet PRL paths with explicit approval, real txids, public proof, and
-     clean reconciliation.
+5. Move from testnet2/simnet proof to explicitly approved low-cap mainnet.
+   - Testnet2/Base Sepolia proof exists, but it is not a mainnet authorization.
+   - Next action: run only low-cap mainnet PRL paths with explicit approval,
+     real txids, public proof, and clean reconciliation.
 
 6. Finish production Oyster deployment.
    - Dev API/web are deployed and smoked.

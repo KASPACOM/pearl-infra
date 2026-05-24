@@ -1008,6 +1008,23 @@ test('builds a Pearl multisig release intent from indexed funding proof', async 
   assert.equal(submitted.sideEffect.actor, 'user');
   assert.equal(broadcaster.signedTxHexes.length, 1);
 
+  const retried = await service.submitPearlSignedTransaction(trade.tradeId, 'release', {
+    idempotencyKey: 'pearl-release-submit-test-1',
+    signedTxHex,
+  });
+  assert.equal(retried.broadcastTxid, submitted.broadcastTxid);
+  assert.equal(retried.sideEffect.idempotencyKey, submitted.sideEffect.idempotencyKey);
+  assert.equal(broadcaster.signedTxHexes.length, 1);
+
+  await assert.rejects(
+    () => service.submitPearlSignedTransaction(trade.tradeId, 'release', {
+      idempotencyKey: 'pearl-release-submit-test-missing-witness',
+      signedTxHex: intent.unsignedTxHex ?? '',
+    }),
+    /missing witness signatures/,
+  );
+  assert.equal(broadcaster.signedTxHexes.length, 1);
+
   const tampered = Transaction.fromHex(signedTxHex);
   tampered.outs[0].value -= 1;
   await assert.rejects(
@@ -1017,6 +1034,7 @@ test('builds a Pearl multisig release intent from indexed funding proof', async 
     }),
     /output does not match server template/,
   );
+  assert.equal(broadcaster.signedTxHexes.length, 1);
 });
 
 test('builds admin trade diagnostics and records support alerts', async () => {
