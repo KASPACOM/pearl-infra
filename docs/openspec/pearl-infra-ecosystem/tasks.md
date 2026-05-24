@@ -585,6 +585,11 @@ Loophole tracker after PR #74:
   app can show release-intent templates after indexed funding, but a Pearl
   wallet/tooling path must still collect and submit the actual release
   signatures before claiming fully self-serve user release from the browser.
+  - 2026-05-24: Checkout now surfaces the release signing package from
+    `/pearl-release/intent`: unsigned transaction, template hash, input/output,
+    destination, fee, signer sets, and arbiter-path availability. Still
+    missing: browser/wallet signing and submit/broadcast flow for actual
+    release/refund signatures.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
   after separate approval, ownership evidence, and live-run evidence.
 
@@ -1041,10 +1046,12 @@ through one-time wallet challenges before creating user/profile records.
     Pearl challenges verify BIP340 signatures against the submitted signer
     public key.
   - 2026-05-24 hardening pass: referral codes and user ids are random
-    non-derived identifiers, wallet challenges are consumed once, users retain
-    both their own referral code and their immutable referred-by attribution,
-    and Pearl wallet-as-user registration stays fail-closed until address to
-    public-key ownership verification is implemented.
+    non-derived identifiers, wallet challenges are consumed once, and users
+    retain both their own referral code and their immutable referred-by
+    attribution.
+  - 2026-05-24: Pearl wallet-as-user registration now supports single-key P2TR
+    wallets by requiring a BIP340 challenge signature from the submitted pubkey
+    and proving that pubkey derives the exact challenged Pearl address.
 - [x] 12.3 Add frontend referral capture so `?ref=<code>` is persisted through
   quote/order/user registration and shown in the profile referral panel.
   - 2026-05-24: Profile registration captures `ref=` into local storage,

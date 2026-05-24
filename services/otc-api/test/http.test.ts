@@ -4,6 +4,7 @@ import test from 'node:test';
 import type { AddressInfo } from 'node:net';
 
 import { createPearlSignerProofMessage, type PearlReleaseSigningMode, type PearlSignerProofRole } from '@kaspacom/pearl-sdk';
+import { createPearlP2trPayment } from '@kaspacom/pearl-script';
 import { Wallet } from 'ethers';
 import * as ecc from 'tiny-secp256k1';
 
@@ -151,6 +152,11 @@ function signQuoteSignerProof(input: {
   const privateKey = Buffer.from(input.privateKeySeed.padStart(64, '0'), 'hex');
   const messageHash = createHash('sha256').update(createPearlSignerProofMessage(input)).digest();
   return Buffer.from(ecc.signSchnorr(messageHash, privateKey)).toString('hex');
+}
+
+function signUserWalletChallenge(message: string, privateKeySeed: string): string {
+  const privateKey = Buffer.from(privateKeySeed.padStart(64, '0'), 'hex');
+  return Buffer.from(ecc.signSchnorr(createHash('sha256').update(message).digest(), privateKey)).toString('hex');
 }
 
 test('registers wallet-owned users with referral links and wallet-proved profile updates', async () => {
@@ -519,24 +525,52 @@ test('registers wallet-owned users with referral links and wallet-proved profile
   }, { ...config, pearlEscrowAllocator: 'p2tr_multisig', pearlEscrowArbiterPubkey: xOnlyPublicKey('04') });
 });
 
-test('fails closed for Pearl wallet users until address ownership verification exists', async () => {
+test('registers Pearl wallet users with address-bound BIP340 ownership proof', async () => {
   await withServer(async (baseUrl) => {
+    const publicKeyHex = xOnlyPublicKey('07');
+    const address = createPearlP2trPayment({ network: 'testnet2', internalPubkey: publicKeyHex }).address;
     const challengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
       walletType: 'pearl',
       network: 'testnet2',
-      address: 'tprl1ppearlexample',
+      address,
     });
     assert.equal(challengeResponse.status, 201);
-    const challenge = (await challengeResponse.json()) as { challengeId: string };
+    const challenge = (await challengeResponse.json()) as { challengeId: string; message: string };
 
     const registerResponse = await postJson(baseUrl, '/otc/users', {
       challengeId: challenge.challengeId,
-      signature: '11'.repeat(64),
-      publicKeyHex: '22'.repeat(32),
+      signature: signUserWalletChallenge(challenge.message, '07'),
+      publicKeyHex,
+    });
+    assert.equal(registerResponse.status, 201);
+    const user = (await registerResponse.json()) as { wallet: { walletType: string; network: string; address: string; publicKeyHex: string } };
+    assert.equal(user.wallet.walletType, 'pearl');
+    assert.equal(user.wallet.network, 'testnet2');
+    assert.equal(user.wallet.address, address);
+    assert.equal(user.wallet.publicKeyHex, publicKeyHex);
+  });
+});
+
+test('rejects Pearl wallet users when public key does not derive challenged address', async () => {
+  await withServer(async (baseUrl) => {
+    const address = createPearlP2trPayment({ network: 'testnet2', internalPubkey: xOnlyPublicKey('08') }).address;
+    const publicKeyHex = xOnlyPublicKey('09');
+    const challengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'pearl',
+      network: 'testnet2',
+      address,
+    });
+    assert.equal(challengeResponse.status, 201);
+    const challenge = (await challengeResponse.json()) as { challengeId: string; message: string };
+
+    const registerResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: challenge.challengeId,
+      signature: signUserWalletChallenge(challenge.message, '09'),
+      publicKeyHex,
     });
     assert.equal(registerResponse.status, 400);
     const error = (await registerResponse.json()) as { message: string };
-    assert.match(error.message, /blocked until address-to-pubkey ownership verification/);
+    assert.match(error.message, /public key does not derive/);
   });
 });
 

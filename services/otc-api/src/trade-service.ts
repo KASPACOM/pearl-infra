@@ -20,7 +20,7 @@ import {
   tradeStateIsTerminal,
 } from '@kaspacom/pearl-sdk';
 import { createPearlEscrowTxTemplateHash, createPearlEscrowUnsignedTx, type PearlEscrowPackage, type PearlEscrowTxTemplate } from '@kaspacom/pearl-escrow';
-import { normalizeXOnlyPubkey } from '@kaspacom/pearl-script';
+import { createPearlP2trPayment, normalizeXOnlyPubkey, type PearlScriptNetworkName } from '@kaspacom/pearl-script';
 import { getUsdcEscrowNetworkConfig } from '@kaspacom/usdc-escrow-client';
 import * as ecc from 'tiny-secp256k1';
 
@@ -1911,6 +1911,9 @@ function validateCreateWalletChallengeRequest(
   if (request.walletType === 'evm') {
     assertEvmAddress(request.address, 'address');
   } else {
+    if (request.network !== pearlNetwork) {
+      throw new Error(`network must match configured Pearl network ${pearlNetwork}`);
+    }
     assertLikelyPearlAddress(request.address, 'address', pearlNetwork);
   }
 }
@@ -2179,8 +2182,27 @@ function verifyWalletChallenge(
     return;
   }
 
-  void publicKeyHex;
-  throw new Error('Pearl wallet user registration is blocked until address-to-pubkey ownership verification is implemented');
+  assertLikelyPearlPubkey(publicKeyHex, 'publicKeyHex');
+  const publicKey = normalizeProofPubkey(publicKeyHex);
+  const expectedAddress = createPearlP2trPayment({
+    network: assertPearlScriptNetwork(challenge.network),
+    internalPubkey: publicKey,
+  }).address;
+  if (expectedAddress !== challenge.address) {
+    throw new Error('Pearl wallet public key does not derive the challenged address');
+  }
+  const signatureBytes = parseSchnorrSignature(signature);
+  const messageHash = createHash('sha256').update(challenge.message).digest();
+  if (!ecc.verifySchnorr(messageHash, Buffer.from(publicKey, 'hex'), signatureBytes)) {
+    throw new Error('Pearl wallet challenge signature does not match public key');
+  }
+}
+
+function assertPearlScriptNetwork(network: string): PearlScriptNetworkName {
+  if (network === 'mainnet' || network === 'testnet' || network === 'testnet2' || network === 'simnet' || network === 'regtest') {
+    return network;
+  }
+  throw new Error('unsupported Pearl wallet network');
 }
 
 function createPearlSignerProofHash(input: Omit<VerifyPearlSignerProofInput, 'signatureHex'>): Uint8Array {

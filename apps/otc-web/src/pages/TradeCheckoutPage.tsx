@@ -273,8 +273,24 @@ export function TradeCheckoutPage() {
           <DataRow label="Signer sets" value={model.pearl.signerSets.join(' / ') || 'not available'} />
           <DataRow label="Release tx" value={model.pearl.releaseTxid} />
           <DataRow label="Refund tx" value={model.pearl.refundTxid} />
-          <DataRow label="Release intent" value={releaseIntent?.status ?? 'not loaded'} />
-          <DataRow label="Release template" value={releaseIntent?.txTemplateHash ?? releaseIntent?.reason} />
+          <div className="checkout-release-package">
+            <h3>Release signing package</h3>
+            <DataRow label="Intent" value={releaseIntent?.status ?? 'not loaded'} />
+            <DataRow label="Mode" value={releaseIntent?.signingMode ?? model.pearl.releaseSigningMode ?? 'manual_after_base_deposit'} />
+            <DataRow label="Template" value={releaseIntent?.txTemplateHash ?? releaseIntent?.reason ?? '-'} />
+            <DataRow label="Input" value={releaseIntent?.inputOutpoint ?? '-'} />
+            <DataRow label="Destination" value={releaseIntent?.destinationAddress ?? '-'} />
+            <DataRow label="Output grains" value={releaseIntent?.outputAmountGrains ?? '-'} />
+            <DataRow label="Fee grains" value={releaseIntent?.feeGrains ?? '-'} />
+            <DataRow label="Signer sets" value={releaseIntent?.signerSets.map((set) => set.join(' + ')).join(' / ') || model.pearl.signerSets.join(' / ') || '-'} />
+            <DataRow label="Arbiter path" value={releaseIntent?.workerCanFinishWithArbiter ? 'available' : 'not available'} />
+            {releaseIntent?.unsignedTxHex ? (
+              <label className="checkout-release-package__unsigned">
+                <span>Unsigned transaction</span>
+                <textarea readOnly value={releaseIntent.unsignedTxHex} rows={4} />
+              </label>
+            ) : null}
+          </div>
         </section>
 
         <section className="om-panel">
