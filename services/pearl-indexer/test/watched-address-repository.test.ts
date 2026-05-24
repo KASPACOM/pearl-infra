@@ -98,7 +98,7 @@ test('Pg.register inserts when no row exists', async () => {
 test('Pg.register returns existing row when params are identical', async () => {
   const pg = new FakePg();
   pg.setFixture(/SELECT watch_id.*FROM watched_addresses WHERE watch_id = \$1 FOR UPDATE/s, [pgRow()]);
-  pg.setFixture(/UPDATE watched_addresses\s+SET metadata = metadata \|\| \$2::jsonb/s, [pgRow()]);
+  pg.setFixture(/UPDATE watched_addresses\s+SET metadata = \$2::jsonb \|\| metadata/s, [pgRow()]);
   const repo = new PgWatchedAddressRepository(pg);
 
   const result = await repo.register(input());
@@ -128,23 +128,35 @@ test('Pg.register throws WatchConflictError on differing scalars', async () => {
   assert.ok(pg.calls.some((c) => c.text === 'ROLLBACK'));
 });
 
-test('Pg.register merges metadata on matching re-register', async () => {
+test('Pg.register fills missing metadata without overwriting existing keys', async () => {
   const pg = new FakePg();
   pg.setFixture(
     /SELECT watch_id.*FROM watched_addresses WHERE watch_id = \$1 FOR UPDATE/s,
-    [pgRow({ metadata: { expected_amount_grains: '12500000000' } })],
+    [pgRow({ metadata: { expected_amount_grains: '12500000000', release_address: 'tprl1poriginal' } })],
   );
   pg.setFixture(
-    /UPDATE watched_addresses\s+SET metadata = metadata \|\| \$2::jsonb/s,
-    [pgRow({ metadata: { expected_amount_grains: '12500000000', release_address: 'tprl1pbuyer' } })],
+    /UPDATE watched_addresses\s+SET metadata = \$2::jsonb \|\| metadata/s,
+    [pgRow({
+      metadata: {
+        expected_amount_grains: '12500000000',
+        release_address: 'tprl1poriginal',
+        refund_address: 'tprl1psellerrefund',
+      },
+    })],
   );
   const repo = new PgWatchedAddressRepository(pg);
 
-  const result = await repo.register(input({ metadata: { release_address: 'tprl1pbuyer' } }));
+  const result = await repo.register(input({
+    metadata: {
+      release_address: 'tprl1poverwrite',
+      refund_address: 'tprl1psellerrefund',
+    },
+  }));
 
   assert.equal(result.created, false);
   assert.equal(result.watch.metadata.expected_amount_grains, '12500000000');
-  assert.equal(result.watch.metadata.release_address, 'tprl1pbuyer');
+  assert.equal(result.watch.metadata.release_address, 'tprl1poriginal');
+  assert.equal(result.watch.metadata.refund_address, 'tprl1psellerrefund');
 });
 
 test('Pg.get returns null when no row', async () => {
@@ -285,15 +297,21 @@ test('Memory.register inserts then reads back', async () => {
   assert.equal(fetched.spends.length, 0);
 });
 
-test('Memory.register merges metadata on matching params', async () => {
+test('Memory.register fills missing metadata without overwriting existing keys', async () => {
   const repo = new MemoryWatchedAddressRepository();
-  await repo.register(input());
+  await repo.register(input({ metadata: { expected_amount_grains: '12500000000', release_address: 'tprl1poriginal' } }));
 
-  const second = await repo.register(input({ metadata: { release_address: 'tprl1pbuyer' } }));
+  const second = await repo.register(input({
+    metadata: {
+      release_address: 'tprl1poverwrite',
+      refund_address: 'tprl1psellerrefund',
+    },
+  }));
 
   assert.equal(second.created, false);
   assert.equal(second.watch.metadata.expected_amount_grains, '12500000000');
-  assert.equal(second.watch.metadata.release_address, 'tprl1pbuyer');
+  assert.equal(second.watch.metadata.release_address, 'tprl1poriginal');
+  assert.equal(second.watch.metadata.refund_address, 'tprl1psellerrefund');
 });
 
 test('Memory.register conflicts on differing scalars', async () => {

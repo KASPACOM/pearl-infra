@@ -106,6 +106,8 @@ The verifier and durable evidence route close the repeatable evidence harness
 gap for trades persisted in Postgres or another live API repository.
 
 OTC watch registration now includes `release_address`, `refund_address`,
-release/refund templates, and accept-time distinct destination validation. That
-keeps fee-adjusted spends classifiable as `release` or `refund` instead of
-falling to `unknown_spend`.
+bounded release/refund amount windows, release/refund templates, and accept-time
+distinct destination validation. That keeps fee-adjusted spends classifiable as
+`release` or `refund` while rejecting dust-output or partial-output spoofing.
+Predeclared release/refund txids are only accepted when the spend outputs also
+match the destination and amount-window policy.

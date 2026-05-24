@@ -1,6 +1,6 @@
 import type { OtcTrade } from '@kaspacom/pearl-sdk';
 
-import type { PearlEscrowWatchRegistrar } from './trade-service.js';
+import type { PearlEscrowWatchRegistrar, PearlEscrowWatchRegistrationOptions } from './trade-service.js';
 
 export interface PearlEscrowWatchRegistration {
   watchId: string;
@@ -20,8 +20,11 @@ export class HttpPearlEscrowWatchRegistrar implements PearlEscrowWatchRegistrar 
     this.timeoutMs = timeoutMs;
   }
 
-  async registerPearlEscrowWatch(trade: OtcTrade): Promise<PearlEscrowWatchRegistration> {
-    const registration = createPearlEscrowWatchRegistration(trade);
+  async registerPearlEscrowWatch(
+    trade: OtcTrade,
+    options: PearlEscrowWatchRegistrationOptions = {},
+  ): Promise<PearlEscrowWatchRegistration> {
+    const registration = createPearlEscrowWatchRegistration(trade, options);
     const response = await fetch(`${this.baseUrl}/watches`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -35,7 +38,14 @@ export class HttpPearlEscrowWatchRegistrar implements PearlEscrowWatchRegistrar 
   }
 }
 
-export function createPearlEscrowWatchRegistration(trade: OtcTrade): PearlEscrowWatchRegistration {
+export function createPearlEscrowWatchRegistration(
+  trade: OtcTrade,
+  options: PearlEscrowWatchRegistrationOptions = {},
+): PearlEscrowWatchRegistration {
+  const spendAmountBounds = createSpendAmountBounds(
+    trade.pearlEscrow.expectedAmountGrains,
+    options.classificationFeeToleranceGrains,
+  );
   return {
     watchId: createPearlEscrowWatchId(trade.tradeId),
     purpose: 'otc_escrow',
@@ -52,6 +62,11 @@ export function createPearlEscrowWatchRegistration(trade: OtcTrade): PearlEscrow
       settlement_deadline: trade.deadlines.settlementDeadline,
       release_address: trade.buyerPearlAddress,
       refund_address: trade.sellerPearlRefundAddress,
+      release_amount_min_grains: spendAmountBounds.minAmountGrains,
+      release_amount_max_grains: spendAmountBounds.maxAmountGrains,
+      refund_amount_min_grains: spendAmountBounds.minAmountGrains,
+      refund_amount_max_grains: spendAmountBounds.maxAmountGrains,
+      classification_fee_tolerance_grains: spendAmountBounds.feeToleranceGrains,
       buyer_pearl_address: trade.buyerPearlAddress,
       seller_pearl_refund_address: trade.sellerPearlRefundAddress,
       ...(trade.pearlEscrow.releaseTxid ? { release_txid: trade.pearlEscrow.releaseTxid } : {}),
@@ -68,6 +83,36 @@ export function createPearlEscrowWatchRegistration(trade: OtcTrade): PearlEscrow
 
 export function createPearlEscrowWatchId(tradeId: string): string {
   return `otc:${tradeId}:pearl-escrow`;
+}
+
+function createSpendAmountBounds(
+  expectedAmountGrains: string,
+  feeToleranceGrains = '0',
+): { minAmountGrains: string; maxAmountGrains: string; feeToleranceGrains: string } {
+  if (!isUnsignedIntegerString(expectedAmountGrains)) {
+    throw new Error('Pearl escrow expectedAmountGrains must be an unsigned integer string');
+  }
+  if (!isUnsignedIntegerString(feeToleranceGrains)) {
+    throw new Error('Pearl escrow classificationFeeToleranceGrains must be an unsigned integer string');
+  }
+  const expected = BigInt(expectedAmountGrains);
+  const tolerance = BigInt(feeToleranceGrains);
+  if (expected === 0n) {
+    throw new Error('Pearl escrow expectedAmountGrains must be greater than zero');
+  }
+  if (tolerance >= expected) {
+    throw new Error('Pearl escrow classificationFeeToleranceGrains must be smaller than expectedAmountGrains');
+  }
+  const min = expected - tolerance;
+  return {
+    minAmountGrains: min.toString(),
+    maxAmountGrains: expected.toString(),
+    feeToleranceGrains: tolerance.toString(),
+  };
+}
+
+function isUnsignedIntegerString(value: string): boolean {
+  return /^\d+$/.test(value);
 }
 
 function toIndexerRequest(registration: PearlEscrowWatchRegistration): Record<string, unknown> {

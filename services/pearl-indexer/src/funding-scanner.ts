@@ -221,15 +221,32 @@ export function classifySpend(input: {
   }
 
   const txidMatch = classifyByExpectedTxid(input.watch, input.spendTxid);
+  const releaseMatch = outputMatchesExpected(input.watch, 'release', input.spendingOutputs);
+  const refundMatch = outputMatchesExpected(input.watch, 'refund', input.spendingOutputs);
   if (txidMatch) {
+    const expectedMatch = txidMatch === 'release' ? releaseMatch : refundMatch;
+    const oppositeMatch = txidMatch === 'release' ? refundMatch : releaseMatch;
+    if (expectedMatch.matched && !oppositeMatch.matched) {
+      return {
+        classification: txidMatch,
+        classificationData: {
+          matchedBy: `${txidMatch}_txid_and_${expectedMatch.matchedBy}`,
+          spendTxid: input.spendTxid,
+          output: expectedMatch.output,
+        },
+      };
+    }
     return {
-      classification: txidMatch,
-      classificationData: { matchedBy: `${txidMatch}_txid`, spendTxid: input.spendTxid },
+      classification: 'unknown_spend',
+      classificationData: {
+        reason: expectedMatch.matched && oppositeMatch.matched ? 'ambiguous_template_match' : 'txid_output_policy_mismatch',
+        matchedTxidKind: txidMatch,
+        spentOutpoint: input.spentOutpoint,
+        spendTxid: input.spendTxid,
+      },
     };
   }
 
-  const releaseMatch = outputMatchesExpected(input.watch, 'release', input.spendingOutputs);
-  const refundMatch = outputMatchesExpected(input.watch, 'refund', input.spendingOutputs);
   if (releaseMatch.matched && !refundMatch.matched) {
     return {
       classification: 'release',
@@ -352,7 +369,7 @@ function outputMatchesExpected(
   for (const candidate of expected) {
     const match = outputs.find((output) => {
       const addressMatches = candidate.address === undefined || output.scriptPubKey.address === candidate.address;
-      const amountMatches = candidate.amountGrains === undefined || output.amountGrains === candidate.amountGrains;
+      const amountMatches = outputAmountMatches(output.amountGrains, candidate);
       return addressMatches && amountMatches;
     });
     if (match) {
@@ -374,14 +391,17 @@ function outputMatchesExpected(
 function readExpectedOutputs(
   watch: WatchedAddress,
   kind: 'release' | 'refund',
-): Array<{ source: string; address?: string; amountGrains?: string }> {
+): ExpectedSpendOutput[] {
   const directKeys = kind === 'release'
     ? ['release_address', 'release_destination_address', 'buyer_pearl_address', 'buyerPearlAddress']
     : ['refund_address', 'refund_destination_address', 'seller_pearl_refund_address', 'sellerPearlRefundAddress'];
+  const directBounds = readDirectSpendAmountBounds(watch, kind);
   const direct = directKeys
     .map((key) => readStringMetadata(watch, key))
     .filter((address): address is string => Boolean(address))
-    .map((address) => ({ source: `${kind}_address`, address }));
+    .flatMap((address) => directBounds
+      ? [{ source: `${kind}_address`, address, ...directBounds }]
+      : []);
 
   const templateKeys = kind === 'release'
     ? ['release_template', 'releaseTemplate']
@@ -390,7 +410,39 @@ function readExpectedOutputs(
   return [...direct, ...templateOutputs];
 }
 
-function readTemplateOutputs(value: unknown, source: string): Array<{ source: string; address?: string; amountGrains?: string }> {
+interface ExpectedSpendOutput {
+  source: string;
+  address?: string;
+  amountGrains?: string;
+  minAmountGrains?: string;
+  maxAmountGrains?: string;
+}
+
+function readDirectSpendAmountBounds(
+  watch: WatchedAddress,
+  kind: 'release' | 'refund',
+): Pick<ExpectedSpendOutput, 'minAmountGrains' | 'maxAmountGrains'> | undefined {
+  const minAmountGrains = readStringMetadata(watch, `${kind}_amount_min_grains`);
+  const maxAmountGrains = readStringMetadata(watch, `${kind}_amount_max_grains`);
+  if (!minAmountGrains || !maxAmountGrains) return undefined;
+  if (!isUnsignedIntegerString(minAmountGrains) || !isUnsignedIntegerString(maxAmountGrains)) return undefined;
+  if (BigInt(minAmountGrains) > BigInt(maxAmountGrains)) return undefined;
+  return { minAmountGrains, maxAmountGrains };
+}
+
+function outputAmountMatches(outputAmountGrains: string, expected: ExpectedSpendOutput): boolean {
+  if (expected.amountGrains !== undefined) return outputAmountGrains === expected.amountGrains;
+  if (expected.minAmountGrains === undefined || expected.maxAmountGrains === undefined) return false;
+  if (!isUnsignedIntegerString(outputAmountGrains)) return false;
+  const amount = BigInt(outputAmountGrains);
+  return amount >= BigInt(expected.minAmountGrains) && amount <= BigInt(expected.maxAmountGrains);
+}
+
+function isUnsignedIntegerString(value: string): boolean {
+  return /^\d+$/.test(value);
+}
+
+function readTemplateOutputs(value: unknown, source: string): ExpectedSpendOutput[] {
   if (!value || typeof value !== 'object') return [];
   const outputs = (value as { outputs?: unknown }).outputs;
   if (!Array.isArray(outputs)) return [];

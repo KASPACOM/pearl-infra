@@ -8,7 +8,9 @@ import type { OtcTrade } from '@kaspacom/pearl-sdk';
 import { createPearlEscrowWatchRegistration, HttpPearlEscrowWatchRegistrar } from '../src/pearl-watch-registrar.ts';
 
 test('builds Pearl indexer watch registration metadata from an OTC trade', () => {
-  const registration = createPearlEscrowWatchRegistration(trade);
+  const registration = createPearlEscrowWatchRegistration(trade, {
+    classificationFeeToleranceGrains: '1000',
+  });
 
   assert.equal(registration.watchId, `otc:${trade.tradeId}:pearl-escrow`);
   assert.equal(registration.purpose, 'otc_escrow');
@@ -19,6 +21,11 @@ test('builds Pearl indexer watch registration metadata from an OTC trade', () =>
   assert.equal(registration.metadata.taproot_output_script_hex, trade.pearlEscrow.taprootOutputScriptHex);
   assert.equal(registration.metadata.release_address, trade.buyerPearlAddress);
   assert.equal(registration.metadata.refund_address, trade.sellerPearlRefundAddress);
+  assert.equal(registration.metadata.release_amount_min_grains, '100999999000');
+  assert.equal(registration.metadata.release_amount_max_grains, trade.pearlEscrow.expectedAmountGrains);
+  assert.equal(registration.metadata.refund_amount_min_grains, '100999999000');
+  assert.equal(registration.metadata.refund_amount_max_grains, trade.pearlEscrow.expectedAmountGrains);
+  assert.equal(registration.metadata.classification_fee_tolerance_grains, '1000');
   assert.equal(registration.metadata.buyer_pearl_address, trade.buyerPearlAddress);
   assert.equal(registration.metadata.seller_pearl_refund_address, trade.sellerPearlRefundAddress);
   assert.deepEqual(registration.metadata.release_template, trade.pearlEscrow.releaseTemplate);
@@ -36,7 +43,7 @@ test('posts Pearl escrow watch registration to the indexer API', async () => {
   const address = server.address() as AddressInfo;
   try {
     const registrar = new HttpPearlEscrowWatchRegistrar(`http://127.0.0.1:${address.port}`);
-    await registrar.registerPearlEscrowWatch(trade);
+    await registrar.registerPearlEscrowWatch(trade, { classificationFeeToleranceGrains: '1000' });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
@@ -48,8 +55,17 @@ test('posts Pearl escrow watch registration to the indexer API', async () => {
     network: 'testnet2',
     address: trade.pearlEscrow.address,
     required_confirmations: 3,
-    metadata: createPearlEscrowWatchRegistration(trade).metadata,
+    metadata: createPearlEscrowWatchRegistration(trade, { classificationFeeToleranceGrains: '1000' }).metadata,
   });
+});
+
+test('rejects spend classification tolerance that can consume the whole escrow', () => {
+  assert.throws(
+    () => createPearlEscrowWatchRegistration(trade, {
+      classificationFeeToleranceGrains: trade.pearlEscrow.expectedAmountGrains,
+    }),
+    /classificationFeeToleranceGrains must be smaller than expectedAmountGrains/,
+  );
 });
 
 async function readJson(request: IncomingMessage): Promise<unknown> {

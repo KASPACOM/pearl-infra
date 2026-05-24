@@ -96,13 +96,17 @@ import type {
 import type { UsdcEscrowReader } from './usdc-escrow-reader.js';
 
 export interface PearlEscrowWatchRegistrar {
-  registerPearlEscrowWatch(trade: OtcTrade): Promise<{
+  registerPearlEscrowWatch(trade: OtcTrade, options?: PearlEscrowWatchRegistrationOptions): Promise<{
     watchId: string;
     address: string;
     network: OtcTrade['pearlEscrow']['network'];
     requiredConfirmations: number;
     metadata: Record<string, unknown>;
   }>;
+}
+
+export interface PearlEscrowWatchRegistrationOptions {
+  classificationFeeToleranceGrains?: string;
 }
 
 export interface PearlEscrowAllocator {
@@ -1196,7 +1200,9 @@ export class OtcTradeService {
     }
     this.assertPearlEscrowWatchRegistrarConfigured();
     if (!this.pearlEscrowWatchRegistrar) return;
-    const registration = await this.pearlEscrowWatchRegistrar.registerPearlEscrowWatch(trade);
+    const registration = await this.pearlEscrowWatchRegistrar.registerPearlEscrowWatch(trade, {
+      classificationFeeToleranceGrains: this.config.pearlReleaseFeeGrains ?? '0',
+    });
     const timestamp = this.now().toISOString();
     const requestHash = createPayloadHash('pearl_watch_register', {
       tradeId: trade.tradeId,
