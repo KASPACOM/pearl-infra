@@ -1042,13 +1042,15 @@ through one-time wallet challenges before creating user/profile records.
   - 2026-05-24: Profile registration captures `ref=` into local storage,
     submits it during wallet-owned registration, and shows both own referral
     code and referred-by attribution. Remaining: carry anonymous referral
-    context through pre-profile quote flows.
+    context through pre-profile quote flows and persist attribution when a
+    visitor creates a quote before connecting a wallet profile.
 - [ ] 12.4 Add user profile UX for linked wallets, optional email,
   notification preferences, referral code, and referred-by status.
   - 2026-05-24: Added `/profile` for wallet-owned account creation, optional
     email/profile update, referral panel, points summary, my offers, and my
     trades. Remaining: verified email flow and granular notification
-    preferences.
+    preferences. Current email field is contact metadata only; it must not be
+    used for outbound notifications until verification exists.
 - [x] 12.5 Add order book persistence and public market APIs for active orders,
   filters, sorting, recent trades, market stats, and volume counters.
   - 2026-05-24: Added `005_orders_points.sql`, `POST /otc/orders`,
@@ -1062,11 +1064,27 @@ through one-time wallet challenges before creating user/profile records.
     trade count, and verified user count.
 - [ ] 12.7 Add notification preferences and delivery jobs for trade status,
   deadline warnings, new matching orders, price alerts, and referral events.
+  - Missing: email verification tokens, verified-email storage, unsubscribe
+    controls, notification preference API/UI, event dispatcher, retry/audit
+    table, and delivery workers for trade, order, price, and referral events.
 - [ ] 12.8 Upgrade Telegram from operator alerts to user self-service:
   wallet-linked account binding, `/orders`, `/trades`, `/trade <id>`,
   price alerts, new-order alerts, and private trade-status notifications.
+  - Missing: Telegram account-link challenge flow, wallet-bound bot sessions,
+    private per-user authorization checks, `/orders`, `/trades`, `/trade <id>`
+    command handlers, price alert rules, new-order alert rules, and delivery
+    audit/retry handling.
 - [x] 12.9 Add activity points for signup, order creation, completed trades,
   direct referrals, and 10% referred-user activity bonuses.
   - 2026-05-24: Added `otc_points_ledger`, deterministic point-event
     idempotency, profile point summaries, referral signup points, and 10%
     upstream referral activity bonuses.
+- [ ] 12.10 Connect public orders directly into settlement trades.
+  - 2026-05-24: Added maker order creation and public order-book display.
+    Remaining: accept-order flow that reserves/fills `remaining_prl`, creates
+    the quote/trade from the selected order terms, prevents overfills/races,
+    expires stale orders, and updates order status from settlement outcomes.
+- [ ] 12.11 Add user management/admin views for wallet users.
+  - Missing: admin/search view for users, linked wallets, referred-by tree,
+    points ledger, profile/contact status, order history, trade history, and
+    support-safe account actions.
