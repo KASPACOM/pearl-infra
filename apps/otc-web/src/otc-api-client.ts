@@ -313,18 +313,21 @@ export interface UpdateNotificationPreferencesRequest {
   }>;
 }
 
+export interface OtcUserWallet {
+  userId: string;
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+  publicKeyHex?: string;
+  verifiedAt: string;
+  createdAt: string;
+}
+
 export interface OtcUser {
   userId: string;
   referralCode: string;
-  wallet: {
-    userId: string;
-    walletType: OtcUserWalletType;
-    network: string;
-    address: string;
-    publicKeyHex?: string;
-    verifiedAt: string;
-    createdAt: string;
-  };
+  wallet: OtcUserWallet;
+  wallets: OtcUserWallet[];
   profile: {
     userId: string;
     email?: string;
@@ -342,6 +345,15 @@ export interface OtcUser {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LinkUserWalletRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  walletChallengeId: string;
+  walletSignature: string;
+  walletPublicKeyHex?: string;
 }
 
 export interface ReferralCodeLookup {
@@ -572,6 +584,10 @@ export class OtcApiClient {
 
   registerUser(request: RegisterUserRequest): Promise<OtcUser> {
     return this.post('/otc/users', request);
+  }
+
+  linkUserWallet(userId: string, request: LinkUserWalletRequest): Promise<OtcUser> {
+    return this.post(`/otc/users/${encodeURIComponent(userId)}/wallets`, request);
   }
 
   resolveReferralCode(referralCode: string): Promise<ReferralCodeLookup> {

@@ -90,6 +90,10 @@ export async function handleOtcHttpRequest(
     return { statusCode: 201, body: await service.registerUser(await readJsonBody(request)) };
   }
 
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'wallets') {
+    return { statusCode: 201, body: await service.linkUserWallet(parts[2], await readJsonBody(request)) };
+  }
+
   if (method === 'GET' && path === '/otc/market/stats') {
     return { statusCode: 200, body: await service.getMarketStats() };
   }

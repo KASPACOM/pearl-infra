@@ -279,6 +279,7 @@ export function ProfilePage() {
             <>
               <DataRow label="User" value={user.userId} />
               <DataRow label="Wallet" value={user.wallet.address} />
+              <DataRow label="Linked wallets" value={getLinkedWallets(user).map(formatWalletLabel).join(', ')} />
               <DataRow label="Your referral code" value={user.referralCode} />
               <DataRow label="Referred by" value={user.referredBy?.referralCode ?? '-'} />
               <DataRow label="Captured ref" value={referralAttribution?.referralCode ?? '-'} />
@@ -466,6 +467,18 @@ function createOrderMakerSignerProofMessage(input: {
     `maker_pearl_pubkey=${normalizeProofPubkey(input.makerPearlPubkey)}`,
     'release_signing_mode=manual_after_base_deposit',
   ].join('\n');
+}
+
+function getLinkedWallets(user: OtcUser) {
+  return user.wallets?.length ? user.wallets : [user.wallet];
+}
+
+function formatWalletLabel(wallet: OtcUser['wallet']): string {
+  return `${wallet.walletType}:${wallet.network}:${shortAddress(wallet.address)}`;
+}
+
+function shortAddress(address: string): string {
+  return address.length > 18 ? `${address.slice(0, 10)}...${address.slice(-6)}` : address;
 }
 
 function normalizeProofPubkey(value: string): string {

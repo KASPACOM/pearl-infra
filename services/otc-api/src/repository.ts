@@ -94,6 +94,7 @@ export interface OtcRepository {
   findUserByWallet(walletType: OtcUserWallet['walletType'], network: string, address: string): Promise<OtcUser | undefined>;
   findUserById(userId: string): Promise<OtcUser | undefined>;
   saveUser(input: SaveUserInput): Promise<OtcUser>;
+  addUserWallet(userId: string, wallet: Omit<OtcUserWallet, 'userId' | 'createdAt'>): Promise<OtcUser>;
   updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile>;
   findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined>;
   countUsers(): Promise<number>;
@@ -329,7 +330,10 @@ export class InMemoryOtcRepository implements OtcRepository {
     address: string,
   ): Promise<OtcUser | undefined> {
     const userId = this.userByWallet.get(formatWalletKey(walletType, network, address));
-    return userId ? this.users.get(userId) : undefined;
+    const user = userId ? this.users.get(userId) : undefined;
+    if (!user) return undefined;
+    const matchedWallet = user.wallets.find((wallet) => walletMatches(wallet, walletType, network, address)) ?? user.wallet;
+    return { ...user, wallet: matchedWallet };
   }
 
   async findUserById(userId: string): Promise<OtcUser | undefined> {
@@ -350,6 +354,7 @@ export class InMemoryOtcRepository implements OtcRepository {
       userId: input.userId,
       referralCode: input.referralCode,
       wallet: { ...input.wallet, createdAt },
+      wallets: [{ ...input.wallet, createdAt }],
       profile: {
         ...input.profile,
         createdAt,
@@ -378,6 +383,30 @@ export class InMemoryOtcRepository implements OtcRepository {
       createdAt,
     });
     return user;
+  }
+
+  async addUserWallet(userId: string, wallet: Omit<OtcUserWallet, 'userId' | 'createdAt'>): Promise<OtcUser> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error(`user not found: ${userId}`);
+    const existingUserId = this.userByWallet.get(formatWalletKey(wallet.walletType, wallet.network, wallet.address));
+    if (existingUserId && existingUserId !== userId) {
+      throw new Error('wallet already belongs to another user');
+    }
+    const existingWallet = user.wallets.find((candidate) =>
+      walletMatches(candidate, wallet.walletType, wallet.network, wallet.address),
+    );
+    if (existingWallet) {
+      return { ...user, wallet: existingWallet };
+    }
+    const linkedWallet: OtcUserWallet = { ...wallet, userId, createdAt: wallet.verifiedAt };
+    const updated: OtcUser = {
+      ...user,
+      wallets: [...user.wallets, linkedWallet],
+      updatedAt: wallet.verifiedAt,
+    };
+    this.users.set(userId, updated);
+    this.userByWallet.set(formatWalletKey(wallet.walletType, wallet.network, wallet.address), userId);
+    return { ...updated, wallet: linkedWallet };
   }
 
   async updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile> {
@@ -609,14 +638,14 @@ export class InMemoryOtcRepository implements OtcRepository {
   }
 
   async listTradesForUser(user: OtcUser): Promise<OtcTrade[]> {
-    const address = user.wallet.address.toLowerCase();
+    const addresses = new Set(user.wallets.map((wallet) => wallet.address.toLowerCase()));
     return Array.from(this.trades.values())
       .filter(
         (trade) =>
-          trade.buyerUsdcAddress.toLowerCase() === address ||
-          trade.sellerUsdcReceiveAddress.toLowerCase() === address ||
-          trade.buyerPearlAddress.toLowerCase() === address ||
-          trade.sellerPearlRefundAddress.toLowerCase() === address,
+          addresses.has(trade.buyerUsdcAddress.toLowerCase()) ||
+          addresses.has(trade.sellerUsdcReceiveAddress.toLowerCase()) ||
+          addresses.has(trade.buyerPearlAddress.toLowerCase()) ||
+          addresses.has(trade.sellerPearlRefundAddress.toLowerCase()),
       )
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
@@ -699,6 +728,17 @@ type UserRow = Record<string, unknown> & {
   referred_by_code: string | null;
   source_url: string | null;
   attributed_at: Date | string | null;
+}
+
+type UserWalletRow = Record<string, unknown> & {
+  user_id: string;
+  wallet_type: string;
+  network: string;
+  address: string;
+  public_key_hex: string | null;
+  verified_at: Date | string;
+  created_at?: Date | string;
+  wallet_created_at?: Date | string;
 }
 
 type ReferralCodeRow = Record<string, unknown> & {
@@ -1197,13 +1237,11 @@ export class PgOtcRepository implements OtcRepository {
     network: string,
     address: string,
   ): Promise<OtcUser | undefined> {
-    const result = await this.client.query<UserRow>(USER_SELECT_BY_WALLET_SQL, [walletType, network, address]);
-    return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+    return findUserByWalletWithClient(this.client, walletType, network, address);
   }
 
   async findUserById(userId: string): Promise<OtcUser | undefined> {
-    const result = await this.client.query<UserRow>(USER_SELECT_BY_ID_SQL, [userId]);
-    return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+    return findUserByIdWithClient(this.client, userId);
   }
 
   async saveUser(input: SaveUserInput): Promise<OtcUser> {
@@ -1278,6 +1316,28 @@ export class PgOtcRepository implements OtcRepository {
 
       const saved = await findUserByIdWithClient(tx, input.userId);
       if (!saved) throw new Error(`user insert failed: ${input.userId}`);
+      return saved;
+    });
+  }
+
+  async addUserWallet(userId: string, wallet: Omit<OtcUserWallet, 'userId' | 'createdAt'>): Promise<OtcUser> {
+    return this.client.withTransaction(async (tx) => {
+      const user = await findUserByIdWithClient(tx, userId);
+      if (!user) throw new Error(`user not found: ${userId}`);
+      const existing = await findUserByWalletWithClient(tx, wallet.walletType, wallet.network, wallet.address);
+      if (existing && existing.userId !== userId) {
+        throw new Error('wallet already belongs to another user');
+      }
+      await tx.query(
+        `INSERT INTO otc_user_wallets (
+           user_id, wallet_type, network, address, public_key_hex, verified_at, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $6)
+         ON CONFLICT (wallet_type, network, address) DO NOTHING`,
+        [userId, wallet.walletType, wallet.network, wallet.address, wallet.publicKeyHex ?? null, wallet.verifiedAt],
+      );
+      await tx.query('UPDATE otc_users SET updated_at = $2 WHERE user_id = $1', [userId, wallet.verifiedAt]);
+      const saved = await findUserByWalletWithClient(tx, wallet.walletType, wallet.network, wallet.address);
+      if (!saved) throw new Error(`wallet link failed: ${userId}`);
       return saved;
     });
   }
@@ -1768,15 +1828,16 @@ export class PgOtcRepository implements OtcRepository {
   }
 
   async listTradesForUser(user: OtcUser): Promise<OtcTrade[]> {
+    const addresses = user.wallets.map((wallet) => wallet.address);
     const result = await this.client.query<TradeRow>(
       `SELECT trade
          FROM otc_trades
-        WHERE lower(trade->>'buyerUsdcAddress') = lower($1)
-           OR lower(trade->>'sellerUsdcReceiveAddress') = lower($1)
-           OR lower(trade->>'buyerPearlAddress') = lower($1)
-           OR lower(trade->>'sellerPearlRefundAddress') = lower($1)
+        WHERE lower(trade->>'buyerUsdcAddress') = ANY($1::text[])
+           OR lower(trade->>'sellerUsdcReceiveAddress') = ANY($1::text[])
+           OR lower(trade->>'buyerPearlAddress') = ANY($1::text[])
+           OR lower(trade->>'sellerPearlRefundAddress') = ANY($1::text[])
         ORDER BY updated_at DESC, trade_id ASC`,
-      [user.wallet.address],
+      [addresses.map((address) => address.toLowerCase())],
     );
     return result.rows.map((row) => row.trade);
   }
@@ -1825,12 +1886,27 @@ async function findUserByWalletWithClient(
   address: string,
 ): Promise<OtcUser | undefined> {
   const result = await client.query<UserRow>(USER_SELECT_BY_WALLET_SQL, [walletType, network, address]);
-  return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+  return result.rows[0] ? hydrateUserWallets(client, rowToUser(result.rows[0])) : undefined;
 }
 
 async function findUserByIdWithClient(client: PgQueryClient, userId: string): Promise<OtcUser | undefined> {
   const result = await client.query<UserRow>(USER_SELECT_BY_ID_SQL, [userId]);
-  return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+  return result.rows[0] ? hydrateUserWallets(client, rowToUser(result.rows[0])) : undefined;
+}
+
+async function hydrateUserWallets(client: PgQueryClient, user: OtcUser): Promise<OtcUser> {
+  const result = await client.query<UserWalletRow>(
+    `SELECT user_id, wallet_type, network, address, public_key_hex, verified_at, created_at
+       FROM otc_user_wallets
+      WHERE user_id = $1
+      ORDER BY created_at ASC, wallet_type ASC, network ASC, address ASC`,
+    [user.userId],
+  );
+  const wallets = result.rows.map(rowToUserWallet);
+  const selectedWallet = wallets.find((wallet) =>
+    walletMatches(wallet, user.wallet.walletType, user.wallet.network, user.wallet.address),
+  ) ?? wallets[0] ?? user.wallet;
+  return { ...user, wallet: selectedWallet, wallets: wallets.length > 0 ? wallets : [user.wallet] };
 }
 
 async function findTradeIdempotencyByClientRequestIdWithClient(
@@ -1885,18 +1961,12 @@ function rowToWalletChallenge(row: WalletChallengeRow): OtcUserWalletChallenge {
 }
 
 function rowToUser(row: UserRow): OtcUser {
+  const wallet = rowToUserWallet(row);
   return {
     userId: row.user_id,
     referralCode: row.referral_code,
-    wallet: {
-      userId: row.user_id,
-      walletType: row.wallet_type as OtcUserWallet['walletType'],
-      network: row.network,
-      address: row.address,
-      ...(row.public_key_hex ? { publicKeyHex: row.public_key_hex } : {}),
-      verifiedAt: formatPgDate(row.verified_at),
-      createdAt: formatPgDate(row.wallet_created_at),
-    },
+    wallet,
+    wallets: [wallet],
     profile: {
       userId: row.user_id,
       ...(row.email ? { email: row.email } : {}),
@@ -1918,6 +1988,19 @@ function rowToUser(row: UserRow): OtcUser {
       : {}),
     createdAt: formatPgDate(row.user_created_at),
     updatedAt: formatPgDate(row.user_updated_at),
+  };
+}
+
+function rowToUserWallet(row: UserWalletRow): OtcUserWallet {
+  const createdAt = row.wallet_created_at ?? row.created_at ?? row.verified_at;
+  return {
+    userId: row.user_id,
+    walletType: row.wallet_type as OtcUserWallet['walletType'],
+    network: row.network,
+    address: row.address,
+    ...(row.public_key_hex ? { publicKeyHex: row.public_key_hex } : {}),
+    verifiedAt: formatPgDate(row.verified_at),
+    createdAt: formatPgDate(createdAt),
   };
 }
 
@@ -2065,6 +2148,15 @@ function formatPearlEscrowDerivationKey(allocation: Pick<PearlEscrowAllocationIn
 
 function formatWalletKey(walletType: OtcUserWallet['walletType'], network: string, address: string): string {
   return `${walletType}:${network.toLowerCase()}:${address.toLowerCase()}`;
+}
+
+function walletMatches(
+  wallet: Pick<OtcUserWallet, 'walletType' | 'network' | 'address'>,
+  walletType: OtcUserWallet['walletType'],
+  network: string,
+  address: string,
+): boolean {
+  return formatWalletKey(wallet.walletType, wallet.network, wallet.address) === formatWalletKey(walletType, network, address);
 }
 
 function formatNotificationPreferenceKey(userId: string, notificationType: string, channel: string): string {
