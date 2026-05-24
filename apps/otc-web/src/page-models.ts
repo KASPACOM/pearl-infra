@@ -241,7 +241,13 @@ export function buildQuotePageModel(input: QuoteFormInput): QuotePageModel {
   };
 }
 
-export function buildAcceptQuotePageModel(quote: OtcQuote, input: AcceptQuoteFormInput, role: QuoteRole, now = new Date()): AcceptQuotePageModel {
+export function buildAcceptQuotePageModel(
+  quote: OtcQuote,
+  input: AcceptQuoteFormInput,
+  role: QuoteRole,
+  now = new Date(),
+  options: { makerRole?: 'buyer' | 'seller' } = {},
+): AcceptQuotePageModel {
   const sellerFieldsVisible = true;
   const quoteExpired = new Date(quote.expiresAt).getTime() <= now.getTime() || quote.status !== 'active';
   const errors: AcceptQuotePageModel['errors'] = {};
@@ -265,10 +271,10 @@ export function buildAcceptQuotePageModel(quote: OtcQuote, input: AcceptQuoteFor
     if (!isLikelyPearlPubkey(input.sellerPearlPubkey ?? '')) {
       errors.sellerPearlPubkey = 'Enter the seller Pearl x-only public key.';
     }
-    if (!isLikelySchnorrSignature(input.buyerPearlPubkeyProof ?? '')) {
+    if (options.makerRole !== 'buyer' && !isLikelySchnorrSignature(input.buyerPearlPubkeyProof ?? '')) {
       errors.buyerPearlPubkeyProof = 'Enter the buyer signer proof signature.';
     }
-    if (!isLikelySchnorrSignature(input.sellerPearlPubkeyProof ?? '')) {
+    if (options.makerRole !== 'seller' && !isLikelySchnorrSignature(input.sellerPearlPubkeyProof ?? '')) {
       errors.sellerPearlPubkeyProof = 'Enter the seller signer proof signature.';
     }
   }

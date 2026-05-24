@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 
-import { createOtcClient } from '../api.js';
-import type { MarketStats, OrderBookPage, RecentTradeSummary } from '../otc-api-client.js';
+import { createClientRequestId, createOtcClient } from '../api.js';
+import { connectInjectedEvmWallet, signInjectedEvmMessage, type EvmWalletSnapshot } from '../evm-wallet.js';
+import type { MarketStats, OrderBookPage, OtcOrder, OtcUser, RecentTradeSummary } from '../otc-api-client.js';
 import { BrandLoader, DataRow } from '../components/Primitives.js';
+import { readStoredReferralCode, readStoredUser, storeOrderQuoteDraft, storeUser } from '../user-session.js';
 
 const emptyStats: MarketStats = {
   successfulTrades: 0,
@@ -19,7 +21,13 @@ export function MarketPage() {
   const [stats, setStats] = useState<MarketStats>(emptyStats);
   const [orders, setOrders] = useState<OrderBookPage>({ items: [], total: 0, limit: 25 });
   const [trades, setTrades] = useState<RecentTradeSummary[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [wallet, setWallet] = useState<EvmWalletSnapshot>({ connected: false });
+  const [user, setUser] = useState<OtcUser | undefined>(() => readStoredUser());
+  const [selectedOrder, setSelectedOrder] = useState<OtcOrder>();
+  const [fillAmountPrl, setFillAmountPrl] = useState('');
+  const [takerPearlAddress, setTakerPearlAddress] = useState('');
+  const [takerUsdcAddress, setTakerUsdcAddress] = useState('');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'quoting'>('loading');
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -29,12 +37,17 @@ export function MarketPage() {
     Promise.all([
       client.getMarketStats(),
       client.listOrders({ side, status: 'open', sort: 'best_price', limit: 25 }),
+      client.listOrders({ side, status: 'partially_filled', sort: 'best_price', limit: 25 }),
       client.listRecentTrades(12),
     ])
-      .then(([apiStats, apiOrders, apiTrades]) => {
+      .then(([apiStats, openOrders, partiallyFilledOrders, apiTrades]) => {
         if (!active) return;
         setStats(apiStats);
-        setOrders(apiOrders);
+        setOrders({
+          items: [...openOrders.items, ...partiallyFilledOrders.items],
+          total: openOrders.total + partiallyFilledOrders.total,
+          limit: openOrders.limit + partiallyFilledOrders.limit,
+        });
         setTrades(apiTrades);
         setStatus('ready');
       })
@@ -47,6 +60,77 @@ export function MarketPage() {
       active = false;
     };
   }, [side]);
+
+  function openTicket(order: OtcOrder) {
+    setSelectedOrder(order);
+    setFillAmountPrl(order.minFillPrl ?? order.remainingPrl);
+    setTakerPearlAddress('');
+    setTakerUsdcAddress(wallet.address ?? user?.wallet.address ?? '');
+    setError(undefined);
+  }
+
+  async function ensureWalletUser(): Promise<{ wallet: EvmWalletSnapshot & { address: string }; user: OtcUser }> {
+    const snapshot = await connectInjectedEvmWallet();
+    if (!snapshot.address) throw new Error('Wallet did not return an address.');
+    setWallet(snapshot);
+    const client = createOtcClient();
+    const challenge = await client.createWalletChallenge({
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: snapshot.address,
+    });
+    const signature = await signInjectedEvmMessage(challenge.message, snapshot.address);
+    const registered = await client.registerUser({
+      challengeId: challenge.challengeId,
+      signature,
+      ...(readStoredReferralCode() ? { referralCode: readStoredReferralCode() } : {}),
+      sourceUrl: typeof window === 'undefined' ? undefined : window.location.href,
+    });
+    storeUser(registered);
+    setUser(registered);
+    return { wallet: { ...snapshot, address: snapshot.address }, user: registered };
+  }
+
+  async function createTicketQuote() {
+    if (!selectedOrder) return;
+    setStatus('quoting');
+    setError(undefined);
+    try {
+      const active = await ensureWalletUser();
+      const usdcAddress = takerUsdcAddress.trim() || active.wallet.address;
+      const client = createOtcClient();
+      const challenge = await client.createWalletChallenge({
+        walletType: 'evm',
+        network: 'base_sepolia',
+        address: active.wallet.address,
+      });
+      const signature = await signInjectedEvmMessage(challenge.message, active.wallet.address);
+      const response = await client.createOrderQuote(selectedOrder.orderId, {
+        userId: active.user.userId,
+        challengeId: challenge.challengeId,
+        signature,
+        amountPrl: fillAmountPrl,
+        pearlAddress: takerPearlAddress,
+        usdcAddress,
+        clientRequestId: createClientRequestId('order_quote'),
+      });
+      storeOrderQuoteDraft({
+        quoteId: response.quote.quoteId,
+        orderId: response.order.orderId,
+        makerRole: response.makerRole,
+        acceptPrefill: response.acceptPrefill,
+      });
+      const takerRole = response.makerRole === 'buyer' ? 'seller' : 'buyer';
+      if (typeof window !== 'undefined') {
+        window.location.assign(`/quote/${encodeURIComponent(response.quote.quoteId)}/accept?role=${takerRole}`);
+      }
+    } catch (quoteError) {
+      setStatus('error');
+      setError(quoteError instanceof Error ? quoteError.message : 'Order quote creation failed.');
+    }
+  }
+
+  const takerRole = selectedOrder?.side === 'buy_prl' ? 'seller' : 'buyer';
 
   return (
     <section className="market-page">
@@ -82,19 +166,43 @@ export function MarketPage() {
               <span>Price</span>
               <span>PRL</span>
               <span>Locks</span>
-              <span>Status</span>
+              <span>Action</span>
             </div>
             {orders.items.map((order) => (
               <div className="market-table__row" key={order.orderId}>
                 <strong>{order.priceUsdcPerPrl}</strong>
                 <span>{order.remainingPrl}</span>
                 <span>{order.fundingAsset}</span>
-                <span>{order.status}</span>
+                <button className="market-fill-button" onClick={() => openTicket(order)}>Fill</button>
               </div>
             ))}
             {orders.items.length === 0 && status !== 'loading' ? <div className="om-empty">No open offers yet.</div> : null}
           </div>
           <a className="om-button om-button--primary" href="/profile">Create offer</a>
+          {selectedOrder ? (
+            <div className="market-ticket">
+              <span className="om-kicker">{takerRole === 'seller' ? 'Sell into this bid' : 'Buy from this ask'}</span>
+              <div className="market-ticket__summary">
+                <DataRow label="Price" value={selectedOrder.priceUsdcPerPrl} />
+                <DataRow label="Available PRL" value={selectedOrder.remainingPrl} />
+              </div>
+              <label>
+                <span>Fill amount PRL</span>
+                <input inputMode="decimal" value={fillAmountPrl} onChange={(event) => setFillAmountPrl(event.target.value)} />
+              </label>
+              <label>
+                <span>{takerRole === 'seller' ? 'Seller refund Pearl address' : 'Buyer receive Pearl address'}</span>
+                <input value={takerPearlAddress} onChange={(event) => setTakerPearlAddress(event.target.value)} placeholder="tprl1p..." />
+              </label>
+              <label>
+                <span>{takerRole === 'seller' ? 'Seller USDC receive address' : 'Buyer USDC refund address'}</span>
+                <input value={takerUsdcAddress} onChange={(event) => setTakerUsdcAddress(event.target.value)} placeholder="0x..." />
+              </label>
+              <button className="om-button om-button--primary" disabled={status === 'quoting'} onClick={createTicketQuote}>
+                {status === 'quoting' ? <BrandLoader compact label="Creating quote..." /> : 'Create quote'}
+              </button>
+            </div>
+          ) : null}
         </section>
 
         <section className="om-panel">
