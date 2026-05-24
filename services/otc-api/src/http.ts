@@ -122,6 +122,10 @@ export async function handleOtcHttpRequest(
     return { statusCode: 201, body: await service.createOrder(await readJsonBody(request)) };
   }
 
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'orders' && parts[3] === 'quotes') {
+    return { statusCode: 201, body: await service.createOrderQuote(parts[2], await readJsonBody(request)) };
+  }
+
   if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[2] === 'referrals') {
     return { statusCode: 200, body: await service.resolveReferralCode(parts[3]) };
   }

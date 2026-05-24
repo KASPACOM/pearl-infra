@@ -35,6 +35,7 @@ import type {
   AdminTradeQuery,
   AdminTradeSummary,
   CreateOrderRequest,
+  CreateOrderQuoteRequest,
   CreateQuoteRequest,
   CreateWalletChallengeRequest,
   CreateWalletChallengeResponse,
@@ -52,6 +53,7 @@ import type {
   OtcSideEffect,
   OrderBookPage,
   OrderBookQuery,
+  OrderQuoteResponse,
   PearlReleaseSigningIntent,
   PrepareUsdcCreateTradeRequest,
   PublicTradeProof,
@@ -247,14 +249,36 @@ export class OtcTradeService {
   }
 
   async createOrder(request: CreateOrderRequest): Promise<OtcOrder> {
-    validateCreateOrderRequest(request);
+    validateCreateOrderRequest(request, this.config.pearlNetwork);
     const { user } = await this.verifyAndConsumeUserWalletChallenge(request.userId, request);
+    const makerUsdcAddress = getAddress(request.makerUsdcAddress);
+    if (getAddress(user.wallet.address) !== makerUsdcAddress) {
+      throw new Error('makerUsdcAddress must match the verified user wallet');
+    }
+    const releaseSigningMode = request.pearlReleaseSigningMode ?? 'manual_after_base_deposit';
+    assertOrderMakerSignerProof({
+      userId: user.userId,
+      side: request.side,
+      amountPrl: normalizeAmountString(request.amountPrl),
+      priceUsdcPerPrl: normalizeAmountString(request.priceUsdcPerPrl),
+      minFillPrl: request.minFillPrl ? normalizeAmountString(request.minFillPrl) : undefined,
+      makerPearlAddress: request.makerPearlAddress,
+      makerUsdcAddress,
+      makerPearlPubkey: request.makerPearlPubkey,
+      pearlReleaseSigningMode: releaseSigningMode,
+      signatureHex: request.makerPearlPubkeyProof,
+    });
     const now = this.now().toISOString();
     const order: OtcOrder = {
       orderId: createRandomId('order'),
       makerUserId: user.userId,
       side: request.side,
       fundingAsset: request.side === 'sell_prl' ? 'PRL' : 'USDC',
+      makerPearlAddress: request.makerPearlAddress.trim(),
+      makerUsdcAddress,
+      makerPearlPubkey: normalizeProofPubkeyForUser(request.makerPearlPubkey),
+      makerPearlPubkeyProof: request.makerPearlPubkeyProof.trim(),
+      pearlReleaseSigningMode: releaseSigningMode,
       amountPrl: normalizeAmountString(request.amountPrl),
       remainingPrl: normalizeAmountString(request.amountPrl),
       priceUsdcPerPrl: normalizeAmountString(request.priceUsdcPerPrl),
@@ -270,6 +294,51 @@ export class OtcTradeService {
       metadata: { side: saved.side, funding_asset: saved.fundingAsset },
     });
     return saved;
+  }
+
+  async createOrderQuote(orderId: string, request: CreateOrderQuoteRequest): Promise<OrderQuoteResponse> {
+    validateCreateOrderQuoteRequest(orderId, request, this.config.pearlNetwork);
+    const { user } = await this.verifyAndConsumeUserWalletChallenge(request.userId, request);
+    const order = await this.repository.findOrderById(orderId);
+    if (!order) throw new Error(`order not found: ${orderId}`);
+    assertOrderFillable(order, request.amountPrl, this.now());
+    if (order.makerUserId === user.userId) {
+      throw new Error('maker cannot take their own order');
+    }
+
+    const makerRole = order.side === 'buy_prl' ? 'buyer' : 'seller';
+    const takerRole = makerRole === 'buyer' ? 'seller' : 'buyer';
+    const takerUsdcAddress = getAddress(request.usdcAddress);
+    const quoteRequest: CreateQuoteRequest = {
+      side: order.side,
+      amountPrl: normalizeAmountString(request.amountPrl),
+      settlementAsset: 'USDC',
+      settlementNetwork: 'base',
+      buyerPearlAddress: makerRole === 'buyer' ? order.makerPearlAddress : request.pearlAddress,
+      usdcRefundAddress: makerRole === 'buyer' ? order.makerUsdcAddress : takerUsdcAddress,
+      clientRequestId: request.clientRequestId,
+    };
+    const quote = await this.createQuoteWithPrice(quoteRequest, order.priceUsdcPerPrl);
+    await this.repository.saveOrderQuoteLink({
+      quoteId: quote.quoteId,
+      orderId: order.orderId,
+      amountPrl: quote.amountPrl,
+      createdAt: this.now().toISOString(),
+    });
+    return {
+      quote,
+      order,
+      makerRole,
+      acceptPrefill: {
+        pearlReleaseSigningMode: order.pearlReleaseSigningMode,
+        ...(makerRole === 'buyer'
+          ? { buyerPearlAddress: order.makerPearlAddress, buyerUsdcAddress: order.makerUsdcAddress, buyerPearlPubkey: order.makerPearlPubkey }
+          : { sellerPearlRefundAddress: order.makerPearlAddress, sellerUsdcReceiveAddress: order.makerUsdcAddress, sellerPearlPubkey: order.makerPearlPubkey }),
+        ...(takerRole === 'buyer'
+          ? { buyerPearlAddress: request.pearlAddress, buyerUsdcAddress: takerUsdcAddress }
+          : { sellerPearlRefundAddress: request.pearlAddress, sellerUsdcReceiveAddress: takerUsdcAddress }),
+      },
+    };
   }
 
   async listOrders(query: OrderBookQuery = {}): Promise<OrderBookPage> {
@@ -519,6 +588,10 @@ export class OtcTradeService {
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
     validateCreateQuoteRequest(request, this.config.pearlNetwork);
+    return this.createQuoteWithPrice(request, this.config.priceUsdcPerPrl);
+  }
+
+  private async createQuoteWithPrice(request: CreateQuoteRequest, priceUsdcPerPrl: string): Promise<OtcQuote> {
     const requestHash = createPayloadHash('create_quote', request);
     const existing = await this.repository.findQuoteIdempotencyByClientRequestId(request.clientRequestId);
     if (existing) {
@@ -530,7 +603,7 @@ export class OtcTradeService {
       throw new Error('unsupported settlement route');
     }
 
-    const amounts = calculateQuoteAmounts(request.amountPrl, this.config.priceUsdcPerPrl, this.config.feeBps);
+    const amounts = calculateQuoteAmounts(request.amountPrl, priceUsdcPerPrl, this.config.feeBps);
     const createdAt = this.now();
     const quote: OtcQuote = {
       quoteId: createStableId('quote', [request.clientRequestId, request.side, amounts.amountPrl]),
@@ -580,6 +653,15 @@ export class OtcTradeService {
     }
     assertEscrowModeMatchesAllocator(request.pearlEscrowMode, this.config);
     assertMultisigSignerProofs(quoteId, request, this.config);
+    const orderLink = await this.repository.findOrderQuoteLinkByQuoteId(quoteId);
+    const linkedOrder = orderLink ? await this.repository.findOrderById(orderLink.orderId) : undefined;
+    if (orderLink && !linkedOrder) {
+      throw new Error(`linked order not found: ${orderLink.orderId}`);
+    }
+    if (linkedOrder && orderLink) {
+      assertOrderAcceptMatchesMaker(linkedOrder, request, this.config);
+      assertOrderFillable(linkedOrder, orderLink.amountPrl, acceptedAt);
+    }
     this.assertPearlEscrowWatchRegistrarConfigured();
 
     const tradeId = createStableId('trade', [quote.quoteId, request.clientRequestId]);
@@ -627,6 +709,9 @@ export class OtcTradeService {
     };
 
     await this.repository.saveTrade(trade, request.clientRequestId, requestHash);
+    if (linkedOrder && orderLink) {
+      await this.repository.reserveOrderFill(linkedOrder.orderId, orderLink.amountPrl, timestamp);
+    }
     await this.repository.appendEvent({
       tradeId,
       fromState: 'quoted',
@@ -1411,9 +1496,19 @@ function validateCreateWalletChallengeRequest(
   }
 }
 
-function validateCreateOrderRequest(request: CreateOrderRequest): void {
+function validateCreateOrderRequest(request: CreateOrderRequest, pearlNetwork: OtcApiConfig['pearlNetwork']): void {
   assertNonEmptyBounded(request.userId, 'userId', 80);
   assertOneOf(request.side, 'side', ['buy_prl', 'sell_prl']);
+  assertLikelyPearlAddress(request.makerPearlAddress, 'makerPearlAddress', pearlNetwork);
+  assertEvmAddress(request.makerUsdcAddress, 'makerUsdcAddress');
+  assertLikelyPearlPubkey(request.makerPearlPubkey, 'makerPearlPubkey');
+  assertLikelySchnorrSignature(request.makerPearlPubkeyProof, 'makerPearlPubkeyProof');
+  if (
+    request.pearlReleaseSigningMode &&
+    !['preauthorize_release', 'manual_after_base_deposit'].includes(request.pearlReleaseSigningMode)
+  ) {
+    throw new Error('pearlReleaseSigningMode must be preauthorize_release or manual_after_base_deposit');
+  }
   assertPositiveAmount(request.amountPrl, 'amountPrl', parsePrlToGrains);
   assertPositiveDecimal(request.priceUsdcPerPrl, 'priceUsdcPerPrl', 6);
   if (request.minFillPrl) {
@@ -1422,6 +1517,21 @@ function validateCreateOrderRequest(request: CreateOrderRequest): void {
   if (request.expiresAt && Number.isNaN(new Date(request.expiresAt).getTime())) {
     throw new Error('expiresAt must be a valid timestamp');
   }
+  assertNonEmptyBounded(request.challengeId, 'challengeId', 80);
+  assertNonEmptyBounded(request.signature, 'signature', 1024);
+}
+
+function validateCreateOrderQuoteRequest(
+  orderId: string,
+  request: CreateOrderQuoteRequest,
+  pearlNetwork: OtcApiConfig['pearlNetwork'],
+): void {
+  assertNonEmptyBounded(orderId, 'orderId', 80);
+  assertNonEmptyBounded(request.userId, 'userId', 80);
+  assertPositiveAmount(request.amountPrl, 'amountPrl', parsePrlToGrains);
+  assertLikelyPearlAddress(request.pearlAddress, 'pearlAddress', pearlNetwork);
+  assertEvmAddress(request.usdcAddress, 'usdcAddress');
+  assertNonEmptyBounded(request.clientRequestId, 'clientRequestId', 128);
   assertNonEmptyBounded(request.challengeId, 'challengeId', 80);
   assertNonEmptyBounded(request.signature, 'signature', 1024);
 }
@@ -1507,6 +1617,90 @@ function verifyPearlSignerProof(input: VerifyPearlSignerProofInput): boolean {
   const signature = parseSchnorrSignature(input.signatureHex);
   const messageHash = createPearlSignerProofHash(input);
   return ecc.verifySchnorr(messageHash, pubkey, signature);
+}
+
+function assertOrderMakerSignerProof(input: {
+  userId: string;
+  side: OtcOrder['side'];
+  amountPrl: string;
+  priceUsdcPerPrl: string;
+  minFillPrl?: string;
+  makerPearlAddress: string;
+  makerUsdcAddress: string;
+  makerPearlPubkey: string;
+  pearlReleaseSigningMode: PearlReleaseSigningMode;
+  signatureHex: string;
+}): void {
+  const pubkey = normalizeXOnlyPubkey(input.makerPearlPubkey);
+  const signature = parseSchnorrSignature(input.signatureHex);
+  const messageHash = createOrderMakerSignerProofHash(input);
+  if (!ecc.verifySchnorr(messageHash, pubkey, signature)) {
+    throw new Error('makerPearlPubkeyProof does not verify against order terms');
+  }
+}
+
+function createOrderMakerSignerProofMessage(input: Omit<Parameters<typeof assertOrderMakerSignerProof>[0], 'signatureHex'>): string {
+  return [
+    'Pearl OTC order signer proof v1',
+    `maker_user_id=${input.userId}`,
+    `side=${input.side}`,
+    `amount_prl=${input.amountPrl}`,
+    `price_usdc_per_prl=${input.priceUsdcPerPrl}`,
+    `min_fill_prl=${input.minFillPrl ?? ''}`,
+    `maker_role=${input.side === 'buy_prl' ? 'buyer' : 'seller'}`,
+    `maker_pearl_address=${input.makerPearlAddress.trim()}`,
+    `maker_usdc_address=${input.makerUsdcAddress.trim().toLowerCase()}`,
+    `maker_pearl_pubkey=${normalizeProofPubkey(input.makerPearlPubkey)}`,
+    `release_signing_mode=${input.pearlReleaseSigningMode}`,
+  ].join('\n');
+}
+
+function createOrderMakerSignerProofHash(input: Omit<Parameters<typeof assertOrderMakerSignerProof>[0], 'signatureHex'>): Uint8Array {
+  return createHash('sha256').update(createOrderMakerSignerProofMessage(input)).digest();
+}
+
+function assertOrderFillable(order: OtcOrder, amountPrl: string, now: Date): void {
+  if (!['open', 'partially_filled'].includes(order.status)) {
+    throw new Error(`order is not fillable: ${order.status}`);
+  }
+  if (order.expiresAt && new Date(order.expiresAt).getTime() <= now.getTime()) {
+    throw new Error('order expired');
+  }
+  const fill = parsePrlToGrains(amountPrl);
+  if (fill > parsePrlToGrains(order.remainingPrl)) {
+    throw new Error('order remaining amount is too small');
+  }
+  if (order.minFillPrl && fill < parsePrlToGrains(order.minFillPrl)) {
+    throw new Error('amountPrl is below order minimum fill');
+  }
+}
+
+function assertOrderAcceptMatchesMaker(order: OtcOrder, request: AcceptQuoteRequest, config: OtcApiConfig): void {
+  if ((request.pearlEscrowMode ?? defaultPearlEscrowMode(config)) !== 'multisig') {
+    throw new Error('order-linked quotes require multisig Pearl escrow');
+  }
+  const makerRole = order.side === 'buy_prl' ? 'buyer' : 'seller';
+  if (request.pearlReleaseSigningMode !== order.pearlReleaseSigningMode) {
+    throw new Error('order-linked quote release signing mode does not match maker order');
+  }
+  if (makerRole === 'buyer') {
+    if (request.buyerPearlAddress !== order.makerPearlAddress || getAddress(request.buyerUsdcAddress) !== getAddress(order.makerUsdcAddress)) {
+      throw new Error('buyer settlement fields do not match maker order');
+    }
+    if (normalizeProofPubkey(request.buyerPearlPubkey ?? '') !== order.makerPearlPubkey) {
+      throw new Error('buyer signer pubkey does not match maker order');
+    }
+    return;
+  }
+  if (
+    request.sellerPearlRefundAddress !== order.makerPearlAddress ||
+    getAddress(request.sellerUsdcReceiveAddress) !== getAddress(order.makerUsdcAddress)
+  ) {
+    throw new Error('seller settlement fields do not match maker order');
+  }
+  if (normalizeProofPubkey(request.sellerPearlPubkey ?? '') !== order.makerPearlPubkey) {
+    throw new Error('seller signer pubkey does not match maker order');
+  }
 }
 
 function verifyWalletChallenge(

@@ -18,6 +18,9 @@ export function ProfilePage() {
   const [orderAmountPrl, setOrderAmountPrl] = useState('');
   const [orderPrice, setOrderPrice] = useState('');
   const [orderMinFillPrl, setOrderMinFillPrl] = useState('');
+  const [orderMakerPearlAddress, setOrderMakerPearlAddress] = useState('');
+  const [orderMakerPearlPubkey, setOrderMakerPearlPubkey] = useState('');
+  const [orderMakerPearlPubkeyProof, setOrderMakerPearlPubkeyProof] = useState('');
   const [status, setStatus] = useState<'idle' | 'working' | 'error'>('idle');
   const [error, setError] = useState<string>();
   const [refCode] = useState(() => readStoredReferralCode());
@@ -104,6 +107,11 @@ export function ProfilePage() {
         challengeId: challenge.challengeId,
         signature,
         side: orderSide,
+        makerPearlAddress: orderMakerPearlAddress,
+        makerUsdcAddress: wallet.address,
+        makerPearlPubkey: orderMakerPearlPubkey,
+        makerPearlPubkeyProof: orderMakerPearlPubkeyProof,
+        pearlReleaseSigningMode: 'manual_after_base_deposit',
         amountPrl: orderAmountPrl,
         priceUsdcPerPrl: orderPrice,
         ...(orderMinFillPrl ? { minFillPrl: orderMinFillPrl } : {}),
@@ -111,6 +119,7 @@ export function ProfilePage() {
       setOrderAmountPrl('');
       setOrderPrice('');
       setOrderMinFillPrl('');
+      setOrderMakerPearlPubkeyProof('');
       await loadDashboard(user);
       setStatus('idle');
     } catch (orderError) {
@@ -199,7 +208,33 @@ export function ProfilePage() {
             <Field label="Minimum fill PRL">
               <input inputMode="decimal" value={orderMinFillPrl} onChange={(event) => setOrderMinFillPrl(event.target.value)} placeholder="Optional" />
             </Field>
+            <Field label={orderSide === 'buy_prl' ? 'Buyer Pearl address' : 'Seller refund Pearl address'}>
+              <input value={orderMakerPearlAddress} onChange={(event) => setOrderMakerPearlAddress(event.target.value)} placeholder="tprl1p..." />
+            </Field>
+            <Field label="Maker Pearl public key">
+              <input value={orderMakerPearlPubkey} onChange={(event) => setOrderMakerPearlPubkey(event.target.value)} spellCheck={false} />
+            </Field>
+            <Field label="Maker signer proof signature">
+              <input value={orderMakerPearlPubkeyProof} onChange={(event) => setOrderMakerPearlPubkeyProof(event.target.value)} spellCheck={false} />
+            </Field>
           </div>
+          <Field label="Maker signer proof message">
+            <textarea
+              value={user && wallet.address ? createOrderMakerSignerProofMessage({
+                makerUserId: user.userId,
+                side: orderSide,
+                amountPrl: orderAmountPrl,
+                priceUsdcPerPrl: orderPrice,
+                minFillPrl: orderMinFillPrl,
+                makerPearlAddress: orderMakerPearlAddress,
+                makerUsdcAddress: wallet.address,
+                makerPearlPubkey: orderMakerPearlPubkey,
+              }) : ''}
+              readOnly
+              rows={9}
+              spellCheck={false}
+            />
+          </Field>
           <p className="profile-note">
             {orderSide === 'sell_prl'
               ? 'Sell offers advertise PRL liquidity; PRL locks when the taker accepts and the Pearl escrow is allocated.'
@@ -281,4 +316,37 @@ function readStoredReferralCode(): string | undefined {
     return fromUrl;
   }
   return window.localStorage.getItem(REFERRAL_STORAGE_KEY)?.trim() || undefined;
+}
+
+function createOrderMakerSignerProofMessage(input: {
+  makerUserId: string;
+  side: 'buy_prl' | 'sell_prl';
+  amountPrl: string;
+  priceUsdcPerPrl: string;
+  minFillPrl?: string;
+  makerPearlAddress: string;
+  makerUsdcAddress: string;
+  makerPearlPubkey: string;
+}): string {
+  return [
+    'Pearl OTC order signer proof v1',
+    `maker_user_id=${input.makerUserId}`,
+    `side=${input.side}`,
+    `amount_prl=${input.amountPrl}`,
+    `price_usdc_per_prl=${input.priceUsdcPerPrl}`,
+    `min_fill_prl=${input.minFillPrl ?? ''}`,
+    `maker_role=${input.side === 'buy_prl' ? 'buyer' : 'seller'}`,
+    `maker_pearl_address=${input.makerPearlAddress.trim()}`,
+    `maker_usdc_address=${input.makerUsdcAddress.trim().toLowerCase()}`,
+    `maker_pearl_pubkey=${normalizeProofPubkey(input.makerPearlPubkey)}`,
+    'release_signing_mode=manual_after_base_deposit',
+  ].join('\n');
+}
+
+function normalizeProofPubkey(value: string): string {
+  const normalized = value.trim().replace(/^0x/i, '').toLowerCase();
+  if (/^0[23][0-9a-f]{64}$/.test(normalized)) {
+    return normalized.slice(2);
+  }
+  return normalized;
 }
