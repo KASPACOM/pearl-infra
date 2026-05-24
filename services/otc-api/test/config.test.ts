@@ -115,3 +115,30 @@ test('accepts Telegram as the production alert sink', () => {
 
   assert.doesNotThrow(() => assertOtcApiStartupConfig(config, runtime));
 });
+
+test('requires email webhook when notification worker is enabled in production', () => {
+  const baseEnv = {
+    OTC_API_REQUIRE_PRODUCTION_CONFIG: 'true',
+    OTC_API_DATABASE_URL: 'postgres://user:pass@db/otc',
+    BASE_RPC_URL: 'https://base-sepolia.example',
+    PEARL_ESCROW_ALLOCATOR: 'p2tr_xpub',
+    PEARL_ESCROW_XPUB: 'tpubD6NzVbkrYhZ4Xfake',
+    PEARL_INDEXER_WATCH_URL: 'http://pearl-indexer:8080',
+    BASE_USDC_ESCROW_CONTRACT: '0x1111111111111111111111111111111111111111',
+    OTC_ADMIN_API_TOKEN: 'test-admin-token',
+    OTC_ALERT_WEBHOOK_URL: 'https://alerts.example.test/otc',
+    OTC_NOTIFICATION_WORKER_ENABLED: 'true',
+  };
+  const runtime = readOtcApiRuntimeConfig({ OTC_API_REQUIRE_PRODUCTION_CONFIG: 'true' });
+
+  assert.throws(
+    () => assertOtcApiStartupConfig(readOtcApiConfig(baseEnv), runtime),
+    /OTC_NOTIFICATION_EMAIL_WEBHOOK_URL/,
+  );
+  assert.doesNotThrow(() =>
+    assertOtcApiStartupConfig(
+      readOtcApiConfig({ ...baseEnv, OTC_NOTIFICATION_EMAIL_WEBHOOK_URL: 'https://email.example.test/send' }),
+      runtime,
+    ),
+  );
+});

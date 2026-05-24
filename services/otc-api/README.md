@@ -66,3 +66,9 @@ review, prepare Base escrow creation, write side effects, or read admin
 diagnostics. When an alert sink is configured, new support/error reports are
 posted to the operator webhook and/or Telegram chat; the delivery result is
 audited as a `support_alert_delivery` side effect.
+
+User notification delivery uses the `otc_notification_deliveries` queue. Build
+the service and run `npm run notifications:worker --workspace
+@kaspacom/otc-api` with `OTC_NOTIFICATION_EMAIL_WEBHOOK_URL` configured to scan
+deadline warnings, render templates, POST email deliveries to the provider
+webhook, and retry failed deliveries with exponential backoff.

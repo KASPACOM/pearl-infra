@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "migrate": "node dist/migrate.js",
+    "notifications:worker": "node dist/notification-worker.js",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test test/*.test.ts"

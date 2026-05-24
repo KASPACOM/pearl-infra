@@ -55,6 +55,7 @@ import type {
   OtcUserDashboard,
   OtcUserWalletChallenge,
   OtcUserProfile,
+  OtcOrderQuoteLink,
   OtcSideEffect,
   OrderBookPage,
   OrderBookQuery,
@@ -115,6 +116,7 @@ const ORDER_CREATED_POINTS = 10;
 const TRADE_COMPLETED_POINTS = 100;
 const REFERRAL_ACTIVITY_BONUS_BPS = 1000;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_DEADLINE_WARNING_WINDOW_MS = 15 * 60 * 1000;
 const NOTIFICATION_TYPES: OtcNotificationType[] = [
   'trade_status',
   'deadline_warning',
@@ -442,6 +444,7 @@ export class OtcTradeService {
       orderId: saved.orderId,
       metadata: { side: saved.side, funding_asset: saved.fundingAsset },
     });
+    await this.tryEnqueueNotifications('new_good_order', () => this.enqueueNewOrderNotifications(saved));
     return saved;
   }
 
@@ -471,6 +474,7 @@ export class OtcTradeService {
       quoteId: quote.quoteId,
       orderId: order.orderId,
       amountPrl: quote.amountPrl,
+      takerUserId: user.userId,
       takerPearlAddress: request.pearlAddress,
       takerUsdcAddress,
       createdAt: this.now().toISOString(),
@@ -564,6 +568,182 @@ export class OtcTradeService {
   async getUserPoints(userId: string): Promise<OtcPointsSummary> {
     const events = await this.repository.listPointEvents(userId);
     return summarizePoints(userId, events);
+  }
+
+  async enqueueDeadlineWarningNotifications(): Promise<number> {
+    const now = this.now();
+    const windowMs = this.config.notificationDeadlineWarningWindowMs || DEFAULT_DEADLINE_WARNING_WINDOW_MS;
+    const trades = await this.repository.listTrades();
+    let queued = 0;
+    for (const trade of trades) {
+      if (tradeStateIsTerminal(trade.state)) continue;
+      for (const deadline of getDueDeadlineWarnings(trade, now, windowMs)) {
+        queued += await this.enqueueTradePartyNotifications({
+          trade,
+          notificationType: 'deadline_warning',
+          payload: {
+            kind: 'deadline_warning',
+            trade_id: trade.tradeId,
+            state: trade.state,
+            deadline_type: deadline.type,
+            deadline_at: deadline.at,
+          },
+          idempotencyParts: [trade.tradeId, deadline.type, deadline.at],
+        });
+      }
+    }
+    return queued;
+  }
+
+  private async enqueueNewOrderNotifications(order: OtcOrder): Promise<number> {
+    const targets = await this.repository.listNotificationTargets('new_good_order', 'email');
+    return this.enqueueNotificationTargets({
+      targets: targets.filter((target) => target.user.userId !== order.makerUserId),
+      notificationType: 'new_good_order',
+      payload: {
+        kind: 'new_good_order',
+        order_id: order.orderId,
+        side: order.side,
+        funding_asset: order.fundingAsset,
+        amount_prl: order.amountPrl,
+        remaining_prl: order.remainingPrl,
+        price_usdc_per_prl: order.priceUsdcPerPrl,
+        expires_at: order.expiresAt ?? '',
+      },
+      idempotencyParts: [order.orderId, order.updatedAt],
+    });
+  }
+
+  private async enqueueOrderMatchedNotifications(
+    trade: OtcTrade,
+    order: OtcOrder,
+    orderLink: OtcOrderQuoteLink,
+  ): Promise<number> {
+    const userIds = [order.makerUserId, orderLink.takerUserId].filter((userId): userId is string => Boolean(userId));
+    return this.enqueueUserNotifications({
+      userIds,
+      notificationType: 'order_matched',
+      payload: {
+        kind: 'order_matched',
+        order_id: order.orderId,
+        quote_id: trade.quoteId,
+        trade_id: trade.tradeId,
+        side: order.side,
+        amount_prl: orderLink.amountPrl,
+        price_usdc_per_prl: order.priceUsdcPerPrl,
+      },
+      idempotencyParts: [order.orderId, trade.tradeId],
+    });
+  }
+
+  private async enqueueTradeStatusNotifications(trade: OtcTrade): Promise<number> {
+    return this.enqueueTradePartyNotifications({
+      trade,
+      notificationType: 'trade_status',
+      payload: {
+        kind: 'trade_status',
+        trade_id: trade.tradeId,
+        quote_id: trade.quoteId,
+        state: trade.state,
+        side: trade.side,
+        amount_prl: trade.amountPrl,
+        amount_usdc: trade.amountUsdc,
+        updated_at: trade.updatedAt,
+      },
+      idempotencyParts: [trade.tradeId, trade.state, trade.updatedAt],
+    });
+  }
+
+  private async tryEnqueueNotifications(kind: OtcNotificationType, enqueue: () => Promise<number>): Promise<void> {
+    try {
+      await enqueue();
+    } catch (error) {
+      console.warn(JSON.stringify({
+        msg: 'otc notification enqueue failed',
+        notification_kind: kind,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
+
+  private async enqueueTradePartyNotifications(input: {
+    trade: OtcTrade;
+    notificationType: OtcNotificationType;
+    payload: Record<string, unknown>;
+    idempotencyParts: string[];
+  }): Promise<number> {
+    const users = await Promise.all([
+      this.repository.findUserByWallet('evm', this.config.baseNetwork, input.trade.buyerUsdcAddress),
+      this.repository.findUserByWallet('evm', this.config.baseNetwork, input.trade.sellerUsdcReceiveAddress),
+    ]);
+    return this.enqueueUserNotifications({
+      userIds: Array.from(new Set(users.filter((user): user is OtcUser => Boolean(user)).map((user) => user.userId))),
+      notificationType: input.notificationType,
+      payload: input.payload,
+      idempotencyParts: input.idempotencyParts,
+    });
+  }
+
+  private async enqueueUserNotifications(input: {
+    userIds: string[];
+    notificationType: OtcNotificationType;
+    payload: Record<string, unknown>;
+    idempotencyParts: string[];
+  }): Promise<number> {
+    let queued = 0;
+    for (const userId of Array.from(new Set(input.userIds))) {
+      const target = await this.getUserNotificationTarget(userId, input.notificationType, 'email');
+      if (!target) continue;
+      await this.enqueueNotificationDelivery({
+        userId,
+        notificationType: input.notificationType,
+        channel: 'email',
+        recipient: target.recipient,
+        payload: input.payload,
+        idempotencyKey: createStableId('notification', [input.notificationType, userId, ...input.idempotencyParts]),
+        createdAt: this.now().toISOString(),
+      });
+      queued += 1;
+    }
+    return queued;
+  }
+
+  private async enqueueNotificationTargets(input: {
+    targets: Array<{ user: OtcUser; recipient: string }>;
+    notificationType: OtcNotificationType;
+    payload: Record<string, unknown>;
+    idempotencyParts: string[];
+  }): Promise<number> {
+    let queued = 0;
+    for (const target of input.targets) {
+      await this.enqueueNotificationDelivery({
+        userId: target.user.userId,
+        notificationType: input.notificationType,
+        channel: 'email',
+        recipient: target.recipient,
+        payload: input.payload,
+        idempotencyKey: createStableId('notification', [input.notificationType, target.user.userId, ...input.idempotencyParts]),
+        createdAt: this.now().toISOString(),
+      });
+      queued += 1;
+    }
+    return queued;
+  }
+
+  private async getUserNotificationTarget(
+    userId: string,
+    notificationType: OtcNotificationType,
+    channel: OtcNotificationChannel,
+  ): Promise<{ recipient: string } | undefined> {
+    const user = await this.repository.findUserById(userId);
+    if (!user) return undefined;
+    const preferences = await this.repository.listNotificationPreferences(userId);
+    const preference = preferences.find((candidate) => candidate.notificationType === notificationType && candidate.channel === channel);
+    if (!preference?.enabled) return undefined;
+    if (channel === 'email' && user.profile.email && user.profile.emailVerifiedAt) {
+      return { recipient: user.profile.email };
+    }
+    return undefined;
   }
 
   private async enqueueNotificationDelivery(input: {
@@ -747,13 +927,28 @@ export class OtcTradeService {
       metadata: options.metadata ?? {},
       createdAt,
     });
+    if (event.created && (source === 'referral_signup' || source === 'referral_activity_bonus')) {
+      await this.tryEnqueueNotifications('referral_event', () => this.enqueueUserNotifications({
+        userIds: [user.userId],
+        notificationType: 'referral_event',
+        payload: {
+          kind: 'referral_event',
+          event: source,
+          points: String(points),
+          related_user_id: options.relatedUserId ?? '',
+          referral_code: options.referralCode ?? user.referredBy?.referralCode ?? '',
+        },
+        idempotencyParts: [event.event.pointEventId],
+      }));
+    }
     if (!event.created || options.applyReferralBonus === false || !user.referredBy) {
       return;
     }
+    const referredBy = user.referredBy;
     const bonusPoints = Math.max(1, Math.floor((points * REFERRAL_ACTIVITY_BONUS_BPS) / 10_000));
-    const referrer = await this.repository.findUserById(user.referredBy.referrerUserId);
+    const referrer = await this.repository.findUserById(referredBy.referrerUserId);
     if (!referrer) return;
-    await this.repository.savePointEvent({
+    const bonusEvent = await this.repository.savePointEvent({
       pointEventId: createStableId('points', [
         referrer.userId,
         'referral_activity_bonus',
@@ -766,10 +961,24 @@ export class OtcTradeService {
       relatedUserId: user.userId,
       ...(options.tradeId ? { tradeId: options.tradeId } : {}),
       ...(options.orderId ? { orderId: options.orderId } : {}),
-      referralCode: user.referredBy.referralCode,
+      referralCode: referredBy.referralCode,
       metadata: { referred_point_event_id: event.event.pointEventId },
       createdAt,
     });
+    if (bonusEvent.created) {
+      await this.tryEnqueueNotifications('referral_event', () => this.enqueueUserNotifications({
+        userIds: [referrer.userId],
+        notificationType: 'referral_event',
+        payload: {
+          kind: 'referral_event',
+          event: 'referral_activity_bonus',
+          points: String(bonusPoints),
+          related_user_id: user.userId,
+          referral_code: referredBy.referralCode,
+        },
+        idempotencyParts: [bonusEvent.event.pointEventId],
+      }));
+    }
   }
 
   private async awardTradeCompletionPoints(trade: OtcTrade): Promise<void> {
@@ -926,6 +1135,10 @@ export class OtcTradeService {
         : {}),
     });
     await this.ensurePearlEscrowWatch(trade);
+    await this.tryEnqueueNotifications('trade_status', () => this.enqueueTradeStatusNotifications(trade));
+    if (linkedOrder && orderLink) {
+      await this.tryEnqueueNotifications('order_matched', () => this.enqueueOrderMatchedNotifications(trade, linkedOrder, orderLink));
+    }
 
     return trade;
   }
@@ -994,6 +1207,7 @@ export class OtcTradeService {
       sourceEventId,
       observedAt: updatedAt,
     });
+    await this.tryEnqueueNotifications('trade_status', () => this.enqueueTradeStatusNotifications(updated));
     if (toState === 'released') {
       await this.awardTradeCompletionPoints(updated);
     }
@@ -2428,6 +2642,26 @@ function createTradeDeadlines(quote: OtcQuote, acceptedAt: Date, config: OtcApiC
     settlementDeadline: new Date(acceptedAt.getTime() + config.settlementTtlMs).toISOString(),
     refundAvailableAt: new Date(acceptedAt.getTime() + config.usdcDepositTtlMs).toISOString(),
   };
+}
+
+function getDueDeadlineWarnings(
+  trade: OtcTrade,
+  now: Date,
+  windowMs: number,
+): Array<{ type: string; at: string }> {
+  const warningCutoff = now.getTime() + windowMs;
+  const deadlines =
+    trade.state === 'pearl_escrow_pending' || trade.state === 'pearl_escrow_seen'
+      ? [{ type: 'pearl_funding', at: trade.deadlines.pearlFundingDeadline }]
+      : trade.state === 'pearl_escrow_confirmed' || trade.state === 'usdc_escrow_pending'
+        ? [{ type: 'usdc_deposit', at: trade.deadlines.usdcDepositDeadline }]
+        : trade.state === 'usdc_escrow_confirmed' || trade.state === 'release_pending'
+          ? [{ type: 'settlement', at: trade.deadlines.settlementDeadline }]
+          : [];
+  return deadlines.filter((deadline) => {
+    const deadlineMs = new Date(deadline.at).getTime();
+    return deadlineMs > now.getTime() && deadlineMs <= warningCutoff;
+  });
 }
 
 function calculateQuoteAmounts(

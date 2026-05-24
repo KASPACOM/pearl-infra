@@ -30,6 +30,14 @@ export function readOtcApiConfig(env: NodeJS.ProcessEnv = process.env): OtcApiCo
     supportAlertTelegramMessageThreadId: env.OTC_ALERT_TELEGRAM_MESSAGE_THREAD_ID,
     supportAlertRateLimitWindowMs: Number(env.OTC_SUPPORT_ALERT_RATE_LIMIT_WINDOW_MS ?? 10 * 60 * 1000),
     supportAlertRateLimitMax: Number(env.OTC_SUPPORT_ALERT_RATE_LIMIT_MAX ?? 5),
+    notificationEmailWebhookUrl: env.OTC_NOTIFICATION_EMAIL_WEBHOOK_URL,
+    notificationEmailWebhookToken: env.OTC_NOTIFICATION_EMAIL_WEBHOOK_TOKEN,
+    notificationWorkerEnabled: env.OTC_NOTIFICATION_WORKER_ENABLED === 'true',
+    notificationWorkerIntervalMs: Number(env.OTC_NOTIFICATION_WORKER_INTERVAL_MS ?? 60_000),
+    notificationWorkerBatchSize: Number(env.OTC_NOTIFICATION_WORKER_BATCH_SIZE ?? 50),
+    notificationWorkerMaxAttempts: Number(env.OTC_NOTIFICATION_WORKER_MAX_ATTEMPTS ?? 5),
+    notificationRetryBaseMs: Number(env.OTC_NOTIFICATION_RETRY_BASE_MS ?? 60_000),
+    notificationDeadlineWarningWindowMs: Number(env.OTC_NOTIFICATION_DEADLINE_WARNING_WINDOW_MS ?? 15 * 60 * 1000),
   };
 }
 
@@ -68,6 +76,9 @@ export function assertOtcApiStartupConfig(config: OtcApiConfig, runtime: OtcApiR
   }
   if (config.baseEscrowContract === '0x0000000000000000000000000000000000000000') {
     missing.push('BASE_USDC_ESCROW_CONTRACT');
+  }
+  if (config.notificationWorkerEnabled && !config.notificationEmailWebhookUrl) {
+    missing.push('OTC_NOTIFICATION_EMAIL_WEBHOOK_URL');
   }
 
   if (missing.length > 0) {

@@ -7,6 +7,7 @@ import type {
   OtcNotificationDelivery,
   OtcNotificationDeliveryStatus,
   OtcNotificationPreference,
+  OtcNotificationTarget,
   OtcOrder,
   OtcOrderQuoteLink,
   OtcPointEvent,
@@ -104,6 +105,7 @@ export interface OtcRepository {
   listNotificationDeliveries(query?: { status?: OtcNotificationDeliveryStatus; limit?: number }): Promise<OtcNotificationDelivery[]>;
   updateNotificationDelivery(deliveryId: string, input: { status: OtcNotificationDeliveryStatus; error?: string; nextAttemptAt?: string; updatedAt: string }): Promise<OtcNotificationDelivery>;
   unsubscribeNotificationByTokenHash(tokenHash: string, updatedAt: string): Promise<OtcNotificationDelivery>;
+  listNotificationTargets(notificationType: OtcNotificationPreference['notificationType'], channel: OtcNotificationPreference['channel']): Promise<OtcNotificationTarget[]>;
   saveOrder(order: OtcOrder): Promise<OtcOrder>;
   findOrderById(orderId: string): Promise<OtcOrder | undefined>;
   listOrders(query?: OrderBookQuery): Promise<OrderBookPage>;
@@ -465,7 +467,7 @@ export class InMemoryOtcRepository implements OtcRepository {
   async listNotificationDeliveries(query: { status?: OtcNotificationDeliveryStatus; limit?: number } = {}): Promise<OtcNotificationDelivery[]> {
     return Array.from(this.notificationDeliveries.values())
       .filter((delivery) => !query.status || delivery.status === query.status)
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .sort((left, right) => left.nextAttemptAt.localeCompare(right.nextAttemptAt) || left.createdAt.localeCompare(right.createdAt))
       .slice(0, query.limit ?? 100);
   }
 
@@ -479,7 +481,7 @@ export class InMemoryOtcRepository implements OtcRepository {
       ...delivery,
       status: input.status,
       attempts: input.status === 'failed' ? delivery.attempts + 1 : delivery.attempts,
-      ...(input.error ? { lastError: input.error } : {}),
+      ...(input.status === 'sent' ? { lastError: undefined } : input.error ? { lastError: input.error } : {}),
       ...(input.nextAttemptAt ? { nextAttemptAt: input.nextAttemptAt } : {}),
       ...(input.status === 'sent' ? { sentAt: input.updatedAt } : {}),
       updatedAt: input.updatedAt,
@@ -501,6 +503,24 @@ export class InMemoryOtcRepository implements OtcRepository {
     const updated = { ...delivery, status: 'unsubscribed' as const, updatedAt };
     this.notificationDeliveries.set(delivery.deliveryId, updated);
     return updated;
+  }
+
+  async listNotificationTargets(
+    notificationType: OtcNotificationPreference['notificationType'],
+    channel: OtcNotificationPreference['channel'],
+  ): Promise<OtcNotificationTarget[]> {
+    const targets: OtcNotificationTarget[] = [];
+    for (const preference of this.notificationPreferences.values()) {
+      if (preference.notificationType !== notificationType || preference.channel !== channel || !preference.enabled) {
+        continue;
+      }
+      const user = this.users.get(preference.userId);
+      if (!user) continue;
+      if (channel === 'email' && user.profile.email && user.profile.emailVerifiedAt) {
+        targets.push({ user, channel, recipient: user.profile.email });
+      }
+    }
+    return targets.sort((left, right) => left.user.userId.localeCompare(right.user.userId));
   }
 
   async saveOrder(order: OtcOrder): Promise<OtcOrder> {
@@ -741,6 +761,7 @@ type OrderQuoteLinkRow = Record<string, unknown> & {
   quote_id: string;
   order_id: string;
   amount_prl: string | number;
+  taker_user_id?: string | null;
   taker_pearl_address?: string | null;
   taker_usdc_address?: string | null;
   created_at: Date | string;
@@ -1395,7 +1416,7 @@ export class PgOtcRepository implements OtcRepository {
               next_attempt_at, sent_at, created_at, updated_at
          FROM otc_notification_deliveries
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY created_at ASC
+        ORDER BY next_attempt_at ASC, created_at ASC
         LIMIT $${values.length}`,
       values,
     );
@@ -1410,7 +1431,10 @@ export class PgOtcRepository implements OtcRepository {
       `UPDATE otc_notification_deliveries
           SET status = $2,
               attempts = attempts + CASE WHEN $2 = 'failed' THEN 1 ELSE 0 END,
-              last_error = COALESCE($3, last_error),
+              last_error = CASE
+                WHEN $2 = 'sent' THEN NULL
+                ELSE COALESCE($3, last_error)
+              END,
               next_attempt_at = COALESCE($4, next_attempt_at),
               sent_at = CASE WHEN $2 = 'sent' THEN $5 ELSE sent_at END,
               updated_at = $5
@@ -1451,6 +1475,30 @@ export class PgOtcRepository implements OtcRepository {
       }
       return rowToNotificationDelivery(delivery);
     });
+  }
+
+  async listNotificationTargets(
+    notificationType: OtcNotificationPreference['notificationType'],
+    channel: OtcNotificationPreference['channel'],
+  ): Promise<OtcNotificationTarget[]> {
+    const result = await this.client.query<UserRow>(
+      `${USER_SELECT_FIELDS}
+       JOIN otc_notification_preferences pref
+         ON pref.user_id = u.user_id
+        AND pref.notification_type = $1
+        AND pref.channel = $2
+        AND pref.enabled = true
+       WHERE $2 = 'email'
+         AND p.email IS NOT NULL
+         AND p.email_verified_at IS NOT NULL
+       ORDER BY u.user_id ASC`,
+      [notificationType, channel],
+    );
+    return result.rows.map((row) => ({
+      user: rowToUser(row),
+      channel,
+      recipient: row.email ?? '',
+    })).filter((target) => target.recipient);
   }
 
   async saveOrder(order: OtcOrder): Promise<OtcOrder> {
@@ -1596,16 +1644,24 @@ export class PgOtcRepository implements OtcRepository {
 
   async saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void> {
     await this.client.query(
-      `INSERT INTO otc_order_quote_links (quote_id, order_id, amount_prl, taker_pearl_address, taker_usdc_address, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO otc_order_quote_links (quote_id, order_id, amount_prl, taker_user_id, taker_pearl_address, taker_usdc_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (quote_id) DO NOTHING`,
-      [link.quoteId, link.orderId, link.amountPrl, link.takerPearlAddress ?? null, link.takerUsdcAddress ?? null, link.createdAt],
+      [
+        link.quoteId,
+        link.orderId,
+        link.amountPrl,
+        link.takerUserId ?? null,
+        link.takerPearlAddress ?? null,
+        link.takerUsdcAddress ?? null,
+        link.createdAt,
+      ],
     );
   }
 
   async findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined> {
     const result = await this.client.query<OrderQuoteLinkRow>(
-      `SELECT quote_id, order_id, amount_prl, taker_pearl_address, taker_usdc_address, created_at
+      `SELECT quote_id, order_id, amount_prl, taker_user_id, taker_pearl_address, taker_usdc_address, created_at
          FROM otc_order_quote_links
         WHERE quote_id = $1`,
       [quoteId],
@@ -1916,6 +1972,7 @@ function rowToOrderQuoteLink(row: OrderQuoteLinkRow): OtcOrderQuoteLink {
     quoteId: row.quote_id,
     orderId: row.order_id,
     amountPrl: String(row.amount_prl),
+    ...(row.taker_user_id ? { takerUserId: row.taker_user_id } : {}),
     ...(row.taker_pearl_address ? { takerPearlAddress: row.taker_pearl_address } : {}),
     ...(row.taker_usdc_address ? { takerUsdcAddress: row.taker_usdc_address } : {}),
     createdAt: formatPgDate(row.created_at),
