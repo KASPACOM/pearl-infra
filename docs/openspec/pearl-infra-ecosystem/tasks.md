@@ -553,9 +553,13 @@ Loophole tracker after PR #74:
   create/deposit/release, PRL release signing/broadcast, indexed Pearl release
   classification, and public-proof fields.
   - See `docs/operations/full-otc-testnet2-evidence-20260521.md`.
-- [ ] Productize the live proof runner so it persists the trade in Postgres or a
+- [x] Productize the live proof runner so it persists the trade in Postgres or a
   live API process and can be rerun through
   `services/otc-api/test/live-full-otc-evidence.test.ts` after shutdown.
+  - 2026-05-24: added durable `live_proof_evidence` side-effect records,
+    operator `POST /otc/admin/trades/:id/live-proof-evidence`, public
+    `GET /otc/trades/:id/live-proof-evidence`, and verifier fallback from API
+    evidence when `OTC_FULL_FLOW_BASE_TX_HASHES` is omitted.
 - [x] Backend-driven admin/support frontend workflow — rendered screens expose
   no release/refund/sign/broadcast actions, and admin list/detail, filters,
   note/manual-review actions, failed alert-delivery replay, and the public
@@ -1026,9 +1030,11 @@ blockers visible for planning. See
       `trade_f674c08e2d0a278abed79e3e` recorded Base `createTrade`, `approve`,
       `deposit`, and `release` txids plus Pearl funding/release txids. See
       `docs/operations/full-otc-testnet2-evidence-20260521.md`.
-  - [ ] 11.9.e Productize the one-off live proof runner into a durable
+  - [x] 11.9.e Productize the one-off live proof runner into a durable
     Postgres-backed API/worker/verifier path so the evidence can be rerun from
     public routes after process shutdown.
+    - 2026-05-24: durable evidence is recorded in the OTC side-effect ledger by
+      an operator route and replayed by the public evidence route/verifier.
 - [x] 11.10 Record the testnet2/Base Sepolia escrow-run evidence.
   - 2026-05-21: `trade_f674c08e2d0a278abed79e3e` proves the full testnet2/Base
     Sepolia release path. The next gate is productizing repeatable proof replay

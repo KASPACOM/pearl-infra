@@ -55,13 +55,13 @@ Current state after PR #81:
      must still come from bridge-service matching against an approved pending
      exit, unique release txid, clean reconciliation, and cap limits.
 
-4. Productize OTC live evidence.
+4. Replay OTC live evidence from durable API state.
    - The 2026-05-21 testnet2/Base Sepolia proof recorded real PRL
      funding/release, Base `createTrade`, `approve`, `deposit`, and `release`
      txids, plus public proof fields.
-   - Move that proof from the one-off in-memory runner into durable Postgres or
-     a live API process so the verifier can rerun from public routes after
-     shutdown.
+   - The OTC API now records durable `live_proof_evidence` side effects and
+     exposes a public evidence route so the verifier can rerun from public
+     routes after shutdown when the trade is persisted.
    - PR #106 plus the 2026-05-24 review hardening covers paste/submit signed
      release broadcast. Native browser Pearl wallet signing and first-class
      refund signing UX remain open.

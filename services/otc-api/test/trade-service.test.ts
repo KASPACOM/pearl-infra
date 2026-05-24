@@ -567,6 +567,85 @@ test('rejects side-effect idempotency key reuse with a different payload', async
       }),
     /side effect idempotency key reuse with different payload/,
   );
+
+  await assert.rejects(
+    () =>
+      service.recordSideEffect(trade.tradeId, {
+        idempotencyKey: 'manual-live-proof-evidence-bypass',
+        effectType: 'live_proof_evidence',
+        status: 'confirmed',
+        actor: 'operator',
+        metadata: {
+          expectedStatus: 'released',
+          baseTxHashes: [`0x${'a'.repeat(64)}`, `0x${'b'.repeat(64)}`, `0x${'c'.repeat(64)}`],
+        },
+      }),
+    /unsupported/,
+  );
+});
+
+test('records durable live proof evidence for terminal OTC proof replay', async () => {
+  const service = createService();
+  const quote = await service.createQuote({
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    settlementAsset: 'USDC',
+    settlementNetwork: 'base',
+    buyerPearlAddress: 'tprl1pbuyer',
+    usdcRefundAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'quote-request-live-proof-evidence',
+  });
+  const trade = await service.acceptQuote(quote.quoteId, {
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1psellerrefund',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    clientRequestId: 'accept-request-live-proof-evidence',
+  });
+  await service.transitionTrade(trade.tradeId, 'pearl_escrow_seen', 'live-proof:pearl-seen');
+  await service.transitionTrade(trade.tradeId, 'pearl_escrow_confirmed', 'live-proof:pearl-confirmed');
+  await service.transitionTrade(trade.tradeId, 'usdc_escrow_pending', 'live-proof:usdc-pending');
+  await service.transitionTrade(trade.tradeId, 'usdc_escrow_confirmed', 'live-proof:usdc-confirmed');
+  await service.transitionTrade(trade.tradeId, 'release_pending', 'live-proof:release-pending');
+  await service.transitionTrade(trade.tradeId, 'released', 'live-proof:released');
+
+  const evidence = await service.recordLiveProofEvidence(
+    trade.tradeId,
+    {
+      idempotencyKey: 'live-proof-evidence-1',
+      expectedStatus: 'released',
+      baseTxHashes: [
+        `0x${'A'.repeat(64)}`,
+        `0x${'b'.repeat(64)}`,
+        `0x${'c'.repeat(64)}`,
+      ],
+      metadata: { runId: 'live-run-1' },
+    },
+    { actor: 'operator' },
+  );
+  const replayed = await service.getLiveProofEvidence(trade.tradeId);
+
+  assert.equal(evidence.tradeId, trade.tradeId);
+  assert.equal(evidence.expectedStatus, 'released');
+  assert.deepEqual(evidence.baseTxHashes, [`0x${'a'.repeat(64)}`, `0x${'b'.repeat(64)}`, `0x${'c'.repeat(64)}`]);
+  assert.equal(evidence.publicProofPath, `/otc/trades/${encodeURIComponent(trade.tradeId)}/proof`);
+  assert.equal(evidence.proof.status, 'released');
+  assert.equal(replayed.recordedAt, evidence.recordedAt);
+  assert.deepEqual(replayed.baseTxHashes, evidence.baseTxHashes);
+
+  await assert.rejects(
+    () =>
+      service.recordLiveProofEvidence(
+        trade.tradeId,
+        {
+          idempotencyKey: 'live-proof-evidence-invalid',
+          expectedStatus: 'released',
+          baseTxHashes: [`0x${'d'.repeat(64)}`],
+        },
+        { actor: 'operator' },
+      ),
+    /baseTxHashes must include/,
+  );
 });
 
 test('verifies on-chain USDC escrow terms before allowing buyer deposit', async () => {
