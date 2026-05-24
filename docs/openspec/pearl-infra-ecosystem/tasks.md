@@ -1013,3 +1013,60 @@ blockers visible for planning. See
 - [ ] 11.14 Finalize the post-pilot federation/threshold-signing design:
   federation membership, relayer independence, custody boundary, quorum
   threshold, and threshold/FROST-style release authorization or equivalent.
+
+## 12. Oysters Market UX, Users, Referrals, and Notifications
+
+This section tracks the product layer above the settlement-grade quote/trade
+pipeline. Persistent data for these tasks lives in the OTC API Postgres
+database configured by `OTC_API_DATABASE_URL`; wallet ownership is proven
+through one-time wallet challenges before creating user/profile records.
+
+- [x] 12.1 Add persistent user, wallet, profile, referral-code,
+  referral-attribution, and wallet-challenge tables.
+  - 2026-05-24: Added `004_users_referrals.sql` for `otc_users`,
+    `otc_user_wallets`, `otc_user_profiles`, `otc_referral_codes`,
+    `otc_referral_attributions`, and `otc_user_wallet_challenges`.
+- [x] 12.2 Add API support for wallet-owned users and referral-link capture.
+  - 2026-05-24: Added wallet challenge creation, user registration,
+    `ref=` URL attribution, referral-code lookup, and wallet-proved profile
+    update routes. EVM challenges verify `personal_sign`-style signatures;
+    Pearl challenges verify BIP340 signatures against the submitted signer
+    public key.
+  - 2026-05-24 hardening pass: referral codes and user ids are random
+    non-derived identifiers, wallet challenges are consumed once, users retain
+    both their own referral code and their immutable referred-by attribution,
+    and Pearl wallet-as-user registration stays fail-closed until address to
+    public-key ownership verification is implemented.
+- [ ] 12.3 Add frontend referral capture so `?ref=<code>` is persisted through
+  quote/order/user registration and shown in the profile referral panel.
+  - 2026-05-24: Profile registration captures `ref=` into local storage,
+    submits it during wallet-owned registration, and shows both own referral
+    code and referred-by attribution. Remaining: carry anonymous referral
+    context through pre-profile quote flows.
+- [ ] 12.4 Add user profile UX for linked wallets, optional email,
+  notification preferences, referral code, and referred-by status.
+  - 2026-05-24: Added `/profile` for wallet-owned account creation, optional
+    email/profile update, referral panel, points summary, my offers, and my
+    trades. Remaining: verified email flow and granular notification
+    preferences.
+- [x] 12.5 Add order book persistence and public market APIs for active orders,
+  filters, sorting, recent trades, market stats, and volume counters.
+  - 2026-05-24: Added `005_orders_points.sql`, `POST /otc/orders`,
+    `GET /otc/orders`, `GET /otc/market/stats`, `GET
+    /otc/market/recent-trades`, and wallet-proved user dashboard routes.
+- [x] 12.6 Add the public order book and market dashboard UI: best price,
+  size, active volume, total volume, total successful trades, and verified
+  user count.
+  - 2026-05-24: Added `/market` with buy/sell open offers, funding-asset
+    labels, recent trades, total volume, active order volume, successful
+    trade count, and verified user count.
+- [ ] 12.7 Add notification preferences and delivery jobs for trade status,
+  deadline warnings, new matching orders, price alerts, and referral events.
+- [ ] 12.8 Upgrade Telegram from operator alerts to user self-service:
+  wallet-linked account binding, `/orders`, `/trades`, `/trade <id>`,
+  price alerts, new-order alerts, and private trade-status notifications.
+- [x] 12.9 Add activity points for signup, order creation, completed trades,
+  direct referrals, and 10% referred-user activity bonuses.
+  - 2026-05-24: Added `otc_points_ledger`, deterministic point-event
+    idempotency, profile point summaries, referral signup points, and 10%
+    upstream referral activity bonuses.

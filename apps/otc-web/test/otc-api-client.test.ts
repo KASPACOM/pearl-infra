@@ -66,6 +66,122 @@ test('gets trade and proof routes', async () => {
   ]);
 });
 
+test('posts wallet user, referral, and profile routes', async () => {
+  const calls: Array<{ url: string; init: RequestInit; body?: unknown }> = [];
+  const client = new OtcApiClient({
+    baseUrl: 'https://api.example.test',
+    fetcher: async (url, init) => {
+      const text = typeof init?.body === 'string' ? init.body : undefined;
+      calls.push({ url: String(url), init: init ?? {}, ...(text ? { body: JSON.parse(text) } : {}) });
+      if (url.toString().endsWith('/wallet-challenges')) {
+        return jsonResponse({ challengeId: 'wallet_challenge_1', message: 'sign me', expiresAt: '2026-05-24T12:10:00.000Z' }, 201);
+      }
+      if (url.toString().includes('/referrals/')) {
+        return jsonResponse({ referralCode: 'ABC123', ownerUserId: 'user_referrer', status: 'active' });
+      }
+      if (url.toString().endsWith('/profile')) {
+        return jsonResponse({ userId: 'user_1', email: 'user@example.test', notificationEmailEnabled: true });
+      }
+      return jsonResponse({ userId: 'user_1', referralCode: 'ABC123', wallet: { address: '0xabc' }, profile: {} }, 201);
+    },
+  });
+
+  const challenge = await client.createWalletChallenge({
+    walletType: 'evm',
+    network: 'base_sepolia',
+    address: '0x1111111111111111111111111111111111111111',
+  });
+  const user = await client.registerUser({
+    challengeId: challenge.challengeId,
+    signature: '0xsig',
+    sourceUrl: 'https://oysters.market/?ref=ABC123',
+  });
+  const lookup = await client.resolveReferralCode('ABC123');
+  const profile = await client.updateUserProfile('user_1', {
+    challengeId: 'wallet_challenge_2',
+    signature: '0xsig2',
+    email: 'user@example.test',
+    notificationEmailEnabled: true,
+  });
+
+  assert.equal(challenge.challengeId, 'wallet_challenge_1');
+  assert.equal(user.userId, 'user_1');
+  assert.equal(lookup.ownerUserId, 'user_referrer');
+  assert.equal(profile.notificationEmailEnabled, true);
+  assert.equal(calls[0].url, 'https://api.example.test/otc/users/wallet-challenges');
+  assert.equal(calls[1].url, 'https://api.example.test/otc/users');
+  assert.equal(calls[2].url, 'https://api.example.test/otc/users/referrals/ABC123');
+  assert.equal(calls[3].url, 'https://api.example.test/otc/users/user_1/profile');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[2].init.method, 'GET');
+});
+
+test('gets market, orders, and wallet dashboard routes', async () => {
+  const calls: Array<{ url: string; init: RequestInit; body?: unknown }> = [];
+  const client = new OtcApiClient({
+    baseUrl: 'https://api.example.test',
+    fetcher: async (url, init) => {
+      const text = typeof init?.body === 'string' ? init.body : undefined;
+      calls.push({ url: String(url), init: init ?? {}, ...(text ? { body: JSON.parse(text) } : {}) });
+      if (url.toString().endsWith('/market/stats')) {
+        return jsonResponse({ successfulTrades: 1, openOrders: 2, totalVolumeUsdc: '10.000000' });
+      }
+      if (url.toString().includes('/recent-trades')) {
+        return jsonResponse([{ tradeId: 'trade_1', side: 'buy_prl' }]);
+      }
+      if (url.toString().endsWith('/otc/orders') && init?.method === 'POST') {
+        return jsonResponse({ orderId: 'order_1', side: 'buy_prl', fundingAsset: 'USDC' }, 201);
+      }
+      if (url.toString().includes('/dashboard')) {
+        return jsonResponse({ orders: [{ orderId: 'order_1' }], trades: [], points: { totalPoints: 35 } });
+      }
+      return jsonResponse({ items: [{ orderId: 'order_1' }], total: 1, limit: 25 });
+    },
+  });
+
+  const stats = await client.getMarketStats();
+  const recentTrades = await client.listRecentTrades(12);
+  const orders = await client.listOrders({
+    side: 'buy_prl',
+    status: 'open',
+    minPrl: '10',
+    maxPrl: '1000',
+    minPrice: '0.1',
+    maxPrice: '0.2',
+    makerUserId: 'user_1',
+    sort: 'best_price',
+    cursor: '25',
+    limit: 25,
+  });
+  const order = await client.createOrder({
+    userId: 'user_1',
+    challengeId: 'wallet_challenge_1',
+    signature: '0xsig',
+    side: 'buy_prl',
+    amountPrl: '100.00000000',
+    priceUsdcPerPrl: '0.150000',
+  });
+  const dashboard = await client.getUserDashboard('user_1', {
+    challengeId: 'wallet_challenge_2',
+    signature: '0xsig2',
+  });
+
+  assert.equal(stats.openOrders, 2);
+  assert.equal(recentTrades[0]?.tradeId, 'trade_1');
+  assert.equal(orders.items[0]?.orderId, 'order_1');
+  assert.equal(order.fundingAsset, 'USDC');
+  assert.equal(dashboard.points.totalPoints, 35);
+  assert.equal(calls[0].url, 'https://api.example.test/otc/market/stats');
+  assert.equal(calls[1].url, 'https://api.example.test/otc/market/recent-trades?limit=12');
+  assert.equal(
+    calls[2].url,
+    'https://api.example.test/otc/orders?side=buy_prl&status=open&min_prl=10&max_prl=1000&min_price=0.1&max_price=0.2&maker_user_id=user_1&sort=best_price&cursor=25&limit=25',
+  );
+  assert.equal(calls[3].url, 'https://api.example.test/otc/orders');
+  assert.equal(calls[3].init.method, 'POST');
+  assert.equal(calls[4].url, 'https://api.example.test/otc/users/user_1/dashboard');
+});
+
 test('gets escrow verification and side-effect routes', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const client = new OtcApiClient({

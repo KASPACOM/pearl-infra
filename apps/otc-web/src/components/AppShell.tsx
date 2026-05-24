@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 
-export type AppSection = 'home' | 'quote' | 'accept' | 'trade' | 'proof' | 'faq' | 'admin';
+export type AppSection = 'home' | 'market' | 'quote' | 'profile' | 'accept' | 'trade' | 'proof' | 'faq' | 'admin';
 
 const NAV_ITEMS: Array<{ section: AppSection; label: string; href: string }> = [
   { section: 'home', label: 'Home', href: '/' },
+  { section: 'market', label: 'Market', href: '/market' },
   { section: 'quote', label: 'Quote', href: '/quote' },
+  { section: 'profile', label: 'Profile', href: '/profile' },
   { section: 'accept', label: 'Accept', href: '/quote/demo/accept' },
   { section: 'trade', label: 'Checkout', href: '/trades/demo' },
   { section: 'proof', label: 'Proof', href: '/trades/demo/proof' },

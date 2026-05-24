@@ -6,6 +6,8 @@ import { AppShell, type AppSection } from './components/AppShell.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { FaqPage } from './pages/FaqPage.js';
 import { LandingPage } from './pages/LandingPage.js';
+import { MarketPage } from './pages/MarketPage.js';
+import { ProfilePage } from './pages/ProfilePage.js';
 import { PublicProofPage } from './pages/PublicProofPage.js';
 import { RfqPage } from './pages/RfqPage.js';
 import { getBrowserPathname } from './routing.js';
@@ -32,6 +34,12 @@ function resolveRoute(pathname: string): { active: AppSection; Page: ComponentTy
   }
   if (pathname.startsWith('/admin')) {
     return { active: 'admin', Page: AdminTradesPage };
+  }
+  if (pathname.startsWith('/market') || pathname.startsWith('/orders')) {
+    return { active: 'market', Page: MarketPage };
+  }
+  if (pathname.startsWith('/profile') || pathname.startsWith('/account')) {
+    return { active: 'profile', Page: ProfilePage };
   }
   if (pathname.includes('/proof')) {
     return { active: 'proof', Page: PublicProofPage };

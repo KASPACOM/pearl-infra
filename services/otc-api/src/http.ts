@@ -1,9 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
-import type { TradeState } from '@kaspacom/pearl-sdk';
+import type { OtcQuoteSide, TradeState } from '@kaspacom/pearl-sdk';
 
 import type { OtcTradeService } from './trade-service.js';
-import type { AdminActorContext, OtcSideEffectStatus } from './types.js';
+import type { AdminActorContext, OtcOrderStatus, OtcSideEffectStatus, OrderBookQuery } from './types.js';
 
 const MAX_JSON_BODY_BYTES = 64 * 1024;
 
@@ -80,6 +80,58 @@ export async function handleOtcHttpRequest(
 
   if (method === 'POST' && path === '/otc/quotes') {
     return { statusCode: 201, body: await service.createQuote(await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && path === '/otc/users/wallet-challenges') {
+    return { statusCode: 201, body: await service.createWalletChallenge(await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && path === '/otc/users') {
+    return { statusCode: 201, body: await service.registerUser(await readJsonBody(request)) };
+  }
+
+  if (method === 'GET' && path === '/otc/market/stats') {
+    return { statusCode: 200, body: await service.getMarketStats() };
+  }
+
+  if (method === 'GET' && path === '/otc/market/recent-trades') {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    return { statusCode: 200, body: await service.listRecentTrades(parseOptionalInteger(url.searchParams.get('limit')) ?? 25) };
+  }
+
+  if (method === 'GET' && path === '/otc/orders') {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    return {
+      statusCode: 200,
+      body: await service.listOrders({
+        side: parseOrderSide(url.searchParams.get('side')),
+        status: parseOrderStatus(url.searchParams.get('status')),
+        minPrl: url.searchParams.get('min_prl') ?? undefined,
+        maxPrl: url.searchParams.get('max_prl') ?? undefined,
+        minPrice: url.searchParams.get('min_price') ?? undefined,
+        maxPrice: url.searchParams.get('max_price') ?? undefined,
+        makerUserId: url.searchParams.get('maker_user_id') ?? undefined,
+        sort: parseOrderSort(url.searchParams.get('sort')),
+        cursor: url.searchParams.get('cursor') ?? undefined,
+        limit: parseOptionalInteger(url.searchParams.get('limit')),
+      }),
+    };
+  }
+
+  if (method === 'POST' && path === '/otc/orders') {
+    return { statusCode: 201, body: await service.createOrder(await readJsonBody(request)) };
+  }
+
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[2] === 'referrals') {
+    return { statusCode: 200, body: await service.resolveReferralCode(parts[3]) };
+  }
+
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'profile') {
+    return { statusCode: 200, body: await service.updateUserProfile(parts[2], await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'dashboard') {
+    return { statusCode: 200, body: await service.getUserDashboard(parts[2], await readJsonBody(request)) };
   }
 
   if (method === 'GET' && parts.length === 3 && parts[0] === 'otc' && parts[1] === 'quotes') {
@@ -361,6 +413,24 @@ function parseSideEffectStatus(value: string | null): OtcSideEffectStatus | unde
   return undefined;
 }
 
+function parseOrderSide(value: string | null): OtcQuoteSide | undefined {
+  return value === 'buy_prl' || value === 'sell_prl' ? value : undefined;
+}
+
+function parseOrderStatus(value: string | null): OtcOrderStatus | undefined {
+  return value === 'open' ||
+    value === 'partially_filled' ||
+    value === 'filled' ||
+    value === 'cancelled' ||
+    value === 'expired'
+    ? value
+    : undefined;
+}
+
+function parseOrderSort(value: string | null): OrderBookQuery['sort'] | undefined {
+  return value === 'best_price' || value === 'newest' || value === 'largest' ? value : undefined;
+}
+
 function getClientRateLimitKey(request: IncomingMessage): string {
   const forwardedFor = request.headers['x-forwarded-for'];
   if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
@@ -433,6 +503,9 @@ function mapError(error: unknown): JsonResponse {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('is required') || message.includes('is invalid')) {
+    return { statusCode: 400, body: { error: 'bad_request', message } };
+  }
+  if (message.includes('challenge') || message.includes('signature') || message.includes('blocked until')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('deadline passed') || message.includes('terminal')) {

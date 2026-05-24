@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
-import { isAddress } from 'ethers';
+import { getAddress, isAddress, verifyMessage } from 'ethers';
 
 import {
   assertTradeTransition,
@@ -14,6 +14,7 @@ import {
   createPearlSignerProofMessage,
   type PearlReleaseSigningMode,
   type PearlSignerProofRole,
+  normalizeProofPubkey,
   type TradeEvent,
   type TradeState,
   tradeStateIsTerminal,
@@ -33,17 +34,35 @@ import type {
   AdminTradeListPage,
   AdminTradeQuery,
   AdminTradeSummary,
+  CreateOrderRequest,
   CreateQuoteRequest,
+  CreateWalletChallengeRequest,
+  CreateWalletChallengeResponse,
   MarkManualReviewRequest,
+  MarketStats,
   MarkManualReviewOptions,
   OtcApiConfig,
+  OtcOrder,
+  OtcPointEvent,
+  OtcPointsSummary,
+  OtcUser,
+  OtcUserDashboard,
+  OtcUserWalletChallenge,
+  OtcUserProfile,
   OtcSideEffect,
+  OrderBookPage,
+  OrderBookQuery,
   PearlReleaseSigningIntent,
   PrepareUsdcCreateTradeRequest,
   PublicTradeProof,
+  RecentTradeSummary,
+  ReferralCodeLookup,
+  RegisterUserRequest,
   ReplaySupportAlertRequest,
   RecordSupportAlertRequest,
   RecordSideEffectRequest,
+  UpdateUserProfileRequest,
+  UserDashboardRequest,
   UsdcCreateTradeIntent,
   UsdcEscrowVerification,
 } from './types.js';
@@ -73,6 +92,12 @@ export interface SupportAlertOptions {
   rateLimitKey?: string;
   skipRateLimit?: boolean;
 }
+
+const SIGNUP_POINTS = 25;
+const REFERRAL_SIGNUP_POINTS = 50;
+const ORDER_CREATED_POINTS = 10;
+const TRADE_COMPLETED_POINTS = 100;
+const REFERRAL_ACTIVITY_BONUS_BPS = 1000;
 
 export class MockPearlEscrowAllocator implements PearlEscrowAllocator {
   async allocateEscrow(input: {
@@ -124,6 +149,372 @@ export class OtcTradeService {
     this.pearlEscrowWatchRegistrar = pearlEscrowWatchRegistrar;
     this.pearlProofReader = pearlProofReader;
     this.supportAlertNotifier = supportAlertNotifier;
+  }
+
+  async createWalletChallenge(request: CreateWalletChallengeRequest): Promise<CreateWalletChallengeResponse> {
+    validateCreateWalletChallengeRequest(request, this.config.pearlNetwork);
+    const createdAt = this.now();
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000).toISOString();
+    const nonce = randomBytes(16).toString('hex');
+    const address = normalizeWalletAddress(request.walletType, request.address);
+    const challengeId = createStableId('wallet_challenge', [
+      request.walletType,
+      request.network.toLowerCase(),
+      address.toLowerCase(),
+      nonce,
+    ]);
+    const message = createUserWalletChallengeMessage({
+      challengeId,
+      walletType: request.walletType,
+      network: request.network,
+      address,
+      nonce,
+      expiresAt,
+    });
+    await this.repository.saveWalletChallenge({
+      challengeId,
+      walletType: request.walletType,
+      network: request.network,
+      address,
+      message,
+      nonce,
+      expiresAt,
+      createdAt: createdAt.toISOString(),
+    });
+    return { challengeId, message, expiresAt };
+  }
+
+  async registerUser(request: RegisterUserRequest): Promise<OtcUser> {
+    const challenge = await this.assertUsableWalletChallenge(request.challengeId);
+    verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
+    const now = this.now().toISOString();
+    const existing = await this.repository.findUserByWallet(challenge.walletType, challenge.network, challenge.address);
+    if (existing) {
+      await this.assertConsumeWalletChallenge(challenge.challengeId, now);
+      return existing;
+    }
+
+    const referredByCode = extractReferralCode(request);
+    const userId = createRandomId('user');
+    const referredBy = referredByCode
+      ? await this.resolveReferralAttribution(userId, referredByCode, request.sourceUrl, now)
+      : undefined;
+    await this.assertConsumeWalletChallenge(challenge.challengeId, now);
+    const user = await this.saveUserWithFreshReferralCode({
+      userId,
+      challenge,
+      request,
+      now,
+      referredBy,
+    });
+    return user;
+  }
+
+  async updateUserProfile(userId: string, request: UpdateUserProfileRequest): Promise<OtcUserProfile> {
+    assertNonEmptyBounded(userId, 'userId', 80);
+    const user = await this.repository.findUserById(userId);
+    if (!user) {
+      throw new Error(`user not found: ${userId}`);
+    }
+    const challenge = await this.assertUsableWalletChallenge(request.challengeId);
+    if (
+      challenge.walletType !== user.wallet.walletType ||
+      challenge.network !== user.wallet.network ||
+      challenge.address.toLowerCase() !== user.wallet.address.toLowerCase()
+    ) {
+      throw new Error('wallet challenge does not belong to user');
+    }
+    verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
+    const updatedAt = this.now().toISOString();
+    await this.assertConsumeWalletChallenge(challenge.challengeId, updatedAt);
+    const profile = await this.repository.updateUserProfile(userId, {
+      ...(request.email === undefined ? {} : { email: normalizeEmail(request.email) }),
+      ...(request.notificationEmailEnabled === undefined
+        ? {}
+        : { notificationEmailEnabled: request.notificationEmailEnabled }),
+      updatedAt,
+    });
+    return profile;
+  }
+
+  async resolveReferralCode(referralCode: string): Promise<ReferralCodeLookup> {
+    const normalized = normalizeReferralCode(referralCode);
+    const lookup = await this.repository.findReferralCode(normalized);
+    if (!lookup || lookup.status !== 'active') {
+      throw new Error(`referral code not found: ${normalized}`);
+    }
+    return lookup;
+  }
+
+  async createOrder(request: CreateOrderRequest): Promise<OtcOrder> {
+    validateCreateOrderRequest(request);
+    const { user } = await this.verifyAndConsumeUserWalletChallenge(request.userId, request);
+    const now = this.now().toISOString();
+    const order: OtcOrder = {
+      orderId: createRandomId('order'),
+      makerUserId: user.userId,
+      side: request.side,
+      fundingAsset: request.side === 'sell_prl' ? 'PRL' : 'USDC',
+      amountPrl: normalizeAmountString(request.amountPrl),
+      remainingPrl: normalizeAmountString(request.amountPrl),
+      priceUsdcPerPrl: normalizeAmountString(request.priceUsdcPerPrl),
+      ...(request.minFillPrl ? { minFillPrl: normalizeAmountString(request.minFillPrl) } : {}),
+      status: 'open',
+      ...(request.expiresAt ? { expiresAt: new Date(request.expiresAt).toISOString() } : {}),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const saved = await this.repository.saveOrder(order);
+    await this.awardUserPoints(user, ORDER_CREATED_POINTS, 'order_created', {
+      orderId: saved.orderId,
+      metadata: { side: saved.side, funding_asset: saved.fundingAsset },
+    });
+    return saved;
+  }
+
+  async listOrders(query: OrderBookQuery = {}): Promise<OrderBookPage> {
+    return this.repository.listOrders({
+      ...query,
+      status: query.status ?? 'open',
+      sort: query.sort ?? 'best_price',
+    });
+  }
+
+  async getMarketStats(): Promise<MarketStats> {
+    const [trades, orders, verifiedUsers] = await Promise.all([
+      this.repository.listTrades(),
+      this.repository.listOpenOrdersForStats(),
+      this.repository.countUsers(),
+    ]);
+    const successfulTrades = trades.filter((trade) => trade.state === 'released');
+    const activeEscrowTrades = trades.filter((trade) =>
+      ['pearl_escrow_pending', 'pearl_escrow_seen', 'pearl_escrow_confirmed', 'usdc_escrow_pending', 'usdc_escrow_confirmed', 'release_pending'].includes(trade.state),
+    );
+    return {
+      successfulTrades: successfulTrades.length,
+      totalVolumePrl: sumDecimal(successfulTrades.map((trade) => trade.amountPrl), 8),
+      totalVolumeUsdc: sumDecimal(successfulTrades.map((trade) => trade.amountUsdc), 6),
+      activeOrderVolumePrl: sumDecimal(orders.map((order) => order.remainingPrl), 8),
+      activeEscrowVolumePrl: sumDecimal(activeEscrowTrades.map((trade) => trade.amountPrl), 8),
+      verifiedUsers,
+      openOrders: orders.length,
+    };
+  }
+
+  async listRecentTrades(limit = 25): Promise<RecentTradeSummary[]> {
+    const trades = await this.repository.listTrades();
+    return trades.slice(0, Math.max(1, Math.min(100, Math.floor(limit)))).map((trade) => ({
+      tradeId: trade.tradeId,
+      side: trade.side,
+      amountPrl: trade.amountPrl,
+      amountUsdc: trade.amountUsdc,
+      priceUsdcPerPrl: calculateImpliedPrice(trade),
+      state: trade.state,
+      updatedAt: trade.updatedAt,
+    }));
+  }
+
+  async getUserDashboard(userId: string, request: UserDashboardRequest): Promise<OtcUserDashboard> {
+    const { user } = await this.verifyAndConsumeUserWalletChallenge(userId, request);
+    const [orders, trades, points] = await Promise.all([
+      this.repository.listOrdersByUser(user.userId),
+      this.repository.listTradesForUser(user),
+      this.getUserPoints(user.userId),
+    ]);
+    return { user, points, orders, trades };
+  }
+
+  async getUserPoints(userId: string): Promise<OtcPointsSummary> {
+    const events = await this.repository.listPointEvents(userId);
+    return summarizePoints(userId, events);
+  }
+
+  private async assertUsableWalletChallenge(challengeId: string) {
+    assertNonEmptyBounded(challengeId, 'challengeId', 80);
+    const challenge = await this.repository.findWalletChallenge(challengeId);
+    if (!challenge) {
+      throw new Error(`wallet challenge not found: ${challengeId}`);
+    }
+    if (challenge.consumedAt) {
+      throw new Error('wallet challenge already used');
+    }
+    if (new Date(challenge.expiresAt).getTime() <= this.now().getTime()) {
+      throw new Error('wallet challenge expired');
+    }
+    return challenge;
+  }
+
+  private async assertConsumeWalletChallenge(challengeId: string, consumedAt: string): Promise<void> {
+    if (!(await this.repository.consumeWalletChallenge(challengeId, consumedAt))) {
+      throw new Error('wallet challenge already used');
+    }
+  }
+
+  private async verifyAndConsumeUserWalletChallenge(
+    userId: string,
+    request: UserDashboardRequest,
+  ): Promise<{ user: OtcUser; challenge: OtcUserWalletChallenge }> {
+    assertNonEmptyBounded(userId, 'userId', 80);
+    const user = await this.repository.findUserById(userId);
+    if (!user) throw new Error(`user not found: ${userId}`);
+    const challenge = await this.assertUsableWalletChallenge(request.challengeId);
+    if (
+      challenge.walletType !== user.wallet.walletType ||
+      challenge.network !== user.wallet.network ||
+      challenge.address.toLowerCase() !== user.wallet.address.toLowerCase()
+    ) {
+      throw new Error('wallet challenge does not belong to user');
+    }
+    verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
+    await this.assertConsumeWalletChallenge(challenge.challengeId, this.now().toISOString());
+    return { user, challenge };
+  }
+
+  private async resolveReferralAttribution(
+    newUserId: string,
+    referralCode: string,
+    sourceUrl: string | undefined,
+    attributedAt: string,
+  ) {
+    const lookup = await this.resolveReferralCode(referralCode);
+    if (lookup.ownerUserId === newUserId) {
+      throw new Error('users cannot refer themselves');
+    }
+    return {
+      referralCode: lookup.referralCode,
+      referrerUserId: lookup.ownerUserId,
+      ...(sourceUrl ? { sourceUrl: normalizeSourceUrl(sourceUrl) } : {}),
+      attributedAt,
+    };
+  }
+
+  private async saveUserWithFreshReferralCode(input: {
+    userId: string;
+    challenge: OtcUserWalletChallenge;
+    request: RegisterUserRequest;
+    now: string;
+    referredBy?: {
+      referralCode: string;
+      referrerUserId: string;
+      sourceUrl?: string;
+      attributedAt: string;
+    };
+  }): Promise<OtcUser> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const referralCode = createRandomReferralCode();
+      try {
+        const user = await this.repository.saveUser({
+          userId: input.userId,
+          referralCode,
+          wallet: {
+            userId: input.userId,
+            walletType: input.challenge.walletType,
+            network: input.challenge.network,
+            address: input.challenge.address,
+            ...(input.request.publicKeyHex ? { publicKeyHex: normalizeProofPubkeyForUser(input.request.publicKeyHex) } : {}),
+            verifiedAt: input.now,
+          },
+          profile: {
+            userId: input.userId,
+            ...(input.request.email ? { email: normalizeEmail(input.request.email) } : {}),
+            notificationEmailEnabled: input.request.notificationEmailEnabled ?? false,
+          },
+          ...(input.referredBy ? { referredBy: input.referredBy } : {}),
+        });
+        await this.awardUserPoints(user, SIGNUP_POINTS, 'signup', {
+          metadata: { wallet_type: user.wallet.walletType, network: user.wallet.network },
+        });
+        if (input.referredBy) {
+          const referrer = await this.repository.findUserById(input.referredBy.referrerUserId);
+          if (referrer) {
+            await this.awardUserPoints(referrer, REFERRAL_SIGNUP_POINTS, 'referral_signup', {
+              relatedUserId: user.userId,
+              referralCode: input.referredBy.referralCode,
+              metadata: { referred_user_id: user.userId },
+              applyReferralBonus: false,
+            });
+          }
+        }
+        return user;
+      } catch (error) {
+        if (error instanceof Error && error.name === 'ReferralCodeCollisionError') {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error('failed to allocate unique referral code');
+  }
+
+  private async awardUserPoints(
+    user: OtcUser,
+    points: number,
+    source: OtcPointEvent['source'],
+    options: {
+      relatedUserId?: string;
+      tradeId?: string;
+      orderId?: string;
+      referralCode?: string;
+      metadata?: Record<string, unknown>;
+      applyReferralBonus?: boolean;
+    } = {},
+  ): Promise<void> {
+    const createdAt = this.now().toISOString();
+    const event = await this.repository.savePointEvent({
+      pointEventId: createStableId('points', [
+        user.userId,
+        source,
+        options.relatedUserId ?? '',
+        options.tradeId ?? '',
+        options.orderId ?? '',
+      ]),
+      userId: user.userId,
+      source,
+      points,
+      ...(options.relatedUserId ? { relatedUserId: options.relatedUserId } : {}),
+      ...(options.tradeId ? { tradeId: options.tradeId } : {}),
+      ...(options.orderId ? { orderId: options.orderId } : {}),
+      ...(options.referralCode ? { referralCode: options.referralCode } : {}),
+      metadata: options.metadata ?? {},
+      createdAt,
+    });
+    if (!event.created || options.applyReferralBonus === false || !user.referredBy) {
+      return;
+    }
+    const bonusPoints = Math.max(1, Math.floor((points * REFERRAL_ACTIVITY_BONUS_BPS) / 10_000));
+    const referrer = await this.repository.findUserById(user.referredBy.referrerUserId);
+    if (!referrer) return;
+    await this.repository.savePointEvent({
+      pointEventId: createStableId('points', [
+        referrer.userId,
+        'referral_activity_bonus',
+        user.userId,
+        event.event.pointEventId,
+      ]),
+      userId: referrer.userId,
+      source: 'referral_activity_bonus',
+      points: bonusPoints,
+      relatedUserId: user.userId,
+      ...(options.tradeId ? { tradeId: options.tradeId } : {}),
+      ...(options.orderId ? { orderId: options.orderId } : {}),
+      referralCode: user.referredBy.referralCode,
+      metadata: { referred_point_event_id: event.event.pointEventId },
+      createdAt,
+    });
+  }
+
+  private async awardTradeCompletionPoints(trade: OtcTrade): Promise<void> {
+    const candidates = [
+      await this.repository.findUserByWallet('evm', this.config.baseNetwork, trade.buyerUsdcAddress),
+      await this.repository.findUserByWallet('evm', this.config.baseNetwork, trade.sellerUsdcReceiveAddress),
+    ].filter((user): user is OtcUser => Boolean(user));
+    const uniqueUsers = new Map(candidates.map((user) => [user.userId, user]));
+    for (const user of uniqueUsers.values()) {
+      await this.awardUserPoints(user, TRADE_COMPLETED_POINTS, 'trade_completed', {
+        tradeId: trade.tradeId,
+        metadata: { state: trade.state, amount_prl: trade.amountPrl, amount_usdc: trade.amountUsdc },
+      });
+    }
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
@@ -313,6 +704,9 @@ export class OtcTradeService {
       sourceEventId,
       observedAt: updatedAt,
     });
+    if (toState === 'released') {
+      await this.awardTradeCompletionPoints(updated);
+    }
     return updated;
   }
 
@@ -1002,6 +1396,36 @@ function isAlertSeverity(value: unknown): value is 'info' | 'warning' | 'critica
   return value === 'info' || value === 'warning' || value === 'critical';
 }
 
+function validateCreateWalletChallengeRequest(
+  request: CreateWalletChallengeRequest,
+  pearlNetwork: OtcApiConfig['pearlNetwork'],
+): void {
+  if (request.walletType !== 'evm' && request.walletType !== 'pearl') {
+    throw new Error('walletType must be evm or pearl');
+  }
+  assertNonEmptyBounded(request.network, 'network', 40);
+  if (request.walletType === 'evm') {
+    assertEvmAddress(request.address, 'address');
+  } else {
+    assertLikelyPearlAddress(request.address, 'address', pearlNetwork);
+  }
+}
+
+function validateCreateOrderRequest(request: CreateOrderRequest): void {
+  assertNonEmptyBounded(request.userId, 'userId', 80);
+  assertOneOf(request.side, 'side', ['buy_prl', 'sell_prl']);
+  assertPositiveAmount(request.amountPrl, 'amountPrl', parsePrlToGrains);
+  assertPositiveDecimal(request.priceUsdcPerPrl, 'priceUsdcPerPrl', 6);
+  if (request.minFillPrl) {
+    assertPositiveAmount(request.minFillPrl, 'minFillPrl', parsePrlToGrains);
+  }
+  if (request.expiresAt && Number.isNaN(new Date(request.expiresAt).getTime())) {
+    throw new Error('expiresAt must be a valid timestamp');
+  }
+  assertNonEmptyBounded(request.challengeId, 'challengeId', 80);
+  assertNonEmptyBounded(request.signature, 'signature', 1024);
+}
+
 function validateCreateQuoteRequest(request: CreateQuoteRequest, pearlNetwork: OtcApiConfig['pearlNetwork']): void {
   assertOneOf(request.side, 'side', ['buy_prl', 'sell_prl']);
   assertOneOf(request.settlementAsset, 'settlementAsset', ['USDC']);
@@ -1085,6 +1509,23 @@ function verifyPearlSignerProof(input: VerifyPearlSignerProofInput): boolean {
   return ecc.verifySchnorr(messageHash, pubkey, signature);
 }
 
+function verifyWalletChallenge(
+  challenge: OtcUserWalletChallenge,
+  signature: string,
+  publicKeyHex: string | undefined,
+): void {
+  if (challenge.walletType === 'evm') {
+    const recovered = getAddress(verifyMessage(challenge.message, signature));
+    if (recovered !== getAddress(challenge.address)) {
+      throw new Error('EVM wallet challenge signature does not match address');
+    }
+    return;
+  }
+
+  void publicKeyHex;
+  throw new Error('Pearl wallet user registration is blocked until address-to-pubkey ownership verification is implemented');
+}
+
 function createPearlSignerProofHash(input: Omit<VerifyPearlSignerProofInput, 'signatureHex'>): Uint8Array {
   return createHash('sha256').update(createPearlSignerProofMessage(input)).digest();
 }
@@ -1106,6 +1547,14 @@ function assertPositiveAmount(
   const parsed = parse(value);
   if (parsed <= 0n) {
     throw new Error(`${field} must be greater than zero`);
+  }
+}
+
+function assertPositiveDecimal(value: unknown, field: string, decimals: number): void {
+  assertNonEmptyBounded(value, field, 80);
+  const pattern = new RegExp(`^\\d+(?:\\.\\d{1,${decimals}})?$`);
+  if (!pattern.test(value) || Number(value) <= 0) {
+    throw new Error(`${field} must be a positive decimal`);
   }
 }
 
@@ -1210,9 +1659,115 @@ function calculateImpliedPrice(trade: OtcTrade): string {
   return (usdc / prl).toFixed(6);
 }
 
+function sumDecimal(values: string[], decimals: number): string {
+  return values.reduce((total, value) => total + Number(value), 0).toFixed(decimals);
+}
+
+function summarizePoints(userId: string, events: OtcPointEvent[]): OtcPointsSummary {
+  const bySource: OtcPointsSummary['bySource'] = {};
+  let totalPoints = 0;
+  for (const event of events) {
+    totalPoints += event.points;
+    bySource[event.source] = (bySource[event.source] ?? 0) + event.points;
+  }
+  return {
+    userId,
+    totalPoints,
+    bySource,
+    recent: events.slice(0, 25),
+  };
+}
+
 function createStableId(prefix: string, parts: readonly string[]): string {
   const hash = createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 24);
   return `${prefix}_${hash}`;
+}
+
+function createRandomId(prefix: string): string {
+  return `${prefix}_${randomBytes(16).toString('hex')}`;
+}
+
+function createRandomReferralCode(): string {
+  return randomBytes(8)
+    .toString('base64url')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 10)
+    .toUpperCase();
+}
+
+function createUserWalletChallengeMessage(input: {
+  challengeId: string;
+  walletType: string;
+  network: string;
+  address: string;
+  nonce: string;
+  expiresAt: string;
+}): string {
+  return [
+    'Pearl OTC user wallet v1',
+    `challenge_id=${input.challengeId}`,
+    `wallet_type=${input.walletType}`,
+    `network=${input.network}`,
+    `address=${input.address}`,
+    `nonce=${input.nonce}`,
+    `expires_at=${input.expiresAt}`,
+  ].join('\n');
+}
+
+function normalizeWalletAddress(walletType: string, address: string): string {
+  return walletType === 'evm' ? getAddress(address) : address.trim();
+}
+
+function extractReferralCode(request: Pick<RegisterUserRequest, 'referralCode' | 'sourceUrl'>): string | undefined {
+  if (request.referralCode) {
+    return normalizeReferralCode(request.referralCode);
+  }
+  if (!request.sourceUrl) {
+    return undefined;
+  }
+  const sourceUrl = normalizeSourceUrl(request.sourceUrl);
+  const ref = new URL(sourceUrl).searchParams.get('ref');
+  return ref ? normalizeReferralCode(ref) : undefined;
+}
+
+function normalizeReferralCode(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{3,32}$/.test(normalized)) {
+    throw new Error('referralCode must be 3-32 characters using letters, numbers, underscore, or dash');
+  }
+  return normalized;
+}
+
+function normalizeEmail(value: string): string {
+  assertNonEmptyBounded(value, 'email', 254);
+  const normalized = value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error('email must be a valid email address');
+  }
+  return normalized;
+}
+
+function normalizeAmountString(value: string): string {
+  return value.trim();
+}
+
+function normalizeSourceUrl(value: string): string {
+  assertNonEmptyBounded(value, 'sourceUrl', 2048);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('sourceUrl must be a valid URL');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('sourceUrl must be an http or https URL');
+  }
+  return url.toString();
+}
+
+function normalizeProofPubkeyForUser(value: string): string {
+  assertLikelyPearlPubkey(value, 'publicKeyHex');
+  return normalizeProofPubkey(value);
 }
 
 function createPayloadHash(kind: string, payload: unknown): string {

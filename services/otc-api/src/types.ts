@@ -278,3 +278,200 @@ export interface UsdcEscrowVerification {
   };
   onChain?: UsdcEscrowOnChainTrade;
 }
+
+export type OtcUserWalletType = 'evm' | 'pearl';
+
+export interface OtcUserWalletChallenge {
+  challengeId: string;
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+  message: string;
+  nonce: string;
+  expiresAt: string;
+  consumedAt?: string;
+  createdAt: string;
+}
+
+export interface CreateWalletChallengeRequest {
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+}
+
+export interface CreateWalletChallengeResponse {
+  challengeId: string;
+  message: string;
+  expiresAt: string;
+}
+
+export interface OtcUserWallet {
+  userId: string;
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+  publicKeyHex?: string;
+  verifiedAt: string;
+  createdAt: string;
+}
+
+export interface OtcUserProfile {
+  userId: string;
+  email?: string;
+  emailVerifiedAt?: string;
+  notificationEmailEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OtcReferralAttribution {
+  referredUserId: string;
+  referrerUserId: string;
+  referralCode: string;
+  sourceUrl?: string;
+  attributedAt: string;
+}
+
+export interface OtcUser {
+  userId: string;
+  referralCode: string;
+  wallet: OtcUserWallet;
+  profile: OtcUserProfile;
+  referredBy?: OtcReferralAttribution;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterUserRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  referralCode?: string;
+  sourceUrl?: string;
+  email?: string;
+  notificationEmailEnabled?: boolean;
+}
+
+export interface UpdateUserProfileRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  email?: string;
+  notificationEmailEnabled?: boolean;
+}
+
+export interface ReferralCodeLookup {
+  referralCode: string;
+  ownerUserId: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+}
+
+export type OtcOrderStatus = 'open' | 'partially_filled' | 'filled' | 'cancelled' | 'expired';
+export type OtcFundingAsset = 'PRL' | 'USDC';
+export type OtcPointSource =
+  | 'signup'
+  | 'referral_signup'
+  | 'trade_completed'
+  | 'order_created'
+  | 'referral_activity_bonus';
+
+export interface OtcOrder {
+  orderId: string;
+  makerUserId: string;
+  side: OtcQuoteSide;
+  fundingAsset: OtcFundingAsset;
+  amountPrl: string;
+  remainingPrl: string;
+  priceUsdcPerPrl: string;
+  minFillPrl?: string;
+  status: OtcOrderStatus;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrderRequest {
+  userId: string;
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  side: OtcQuoteSide;
+  amountPrl: string;
+  priceUsdcPerPrl: string;
+  minFillPrl?: string;
+  expiresAt?: string;
+}
+
+export interface OrderBookQuery {
+  side?: OtcQuoteSide;
+  status?: OtcOrderStatus;
+  minPrl?: string;
+  maxPrl?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  makerUserId?: string;
+  sort?: 'best_price' | 'newest' | 'largest';
+  cursor?: string;
+  limit?: number;
+}
+
+export interface OrderBookPage {
+  items: OtcOrder[];
+  total: number;
+  limit: number;
+  nextCursor?: string;
+}
+
+export interface OtcPointEvent {
+  pointEventId: string;
+  userId: string;
+  source: OtcPointSource;
+  points: number;
+  relatedUserId?: string;
+  tradeId?: string;
+  orderId?: string;
+  referralCode?: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface OtcPointsSummary {
+  userId: string;
+  totalPoints: number;
+  bySource: Partial<Record<OtcPointSource, number>>;
+  recent: OtcPointEvent[];
+}
+
+export interface MarketStats {
+  successfulTrades: number;
+  totalVolumePrl: string;
+  totalVolumeUsdc: string;
+  activeOrderVolumePrl: string;
+  activeEscrowVolumePrl: string;
+  verifiedUsers: number;
+  openOrders: number;
+}
+
+export interface RecentTradeSummary {
+  tradeId: string;
+  side: OtcTrade['side'];
+  amountPrl: string;
+  amountUsdc: string;
+  priceUsdcPerPrl: string;
+  state: OtcTrade['state'];
+  updatedAt: string;
+}
+
+export interface OtcUserDashboard {
+  user: OtcUser;
+  points: OtcPointsSummary;
+  orders: OtcOrder[];
+  trades: OtcTrade[];
+}
+
+export interface UserDashboardRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+}
