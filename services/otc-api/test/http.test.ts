@@ -235,12 +235,90 @@ test('registers wallet-owned users with referral links and wallet-proved profile
       challengeId: profileChallenge.challengeId,
       signature: await referredWallet.signMessage(profileChallenge.message),
       email: 'TRADER@EXAMPLE.COM',
-      notificationEmailEnabled: true,
+      notificationEmailEnabled: false,
     });
     assert.equal(profileResponse.status, 200);
     const profile = (await profileResponse.json()) as { email: string; notificationEmailEnabled: boolean };
     assert.equal(profile.email, 'trader@example.com');
-    assert.equal(profile.notificationEmailEnabled, true);
+    assert.equal(profile.notificationEmailEnabled, false);
+
+    const emailChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const emailChallenge = (await emailChallengeResponse.json()) as { challengeId: string; message: string };
+    const emailVerificationResponse = await postJson(baseUrl, `/otc/users/${referred.userId}/email/verification`, {
+      challengeId: emailChallenge.challengeId,
+      signature: await referredWallet.signMessage(emailChallenge.message),
+      email: 'trader@example.com',
+    });
+    assert.equal(emailVerificationResponse.status, 201);
+    const emailVerification = (await emailVerificationResponse.json()) as { deliveryId: string; status: string };
+    assert.equal(emailVerification.status, 'pending');
+
+    const deliveriesResponse = await fetch(`${baseUrl}/otc/admin/notifications/deliveries?status=pending`, { headers: adminHeaders });
+    assert.equal(deliveriesResponse.status, 200);
+    const deliveries = (await deliveriesResponse.json()) as Array<{
+      deliveryId: string;
+      notificationType: string;
+      payload: { verification_token?: string };
+    }>;
+    assert.equal(deliveries[0].deliveryId, emailVerification.deliveryId);
+    assert.equal(deliveries[0].notificationType, 'email_verification');
+    assert.ok(deliveries[0].payload.verification_token);
+
+    const verifiedEmailResponse = await postJson(baseUrl, `/otc/users/${referred.userId}/email/verify`, {
+      token: deliveries[0].payload.verification_token,
+    });
+    assert.equal(verifiedEmailResponse.status, 200);
+    const verifiedEmail = (await verifiedEmailResponse.json()) as { email: string; emailVerifiedAt: string };
+    assert.equal(verifiedEmail.email, 'trader@example.com');
+    assert.equal(verifiedEmail.emailVerifiedAt, '2026-05-16T12:00:00.000Z');
+
+    const changeEmailChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const changeEmailChallenge = (await changeEmailChallengeResponse.json()) as { challengeId: string; message: string };
+    const changeEmailResponse = await postJson(baseUrl, `/otc/users/${referred.userId}/profile`, {
+      challengeId: changeEmailChallenge.challengeId,
+      signature: await referredWallet.signMessage(changeEmailChallenge.message),
+      email: 'new-trader@example.com',
+      notificationEmailEnabled: true,
+    });
+    assert.equal(changeEmailResponse.status, 400);
+    const changeEmailError = (await changeEmailResponse.json()) as { message: string };
+    assert.match(changeEmailError.message, /verified email/);
+
+    const preferencesChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const preferencesChallenge = (await preferencesChallengeResponse.json()) as { challengeId: string; message: string };
+    const preferencesResponse = await postJson(baseUrl, `/otc/users/${referred.userId}/notification-preferences`, {
+      challengeId: preferencesChallenge.challengeId,
+      signature: await referredWallet.signMessage(preferencesChallenge.message),
+      preferences: [
+        { notificationType: 'trade_status', channel: 'email', enabled: true },
+        { notificationType: 'deadline_warning', channel: 'email', enabled: true },
+      ],
+    });
+    assert.equal(preferencesResponse.status, 200);
+    const preferences = (await preferencesResponse.json()) as {
+      preferences: Array<{ notificationType: string; channel: string; enabled: boolean }>;
+    };
+    assert.equal(preferences.preferences.find((candidate) => candidate.notificationType === 'trade_status' && candidate.channel === 'email')?.enabled, true);
+
+    const deliveryUpdateResponse = await postJson(baseUrl, `/otc/admin/notifications/deliveries/${emailVerification.deliveryId}`, {
+      status: 'sent',
+    }, operatorHeaders);
+    assert.equal(deliveryUpdateResponse.status, 200);
+    const deliveryUpdate = (await deliveryUpdateResponse.json()) as { status: string; sentAt: string };
+    assert.equal(deliveryUpdate.status, 'sent');
+    assert.equal(deliveryUpdate.sentAt, '2026-05-16T12:00:00.000Z');
 
     const orderChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
       walletType: 'evm',

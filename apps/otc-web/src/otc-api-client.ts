@@ -251,6 +251,61 @@ export interface UpdateUserProfileRequest {
   notificationEmailEnabled?: boolean;
 }
 
+export type OtcNotificationType =
+  | 'trade_status'
+  | 'deadline_warning'
+  | 'order_matched'
+  | 'price_alert'
+  | 'new_good_order'
+  | 'referral_event'
+  | 'email_verification';
+
+export type OtcNotificationChannel = 'email' | 'telegram';
+
+export interface OtcNotificationPreference {
+  userId: string;
+  notificationType: OtcNotificationType;
+  channel: OtcNotificationChannel;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestEmailVerificationRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  email: string;
+}
+
+export interface RequestEmailVerificationResponse {
+  userId: string;
+  email: string;
+  status: 'pending';
+  expiresAt: string;
+  deliveryId: string;
+}
+
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface NotificationPreferencesResponse {
+  userId: string;
+  preferences: OtcNotificationPreference[];
+}
+
+export interface UpdateNotificationPreferencesRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  preferences: Array<{
+    notificationType: OtcNotificationType;
+    channel: OtcNotificationChannel;
+    enabled: boolean;
+  }>;
+}
+
 export interface OtcUser {
   userId: string;
   referralCode: string;
@@ -506,6 +561,22 @@ export class OtcApiClient {
 
   updateUserProfile(userId: string, request: UpdateUserProfileRequest): Promise<OtcUser['profile']> {
     return this.post(`/otc/users/${encodeURIComponent(userId)}/profile`, request);
+  }
+
+  requestEmailVerification(userId: string, request: RequestEmailVerificationRequest): Promise<RequestEmailVerificationResponse> {
+    return this.post(`/otc/users/${encodeURIComponent(userId)}/email/verification`, request);
+  }
+
+  verifyEmail(userId: string, request: VerifyEmailRequest): Promise<OtcUser['profile']> {
+    return this.post(`/otc/users/${encodeURIComponent(userId)}/email/verify`, request);
+  }
+
+  getNotificationPreferences(userId: string, request: UserDashboardRequest): Promise<NotificationPreferencesResponse> {
+    return this.post(`/otc/users/${encodeURIComponent(userId)}/notification-preferences/read`, request);
+  }
+
+  updateNotificationPreferences(userId: string, request: UpdateNotificationPreferencesRequest): Promise<NotificationPreferencesResponse> {
+    return this.post(`/otc/users/${encodeURIComponent(userId)}/notification-preferences`, request);
   }
 
   getMarketStats(): Promise<MarketStats> {

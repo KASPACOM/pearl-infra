@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { OtcQuoteSide, TradeState } from '@kaspacom/pearl-sdk';
 
 import type { OtcTradeService } from './trade-service.js';
-import type { AdminActorContext, OtcOrderStatus, OtcSideEffectStatus, OrderBookQuery } from './types.js';
+import type { AdminActorContext, OtcNotificationDeliveryStatus, OtcOrderStatus, OtcSideEffectStatus, OrderBookQuery } from './types.js';
 
 const MAX_JSON_BODY_BYTES = 64 * 1024;
 
@@ -132,6 +132,26 @@ export async function handleOtcHttpRequest(
 
   if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'profile') {
     return { statusCode: 200, body: await service.updateUserProfile(parts[2], await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && parts.length === 5 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'email' && parts[4] === 'verification') {
+    return { statusCode: 201, body: await service.requestEmailVerification(parts[2], await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && parts.length === 5 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'email' && parts[4] === 'verify') {
+    return { statusCode: 200, body: await service.verifyEmail(parts[2], await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'notification-preferences') {
+    return { statusCode: 200, body: await service.updateNotificationPreferences(parts[2], await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && parts.length === 5 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'notification-preferences' && parts[4] === 'read') {
+    return { statusCode: 200, body: await service.getNotificationPreferences(parts[2], await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && path === '/otc/notifications/unsubscribe') {
+    return { statusCode: 200, body: await service.unsubscribeNotification(await readJsonBody(request)) };
   }
 
   if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'dashboard') {
@@ -306,6 +326,25 @@ async function handleAdminRequest(
     };
   }
 
+  if (method === 'GET' && parts.length === 4 && parts[2] === 'notifications' && parts[3] === 'deliveries') {
+    requireAdminRole(admin, 'operator');
+    return {
+      statusCode: 200,
+      body: await service.listNotificationDeliveries({
+        status: parseNotificationDeliveryStatus(url.searchParams.get('status')),
+        limit: parseOptionalInteger(url.searchParams.get('limit')),
+      }),
+    };
+  }
+
+  if (method === 'POST' && parts.length === 5 && parts[2] === 'notifications' && parts[3] === 'deliveries') {
+    requireAdminRole(admin, 'operator');
+    return {
+      statusCode: 200,
+      body: await service.updateNotificationDelivery(parts[4], await readJsonBody(request)),
+    };
+  }
+
   return {
     statusCode: 404,
     body: {
@@ -421,6 +460,13 @@ function parseSideEffectStatus(value: string | null): OtcSideEffectStatus | unde
   return undefined;
 }
 
+function parseNotificationDeliveryStatus(value: string | null): OtcNotificationDeliveryStatus | undefined {
+  if (value === 'pending' || value === 'sent' || value === 'failed' || value === 'cancelled' || value === 'unsubscribed') {
+    return value;
+  }
+  return undefined;
+}
+
 function parseOrderSide(value: string | null): OtcQuoteSide | undefined {
   return value === 'buy_prl' || value === 'sell_prl' ? value : undefined;
 }
@@ -513,7 +559,7 @@ function mapError(error: unknown): JsonResponse {
   if (message.includes('is required') || message.includes('is invalid')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
-  if (message.includes('challenge') || message.includes('signature') || message.includes('blocked until')) {
+  if (message.includes('challenge') || message.includes('signature') || message.includes('blocked until') || message.includes('verified email')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('deadline passed') || message.includes('terminal')) {

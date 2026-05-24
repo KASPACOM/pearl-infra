@@ -82,6 +82,15 @@ test('posts wallet user, referral, and profile routes', async () => {
       if (url.toString().endsWith('/profile')) {
         return jsonResponse({ userId: 'user_1', email: 'user@example.test', notificationEmailEnabled: true });
       }
+      if (url.toString().endsWith('/email/verification')) {
+        return jsonResponse({ userId: 'user_1', email: 'user@example.test', status: 'pending', deliveryId: 'delivery_1' }, 201);
+      }
+      if (url.toString().endsWith('/email/verify')) {
+        return jsonResponse({ userId: 'user_1', email: 'user@example.test', emailVerifiedAt: '2026-05-24T12:00:00.000Z', notificationEmailEnabled: false });
+      }
+      if (url.toString().endsWith('/notification-preferences/read') || url.toString().endsWith('/notification-preferences')) {
+        return jsonResponse({ userId: 'user_1', preferences: [{ notificationType: 'trade_status', channel: 'email', enabled: true }] });
+      }
       return jsonResponse({ userId: 'user_1', referralCode: 'ABC123', wallet: { address: '0xabc' }, profile: {} }, 201);
     },
   });
@@ -103,15 +112,38 @@ test('posts wallet user, referral, and profile routes', async () => {
     email: 'user@example.test',
     notificationEmailEnabled: true,
   });
+  const emailVerification = await client.requestEmailVerification('user_1', {
+    challengeId: 'wallet_challenge_3',
+    signature: '0xsig3',
+    email: 'user@example.test',
+  });
+  const verifiedEmail = await client.verifyEmail('user_1', { token: 'email-token' });
+  const preferences = await client.updateNotificationPreferences('user_1', {
+    challengeId: 'wallet_challenge_4',
+    signature: '0xsig4',
+    preferences: [{ notificationType: 'trade_status', channel: 'email', enabled: true }],
+  });
+  const readPreferences = await client.getNotificationPreferences('user_1', {
+    challengeId: 'wallet_challenge_5',
+    signature: '0xsig5',
+  });
 
   assert.equal(challenge.challengeId, 'wallet_challenge_1');
   assert.equal(user.userId, 'user_1');
   assert.equal(lookup.ownerUserId, 'user_referrer');
   assert.equal(profile.notificationEmailEnabled, true);
+  assert.equal(emailVerification.deliveryId, 'delivery_1');
+  assert.equal(verifiedEmail.emailVerifiedAt, '2026-05-24T12:00:00.000Z');
+  assert.equal(preferences.preferences[0]?.enabled, true);
+  assert.equal(readPreferences.preferences[0]?.notificationType, 'trade_status');
   assert.equal(calls[0].url, 'https://api.example.test/otc/users/wallet-challenges');
   assert.equal(calls[1].url, 'https://api.example.test/otc/users');
   assert.equal(calls[2].url, 'https://api.example.test/otc/users/referrals/ABC123');
   assert.equal(calls[3].url, 'https://api.example.test/otc/users/user_1/profile');
+  assert.equal(calls[4].url, 'https://api.example.test/otc/users/user_1/email/verification');
+  assert.equal(calls[5].url, 'https://api.example.test/otc/users/user_1/email/verify');
+  assert.equal(calls[6].url, 'https://api.example.test/otc/users/user_1/notification-preferences');
+  assert.equal(calls[7].url, 'https://api.example.test/otc/users/user_1/notification-preferences/read');
   assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[2].init.method, 'GET');
 });
