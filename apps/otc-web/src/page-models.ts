@@ -2,6 +2,8 @@ import type {
   OtcQuote,
   OtcQuoteSide,
   OtcTrade,
+  PearlEscrowMode,
+  PearlReleaseSigningMode,
   PublicTradeProof,
   TradeEvent,
   TradeState,
@@ -35,6 +37,12 @@ export interface AcceptQuoteFormInput {
   buyerUsdcAddress: string;
   sellerPearlRefundAddress?: string;
   sellerUsdcReceiveAddress?: string;
+  pearlEscrowMode?: PearlEscrowMode;
+  pearlReleaseSigningMode?: PearlReleaseSigningMode;
+  buyerPearlPubkey?: string;
+  sellerPearlPubkey?: string;
+  buyerPearlPubkeyProof?: string;
+  sellerPearlPubkeyProof?: string;
   clientRequestId: string;
 }
 
@@ -104,6 +112,9 @@ export interface TradeCheckoutPageModel {
     fundingOutpoint?: string;
     releaseTxid?: string;
     refundTxid?: string;
+    escrowMode?: PearlEscrowMode;
+    releaseSigningMode?: PearlReleaseSigningMode;
+    signerSets: string[];
     statusLabel: string;
   };
   base: {
@@ -231,7 +242,7 @@ export function buildQuotePageModel(input: QuoteFormInput): QuotePageModel {
 }
 
 export function buildAcceptQuotePageModel(quote: OtcQuote, input: AcceptQuoteFormInput, role: QuoteRole, now = new Date()): AcceptQuotePageModel {
-  const sellerFieldsVisible = role === 'seller' || role === 'admin';
+  const sellerFieldsVisible = true;
   const quoteExpired = new Date(quote.expiresAt).getTime() <= now.getTime() || quote.status !== 'active';
   const errors: AcceptQuotePageModel['errors'] = {};
 
@@ -241,11 +252,25 @@ export function buildAcceptQuotePageModel(quote: OtcQuote, input: AcceptQuoteFor
   if (!isLikelyEvmAddress(input.buyerUsdcAddress)) {
     errors.buyerUsdcAddress = 'Enter a Base wallet address.';
   }
-  if (sellerFieldsVisible && !isLikelyPearlAddress(input.sellerPearlRefundAddress ?? '')) {
+  if (!isLikelyPearlAddress(input.sellerPearlRefundAddress ?? '')) {
     errors.sellerPearlRefundAddress = 'Enter a Pearl seller refund address.';
   }
-  if (sellerFieldsVisible && !isLikelyEvmAddress(input.sellerUsdcReceiveAddress ?? '')) {
+  if (!isLikelyEvmAddress(input.sellerUsdcReceiveAddress ?? '')) {
     errors.sellerUsdcReceiveAddress = 'Enter a seller USDC receive address.';
+  }
+  if (input.pearlEscrowMode === 'multisig') {
+    if (!isLikelyPearlPubkey(input.buyerPearlPubkey ?? '')) {
+      errors.buyerPearlPubkey = 'Enter the buyer Pearl x-only public key.';
+    }
+    if (!isLikelyPearlPubkey(input.sellerPearlPubkey ?? '')) {
+      errors.sellerPearlPubkey = 'Enter the seller Pearl x-only public key.';
+    }
+    if (!isLikelySchnorrSignature(input.buyerPearlPubkeyProof ?? '')) {
+      errors.buyerPearlPubkeyProof = 'Enter the buyer signer proof signature.';
+    }
+    if (!isLikelySchnorrSignature(input.sellerPearlPubkeyProof ?? '')) {
+      errors.sellerPearlPubkeyProof = 'Enter the seller signer proof signature.';
+    }
   }
   if (!input.clientRequestId.trim()) {
     errors.clientRequestId = 'Client request id is required.';
@@ -282,6 +307,9 @@ export function buildTradeCheckoutPageModel(
       fundingOutpoint: trade.pearlEscrow.fundingOutpoint,
       releaseTxid: trade.pearlEscrow.releaseTxid,
       refundTxid: trade.pearlEscrow.refundTxid,
+      escrowMode: trade.pearlEscrowMode,
+      releaseSigningMode: trade.pearlReleaseSigningMode,
+      signerSets: describePearlSignerSets(trade),
       statusLabel: getPearlStatusLabel(trade),
     },
     base: {
@@ -471,4 +499,23 @@ function isLikelyEvmAddress(value: string): boolean {
 
 function sameEvmAddress(left?: string, right?: string): boolean {
   return Boolean(left && right && isLikelyEvmAddress(left) && isLikelyEvmAddress(right) && left.toLowerCase() === right.toLowerCase());
+}
+
+function isLikelyPearlPubkey(value: string): boolean {
+  return /^(?:0x)?(?:[0-9a-fA-F]{64}|0[23][0-9a-fA-F]{64})$/.test(value.trim());
+}
+
+function isLikelySchnorrSignature(value: string): boolean {
+  return /^(?:0x)?[0-9a-fA-F]{128}$/.test(value.trim());
+}
+
+function describePearlSignerSets(trade: OtcTrade): string[] {
+  const policy = trade.pearlEscrow.releaseTemplate && typeof trade.pearlEscrow.releaseTemplate === 'object'
+    ? (trade.pearlEscrow.releaseTemplate as { signingPolicy?: { requiredSigners?: string[]; alternativeSignerSets?: string[][] } }).signingPolicy
+    : undefined;
+  const sets = [
+    ...(policy?.requiredSigners?.length ? [policy.requiredSigners] : []),
+    ...(policy?.alternativeSignerSets ?? []),
+  ];
+  return sets.map((set) => set.join(' + '));
 }

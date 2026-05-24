@@ -32,6 +32,7 @@ Non-secret environment examples live in `ops/otc/`.
 | `pearl-otc-api-db` | OTC API | `OTC_API_DATABASE_URL` |
 | `pearl-otc-base-rpc` | OTC API and worker | `BASE_RPC_URL` |
 | `pearl-otc-p2tr-xpub` | OTC API | `PEARL_ESCROW_XPUB` |
+| `pearl-otc-multisig-arbiter` | OTC API | `PEARL_ESCROW_ARBITER_PUBKEY` |
 | `pearl-otc-admin-api` | OTC API admin surface | `OTC_ADMIN_API_TOKEN` |
 | `pearl-otc-signer-policy` | settlement worker / signer boundary | `PEARL_SIGNER_KEY_ID`, `PEARL_SIGNER_ALLOWED_KEY_IDS`, `PEARL_SIGNER_RELEASE_FEE_CAP_GRAINS`, `PEARL_SIGNER_REFUND_FEE_CAP_GRAINS` |
 | `pearl-otc-signer-store` | signer boundary | `PEARL_SIGNER_REQUEST_STORE_PATH`, `PEARL_SIGNER_AUDIT_LOG_PATH` |
@@ -77,10 +78,12 @@ OTC API, indexer, frontend, or general worker containers.
 | `BASE_USDC_ESCROW_NETWORK` | yes | `base_sepolia` until mainnet approval |
 | `BASE_USDC_ESCROW_CONTRACT` | yes | approved Base Sepolia escrow contract |
 | `PEARL_NETWORK` | yes | `testnet2` until mainnet approval |
-| `PEARL_ESCROW_ALLOCATOR` | yes | `p2tr_xpub` |
-| `PEARL_ESCROW_XPUB` | yes | secret from `pearl-otc-p2tr-xpub` |
+| `PEARL_ESCROW_ALLOCATOR` | yes | `p2tr_multisig` for dev E2E, `p2tr_xpub` only for coordinator custody |
+| `PEARL_ESCROW_XPUB` | coordinator custody | secret from `pearl-otc-p2tr-xpub` |
+| `PEARL_ESCROW_ARBITER_PUBKEY` | multisig custody | x-only arbiter/operator Pearl public key from `pearl-otc-multisig-arbiter` |
 | `PEARL_ESCROW_DERIVATION_PREFIX` | yes | non-hardened path prefix, default `0` |
 | `PEARL_ESCROW_ALLOW_MAINNET` | yes | `false` until approval |
+| `PEARL_RELEASE_FEE_GRAINS` | yes | fee reserved in release intent templates |
 | `PEARL_INDEXER_WATCH_URL` | yes | private URL for testnet2 watched-address API |
 | `PEARL_INDEXER_WATCH_TIMEOUT_MS` | yes | `5000` |
 | `OTC_ADMIN_API_TOKEN` | yes | bearer token from `pearl-otc-admin-api` |
@@ -98,6 +101,24 @@ OTC API, indexer, frontend, or general worker containers.
 
 Production-like startup must fail if `OTC_API_REQUIRE_PRODUCTION_CONFIG=true`
 and any required value is absent or mock-only.
+
+### OTC Web
+
+| Variable | Required for | Expected value |
+|---|---|---|
+| `VITE_OTC_API_BASE_URL` | all web builds | matching API origin |
+| `VITE_PEARL_ESCROW_MODE` | web builds | `multisig` on dev when API uses `p2tr_multisig`; otherwise `coordinator` |
+
+`VITE_PEARL_ESCROW_MODE` only controls the default selected option in the public
+accept screen. The API remains authoritative and rejects a custody mode that
+does not match `PEARL_ESCROW_ALLOCATOR`.
+
+For `multisig` accept flows, the browser must submit buyer and seller Pearl
+pubkeys plus BIP340 signer-ownership proof signatures. The proof message is
+domain-separated as `Pearl OTC signer proof v1` and binds the quote ID, signer
+role, Pearl address, USDC address, Pearl pubkey, and release-signing mode. This
+is an allocation-time ownership proof only; final PRL release/refund
+transaction signatures are collected through the release-intent/signing flow.
 
 ### Settlement Worker And Signer Boundary
 

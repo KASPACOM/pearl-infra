@@ -203,6 +203,11 @@ Merged implementation checkpoints:
   proves it maps to exactly one mirrored exit, normalizes amount/address fields,
   rejects wrong-purpose reserve watches, and enforces duplicate release/exit
   guards in local repositories as well as Postgres.
+- Open PR #96 — wires and hardens the OTC dev multisig app flow:
+  `p2tr_multisig` API allocation, trade-id-committed 2-of-3 Pearl Taproot
+  escrows, buyer/seller signer-ownership proofs bound to quote terms, public
+  release-intent templates, FE custody/release-signing choices, and dev env
+  defaults for multisig custody.
 
 Review snapshot after PR #90 follow-up audit: PRs #71-#89 are merged into `dev`.
 The bridge service and PRL-side proof strategy now fail closed for the known
@@ -242,9 +247,10 @@ Current Pearl OTC code/workflow status:
   existing typed clients and page models. The admin UI is wired to the backend
   diagnostics API for list/detail, expanded filters, pagination, support
   notes, manual-review notes, failed alert-delivery replay, and the public
-  support/error alert form, while settlement execution controls stay absent.
+  support/error alert form. PR #96 adds the public multisig custody and release
+  intent UX while keeping direct release/refund execution controls absent.
 
-Current delegation queue after PR #88:
+Current delegation queue after PR #96:
 
 - Bridge proof/scanner owner: PR #88 closed the strategy loopholes in code and
   tests, and the 2026-05-20 simnet proof rerun passed with
@@ -273,10 +279,17 @@ Current delegation queue after PR #88:
   signing/broadcast boundary with real txids. Pearl testnet2 is no longer a
   mandatory gate because there is no usable faucet/liquidity; after simnet,
   the next live gate is explicitly approved low-cap mainnet.
+- Oyster/dev ops owner: after PR #96 merges, add the dev
+  `PEARL_ESCROW_ARBITER_PUBKEY` secret, switch the dev API allocator to
+  `p2tr_multisig`, deploy the new API/web images, and smoke the browser path
+  through quote, multisig accept with buyer/seller signer proofs, Pearl
+  funding/proof, Base create/deposit, and release intent. A settlement-worker
+  Kubernetes runtime is still missing and must be packaged/deployed before
+  unattended settlement can be claimed.
 - Base ops owner: `9.6.7` is complete on Base Sepolia; keep `9.6.9` blocked
   until explicit Base mainnet approval.
-- Oyster/prod ops owner: finish `9.10.6.b`, `9.10.8.d`, `9.10.9.b`, and
-  `9.10.10.f` only when prod release is approved.
+- Oyster/prod ops owner: finish `9.10.6.c`, `9.10.8.e`, `9.10.9.b`, and
+  `9.10.10.g` only when prod release is approved.
 - Pool planning owner: keep `10.12` blocked until one low-cap entry and one
   low-cap exit pass with public proof and clean reserve reconciliation.
 
@@ -553,6 +566,17 @@ Loophole tracker after PR #74:
   for write); public users must use proof and support-alert routes only.
 - [x] Base Sepolia ownership acceptance evidence is recorded; `9.6.7` is
   complete.
+- [x] Multisig signer-key spoofing at quote acceptance — PR #96 now requires
+  BIP340 signer-ownership proofs from both buyer and seller before allocating
+  a `p2tr_multisig` Pearl escrow. The signed proof is bound to quote ID, role,
+  Pearl address, USDC address, Pearl pubkey, and release-signing mode, so a
+  typo, placeholder, or substituted pubkey/address cannot silently allocate an
+  escrow the intended party cannot sign.
+- [ ] Release-signature wallet UX is still not production-complete — signer
+  ownership proof is not the final release/refund transaction signature. The
+  app can show release-intent templates after indexed funding, but a Pearl
+  wallet/tooling path must still collect and submit the actual release
+  signatures before claiming fully self-serve user release from the browser.
 - [ ] Base mainnet deployment remains explicitly blocked — `9.6.9` only opens
   after separate approval, ownership evidence, and live-run evidence.
 
@@ -657,6 +681,15 @@ Loophole tracker after PR #74:
     routes require `OTC_ADMIN_API_TOKEN`, and support/error alerts require at
     least one configured sink (`OTC_ALERT_WEBHOOK_URL` or Telegram bot token
     plus chat ID), in production-like deployments.
+  - 2026-05-23: Added the dev end-to-end Pearl multisig custody path: public
+    quote acceptance can request `multisig` custody, capture buyer/seller
+    Pearl pubkeys, require BIP340 signer-ownership proofs bound to the accept
+    terms, select preauthorized-vs-manual release signing, and show custody/
+    signing policy plus release intent status on checkout. The API now
+    supports `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`, requires
+    `PEARL_ESCROW_ARBITER_PUBKEY`, derives trade-id-committed 2-of-3 P2TR
+    escrows, and exposes a public release-intent template only after Pearl
+    funding is indexed.
 - [x] 9.8.13 Add ops monitoring for deadline breaches, stale watches, failed
   broadcasts, duplicate events, manual-review backlog, and mismatched
   backend/on-chain terms.
@@ -712,7 +745,9 @@ Loophole tracker after PR #74:
   - [x] 9.10.6.a Create/populate `dev/oyster-otc-api` in `eu-central-1`.
     - 2026-05-18: secret is synced by ExternalSecrets; dev-only escrow custody
       xprv is stored separately in `dev/oyster-otc-escrow-custody`.
-  - [ ] 9.10.6.b Create/populate `prod/oyster-otc-api` in `us-east-1`.
+  - [ ] 9.10.6.b Add `PEARL_ESCROW_ARBITER_PUBKEY` to the dev secret before
+    switching `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`.
+  - [ ] 9.10.6.c Create/populate `prod/oyster-otc-api` in `us-east-1`.
 - [x] 9.10.7 Confirm ECR repositories exist for Oyster API/web dev and prod.
   - 2026-05-18: dev repos contain image tag
     `fe0873e0213dc557dd27db55ae16438f3bf3c151`; prod repos exist but have no
@@ -723,7 +758,12 @@ Loophole tracker after PR #74:
   - 2026-05-18: `oyster-otc-web` and `oyster-otc-api` are both 1/1 Running;
     API uses Postgres persistence, Base Sepolia reader, Pearl watch registrar,
     and Telegram alert notifier.
-- [ ] 9.10.8.d Execute the main/prod deploy path and confirm prod API and web
+- [ ] 9.10.8.d Package and deploy a dev settlement-worker runtime.
+  - 2026-05-23: Verified the current dev namespace only has
+    `oyster-otc-api` and `oyster-otc-web`; `services/settlement-worker` has
+    decision/signing/broadcast adapters and tests but no Kubernetes runtime
+    deployment yet.
+- [ ] 9.10.8.e Execute the main/prod deploy path and confirm prod API and web
   images/pods.
 - [x] 9.10.9.a Configure dev DNS/Cloudflare records and HTTPS for
   `dev-oyster.kaspa.com` and `dev-api-oyster.kaspa.com`.
@@ -737,7 +777,11 @@ Loophole tracker after PR #74:
   - [x] 9.10.10.d Dev admin-auth smoke passed with the generated admin token.
   - [x] 9.10.10.e Dev support-alert smoke passed with Telegram delivery
     confirmed in admin diagnostics.
-  - [ ] 9.10.10.f Main/prod smoke after prod release path is executed.
+  - [ ] 9.10.10.f Switch dev API secret to `PEARL_ESCROW_ALLOCATOR=p2tr_multisig`
+    with `PEARL_ESCROW_ARBITER_PUBKEY`, deploy the new API/web images, and
+    smoke quote -> multisig accept with buyer/seller signer proofs -> Pearl
+    funding/proof -> Base create/deposit -> release intent from the browser.
+  - [ ] 9.10.10.g Main/prod smoke after prod release path is executed.
 - [x] 9.10.11 Wire Oyster API runtime config to the live Pearl watched-address
   indexer on `65.21.206.46` and smoke `PEARL_INDEXER_WATCH_URL` from the API
   runtime network.

@@ -1,4 +1,5 @@
 import { OtcApiClient } from './otc-api-client.js';
+import type { PearlEscrowMode } from '@kaspacom/pearl-sdk';
 
 export function createOtcClient(): OtcApiClient {
   return new OtcApiClient({
@@ -12,6 +13,10 @@ export function getApiBaseUrl(): string {
 
 export function createClientRequestId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function getDefaultPearlEscrowMode(): PearlEscrowMode {
+  return getViteEnv().VITE_PEARL_ESCROW_MODE === 'multisig' ? 'multisig' : 'coordinator';
 }
 
 const ADMIN_TOKEN_STORAGE_KEY = 'oysters_market_admin_token';

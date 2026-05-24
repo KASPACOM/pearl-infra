@@ -99,6 +99,17 @@ export async function handleOtcHttpRequest(
   }
 
   if (
+    method === 'GET' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'pearl-release' &&
+    parts[4] === 'intent'
+  ) {
+    return { statusCode: 200, body: await service.getPearlReleaseSigningIntent(parts[2]) };
+  }
+
+  if (
     method === 'POST' &&
     parts.length === 5 &&
     parts[0] === 'otc' &&

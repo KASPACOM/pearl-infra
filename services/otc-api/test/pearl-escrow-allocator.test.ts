@@ -69,6 +69,54 @@ test('requires an xpub when p2tr allocation is enabled', () => {
   );
 });
 
+test('allocates a 2-of-3 multisig Pearl escrow from request pubkeys and arbiter config', async () => {
+  const allocator = createConfiguredPearlEscrowAllocator({
+    ...config,
+    pearlEscrowAllocator: 'p2tr_multisig',
+    pearlEscrowXpub: undefined,
+    pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
+  });
+
+  const allocated = await allocator.allocateEscrow({
+    ...createAllocationInput('trade-multisig-allocator'),
+    request: {
+      ...createAllocationInput('trade-multisig-allocator').request,
+      pearlEscrowMode: 'multisig',
+      pearlReleaseSigningMode: 'preauthorize_release',
+      buyerPearlPubkey: xOnlyPublicKey('02'),
+      sellerPearlPubkey: xOnlyPublicKey('03'),
+    },
+  });
+
+  assert.match(allocated.address, /^tprl1p/);
+  assert.equal(allocated.internalKeyPolicy, 'bip341_nums_script_path_only');
+  assert.equal(allocated.releaseTemplate?.signingPolicy.path, 'taproot_script_path');
+  assert.deepEqual(allocated.releaseTemplate?.signingPolicy.requiredSigners, ['buyer', 'seller']);
+  assert.deepEqual(allocated.releaseTemplate?.signingPolicy.alternativeSignerSets, [
+    ['buyer', 'arbiter'],
+    ['seller', 'arbiter'],
+  ]);
+  assert.equal(allocated.refundTemplate?.signingPolicy.requiredSigners[0], 'seller');
+  assert.equal(allocated.signerPubkeys?.buyer, xOnlyPublicKey('02'));
+  assert.equal(allocated.signerPubkeys?.seller, xOnlyPublicKey('03'));
+  assert.equal(allocated.signerPubkeys?.arbiter, xOnlyPublicKey('04'));
+  assert.match(allocated.scriptNonceHex ?? '', /^[0-9a-f]{64}$/);
+});
+
+test('requires user pubkeys for multisig Pearl escrow allocation', async () => {
+  const allocator = createConfiguredPearlEscrowAllocator({
+    ...config,
+    pearlEscrowAllocator: 'p2tr_multisig',
+    pearlEscrowXpub: undefined,
+    pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
+  });
+
+  await assert.rejects(
+    () => allocator.allocateEscrow(createAllocationInput('trade-multisig-missing-pubkeys')),
+    /buyerPearlPubkey/,
+  );
+});
+
 test('retries when a derived Pearl escrow index is already allocated', async () => {
   const repository = new InMemoryOtcRepository();
   const allocator = createConfiguredPearlEscrowAllocator(config, repository);
@@ -132,4 +180,11 @@ function createTestAllocatorKey(): string {
   const xpub = config.pearlEscrowXpub;
   assert.ok(xpub);
   return `p2tr_xpub:${config.pearlNetwork}:${createHash('sha256').update(xpub).digest('hex')}`;
+}
+
+function xOnlyPublicKey(seed: string): string {
+  const privateKey = Buffer.from(seed.padStart(64, '0'), 'hex');
+  const publicKey = ecc.pointFromScalar(privateKey, true);
+  if (!publicKey) throw new Error(`invalid private key fixture: ${seed}`);
+  return Buffer.from(publicKey).subarray(1).toString('hex');
 }

@@ -2,6 +2,8 @@ export type OtcQuoteSide = 'buy_prl' | 'sell_prl';
 export type SettlementAsset = 'USDC';
 export type SettlementNetwork = 'base';
 export type SettlementChainId = 8453 | 84532;
+export type PearlEscrowMode = 'coordinator' | 'multisig';
+export type PearlReleaseSigningMode = 'preauthorize_release' | 'manual_after_base_deposit';
 
 export type TradeState =
   | 'quoted'
@@ -56,6 +58,8 @@ export interface PearlEscrowLeg {
   requiredConfirmations: number;
   escrowScriptType?: 'p2tr';
   internalPubkeyHex?: string;
+  internalKeyPolicy?: 'bip341_nums_script_path_only';
+  scriptNonceHex?: string;
   taprootOutputScriptHex?: string;
   derivationPath?: string;
   refundEligibleAfterHeight?: number;
@@ -65,6 +69,15 @@ export interface PearlEscrowLeg {
   refundTxid?: string;
   releaseTemplate?: unknown;
   refundTemplate?: unknown;
+  signerPubkeys?: Partial<Record<'buyer' | 'seller' | 'arbiter' | 'desk', string>>;
+  taprootScriptLeaves?: Array<{
+    kind: string;
+    requiredSigners: Array<'buyer' | 'seller' | 'arbiter' | 'desk'>;
+    scriptHex: string;
+    leafVersion?: number;
+    controlBlockHex?: string;
+    lockTime?: number;
+  }>;
   simnetVerified?: boolean;
 }
 
@@ -95,6 +108,10 @@ export interface OtcTrade {
   buyerUsdcAddress: string;
   sellerPearlRefundAddress: string;
   sellerUsdcReceiveAddress: string;
+  pearlEscrowMode?: PearlEscrowMode;
+  pearlReleaseSigningMode?: PearlReleaseSigningMode;
+  buyerPearlPubkey?: string;
+  sellerPearlPubkey?: string;
   pearlEscrow: PearlEscrowLeg;
   usdcEscrow: UsdcEscrowLeg;
   deadlines: OtcTradeDeadlines;

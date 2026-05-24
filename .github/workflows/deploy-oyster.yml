@@ -32,6 +32,7 @@ jobs:
             echo "OTC_API_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-api-prod" >> "$GITHUB_ENV"
             echo "OTC_WEB_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-web-prod" >> "$GITHUB_ENV"
             echo "OTC_WEB_API_BASE_URL=https://api-oyster.kaspa.com" >> "$GITHUB_ENV"
+            echo "OTC_WEB_PEARL_ESCROW_MODE=coordinator" >> "$GITHUB_ENV"
             echo "ARGO_API_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-api/deployment.yaml" >> "$GITHUB_ENV"
             echo "ARGO_WEB_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-web/deployment.yaml" >> "$GITHUB_ENV"
           else
@@ -39,6 +40,7 @@ jobs:
             echo "OTC_API_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-api-dev" >> "$GITHUB_ENV"
             echo "OTC_WEB_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-web-dev" >> "$GITHUB_ENV"
             echo "OTC_WEB_API_BASE_URL=https://dev-api-oyster.kaspa.com" >> "$GITHUB_ENV"
+            echo "OTC_WEB_PEARL_ESCROW_MODE=multisig" >> "$GITHUB_ENV"
             echo "ARGO_API_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-api/deployment.yaml" >> "$GITHUB_ENV"
             echo "ARGO_WEB_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-web/deployment.yaml" >> "$GITHUB_ENV"
           fi
@@ -71,6 +73,7 @@ jobs:
           docker build \
             -f apps/otc-web/Dockerfile \
             --build-arg "VITE_OTC_API_BASE_URL=$OTC_WEB_API_BASE_URL" \
+            --build-arg "VITE_PEARL_ESCROW_MODE=$OTC_WEB_PEARL_ESCROW_MODE" \
             -t "$OTC_WEB_ECR_REPO:${GITHUB_SHA}" \
             -t "$OTC_WEB_ECR_REPO:latest" \
             .

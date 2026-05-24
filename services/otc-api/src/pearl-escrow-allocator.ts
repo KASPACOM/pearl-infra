@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { createPearlEscrowPackage } from '@kaspacom/pearl-escrow';
+import { createPearlEscrowPackage, createPearlMultisigEscrowPackage } from '@kaspacom/pearl-escrow';
 import { getPearlScriptNetwork } from '@kaspacom/pearl-script';
 import { parsePrlToGrains } from '@kaspacom/pearl-sdk';
 import { BIP32Factory, type BIP32Interface } from 'bip32';
@@ -27,6 +27,12 @@ export function createConfiguredPearlEscrowAllocator(config: OtcApiConfig, repos
       },
     };
   }
+  if (config.pearlEscrowAllocator === 'p2tr_multisig') {
+    if (!config.pearlEscrowArbiterPubkey) {
+      throw new Error('PEARL_ESCROW_ARBITER_PUBKEY is required when PEARL_ESCROW_ALLOCATOR=p2tr_multisig');
+    }
+    return new MultisigPearlEscrowAllocator(config);
+  }
   if (config.pearlEscrowAllocator !== 'p2tr_xpub') {
     throw new Error(`unsupported Pearl escrow allocator: ${config.pearlEscrowAllocator}`);
   }
@@ -37,6 +43,55 @@ export function createConfiguredPearlEscrowAllocator(config: OtcApiConfig, repos
     throw new Error('OtcRepository is required when PEARL_ESCROW_ALLOCATOR=p2tr_xpub');
   }
   return new XpubPearlEscrowAllocator(config, repository);
+}
+
+export class MultisigPearlEscrowAllocator implements PearlEscrowAllocator {
+  private readonly config: OtcApiConfig;
+
+  constructor(config: OtcApiConfig) {
+    this.config = config;
+    if (!config.pearlEscrowArbiterPubkey) {
+      throw new Error('pearlEscrowArbiterPubkey is required');
+    }
+  }
+
+  async allocateEscrow(input: Parameters<PearlEscrowAllocator['allocateEscrow']>[0]) {
+    assertPubkey(input.request.buyerPearlPubkey, 'buyerPearlPubkey');
+    assertPubkey(input.request.sellerPearlPubkey, 'sellerPearlPubkey');
+    const expectedAmountGrains = (parsePrlToGrains(input.quote.amountPrl) + parsePrlToGrains(input.quote.feePrl)).toString();
+    const refundEligibleAfterUnixTime = Math.floor(new Date(input.deadlines.refundAvailableAt).getTime() / 1000);
+    const escrowPackage = createPearlMultisigEscrowPackage({
+      tradeId: input.tradeId,
+      network: this.config.pearlNetwork,
+      expectedAmountGrains,
+      requiredConfirmations: this.config.pearlEscrowConfirmations,
+      releaseAddress: input.request.buyerPearlAddress,
+      refundAddress: input.request.sellerPearlRefundAddress,
+      refundEligibleAfterUnixTime,
+      allowMainnet: this.config.allowMainnetPearlEscrow,
+      buyerPubkey: input.request.buyerPearlPubkey,
+      sellerPubkey: input.request.sellerPearlPubkey,
+      arbiterPubkey: this.config.pearlEscrowArbiterPubkey as string,
+    });
+
+    return {
+      network: escrowPackage.network,
+      address: escrowPackage.escrowAddress,
+      expectedAmountGrains: escrowPackage.expectedAmountGrains,
+      requiredConfirmations: escrowPackage.requiredConfirmations,
+      escrowScriptType: escrowPackage.escrowScriptType,
+      internalPubkeyHex: escrowPackage.keys.internalPubkeyHex,
+      internalKeyPolicy: escrowPackage.keys.internalKeyPolicy,
+      scriptNonceHex: escrowPackage.keys.scriptNonceHex,
+      taprootOutputScriptHex: escrowPackage.keys.taprootOutputScriptHex,
+      refundEligibleAfterUnixTime: escrowPackage.refundEligibleAfterUnixTime,
+      releaseTemplate: escrowPackage.releaseTemplate,
+      refundTemplate: escrowPackage.refundTemplate,
+      signerPubkeys: escrowPackage.keys.signerPubkeys,
+      taprootScriptLeaves: escrowPackage.keys.taprootScriptLeaves,
+      simnetVerified: escrowPackage.verification.simnetVerified,
+    };
+  }
 }
 
 export class XpubPearlEscrowAllocator implements PearlEscrowAllocator {
@@ -181,6 +236,12 @@ function createAllocatorKey(config: OtcApiConfig): string {
 
 function isPearlEscrowDerivationCollision(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && (error as { name?: unknown }).name === 'PearlEscrowDerivationCollisionError');
+}
+
+function assertPubkey(value: string | undefined, field: string): asserts value is string {
+  if (!value || !/^(?:0x)?[0-9a-fA-F]{64}$|^(?:0x)?0[23][0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${field} must be an x-only or compressed secp256k1 public key`);
+  }
 }
 
 function parseDerivationPrefix(prefix: string): readonly number[] {

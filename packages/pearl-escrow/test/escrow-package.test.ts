@@ -109,6 +109,7 @@ test('creates a simnet 2-of-3 multisig P2TR escrow package', () => {
   assert.match(escrow.escrowAddress, /^rprl1p/);
   assert.equal(escrow.keys.internalPubkeyHex, BIP341_NUMS_INTERNAL_PUBKEY_HEX);
   assert.equal(escrow.keys.internalKeyPolicy, 'bip341_nums_script_path_only');
+  assert.match(escrow.keys.scriptNonceHex ?? '', /^[0-9a-f]{64}$/);
   assert.equal(escrow.releaseTemplate.signingPolicy.path, 'taproot_script_path');
   assert.deepEqual(escrow.releaseTemplate.signingPolicy.requiredSigners, ['buyer', 'seller']);
   assert.deepEqual(escrow.releaseTemplate.signingPolicy.alternativeSignerSets, [
@@ -130,6 +131,25 @@ test('creates a simnet 2-of-3 multisig P2TR escrow package', () => {
   assert.equal(escrow.keys.taprootScriptLeaves?.[0]?.leafVersion, 0xc0);
   assert.match(escrow.keys.taprootScriptLeaves?.[0]?.controlBlockHex ?? '', /^[0-9a-f]+$/);
   assert.equal(escrow.keys.taprootScriptLeaves?.[3]?.lockTime, 144);
+});
+
+test('multisig escrow commits the trade id into the taproot script', () => {
+  const base = {
+    network: 'simnet' as const,
+    buyerPubkey: xOnlyPublicKey('02'),
+    sellerPubkey: xOnlyPublicKey('03'),
+    arbiterPubkey: xOnlyPublicKey('04'),
+    expectedAmountGrains: '250000000',
+    requiredConfirmations: 2,
+    releaseAddress: createSimnetAddress('05'),
+    refundAddress: createSimnetAddress('06'),
+    refundEligibleAfterHeight: 144,
+  };
+  const first = createPearlMultisigEscrowPackage({ ...base, tradeId: 'trade-multisig-1' });
+  const second = createPearlMultisigEscrowPackage({ ...base, tradeId: 'trade-multisig-2' });
+
+  assert.notEqual(first.keys.scriptNonceHex, second.keys.scriptNonceHex);
+  assert.notEqual(first.escrowAddress, second.escrowAddress);
 });
 
 test('rejects duplicate multisig escrow role keys', () => {

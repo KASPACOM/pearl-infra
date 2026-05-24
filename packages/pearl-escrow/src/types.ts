@@ -36,6 +36,7 @@ export interface PearlEscrowTxTemplate {
 export interface PearlEscrowKeyMetadata {
   internalPubkeyHex: string;
   internalKeyPolicy?: 'bip341_nums_script_path_only';
+  scriptNonceHex?: string;
   taprootOutputScriptHex: string;
   signerPubkeys: Partial<Record<PearlEscrowSignerRole, string>>;
   taprootScriptLeaves?: PearlEscrowTaprootScriptLeaf[];

@@ -48,7 +48,7 @@ test('builds quote request model with locked USDC on Base and validation errors'
   });
 });
 
-test('builds quote acceptance model with role-based seller fields and expiry gating', () => {
+test('builds quote acceptance model with explicit seller fields and expiry gating', () => {
   const quote = quoteFixture({ expiresAt: '2026-05-18T12:05:00.000Z' });
   const buyer = buildAcceptQuotePageModel(
     quote,
@@ -61,8 +61,9 @@ test('builds quote acceptance model with role-based seller fields and expiry gat
     NOW,
   );
 
-  assert.equal(buyer.sellerFieldsVisible, false);
-  assert.equal(buyer.canAccept, true);
+  assert.equal(buyer.sellerFieldsVisible, true);
+  assert.equal(buyer.canAccept, false);
+  assert.match(buyer.errors.sellerPearlRefundAddress ?? '', /seller refund/);
 
   const seller = buildAcceptQuotePageModel(
     quote,
@@ -89,6 +90,49 @@ test('builds quote acceptance model with role-based seller fields and expiry gat
 
   assert.equal(expired.quoteExpired, true);
   assert.equal(expired.canAccept, false);
+});
+
+test('requires Pearl signer pubkeys when quote acceptance selects multisig escrow', () => {
+  const quote = quoteFixture({ expiresAt: '2026-05-18T12:05:00.000Z' });
+  const missingPubkeys = buildAcceptQuotePageModel(
+    quote,
+    {
+      buyerPearlAddress: 'tprl1pbuyer01',
+      buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+      pearlEscrowMode: 'multisig',
+      pearlReleaseSigningMode: 'preauthorize_release',
+      clientRequestId: 'accept-client-multisig',
+    },
+    'buyer',
+    NOW,
+  );
+
+  assert.equal(missingPubkeys.canAccept, false);
+  assert.match(missingPubkeys.errors.buyerPearlPubkey ?? '', /buyer Pearl x-only public key/);
+  assert.match(missingPubkeys.errors.sellerPearlPubkey ?? '', /seller Pearl x-only public key/);
+  assert.match(missingPubkeys.errors.buyerPearlPubkeyProof ?? '', /buyer signer proof/);
+  assert.match(missingPubkeys.errors.sellerPearlPubkeyProof ?? '', /seller signer proof/);
+
+  const ready = buildAcceptQuotePageModel(
+    quote,
+    {
+      buyerPearlAddress: 'tprl1pbuyer01',
+      buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+      sellerPearlRefundAddress: 'tprl1pseller01',
+      sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+      pearlEscrowMode: 'multisig',
+      pearlReleaseSigningMode: 'preauthorize_release',
+      buyerPearlPubkey: '11'.repeat(32),
+      sellerPearlPubkey: '22'.repeat(32),
+      buyerPearlPubkeyProof: '33'.repeat(64),
+      sellerPearlPubkeyProof: '44'.repeat(64),
+      clientRequestId: 'accept-client-multisig',
+    },
+    'buyer',
+    NOW,
+  );
+
+  assert.equal(ready.canAccept, true);
 });
 
 test('checkout model disables USDC deposit after deadline or verification mismatch and never exposes release actions', () => {
@@ -146,6 +190,35 @@ test('checkout model disables USDC deposit after deadline or verification mismat
 
   assert.equal(unconfirmedPrl.base.depositAction.kind, 'blocked');
   assert.match(unconfirmedPrl.base.depositAction.reason ?? '', /pearl_escrow_seen/);
+});
+
+test('checkout model surfaces Pearl multisig custody and signer policy', () => {
+  const trade = tradeFixture({
+    pearlEscrowMode: 'multisig',
+    pearlReleaseSigningMode: 'preauthorize_release',
+    pearlEscrow: {
+      ...tradeFixture().pearlEscrow,
+      releaseTemplate: {
+        kind: 'release',
+        inputs: [{ outpoint: 'pearl_tx_1:0', amountGrains: '100000000000' }],
+        outputs: [{ address: 'tprl1pbuyer01', amountGrains: '100000000000', role: 'buyer' }],
+        signingPolicy: {
+          path: 'taproot_script_path',
+          requiredSigners: ['buyer', 'seller'],
+          alternativeSignerSets: [
+            ['buyer', 'arbiter'],
+            ['seller', 'arbiter'],
+          ],
+        },
+      },
+    },
+  });
+
+  const checkout = buildTradeCheckoutPageModel(trade, { now: NOW });
+
+  assert.equal(checkout.pearl.escrowMode, 'multisig');
+  assert.equal(checkout.pearl.releaseSigningMode, 'preauthorize_release');
+  assert.deepEqual(checkout.pearl.signerSets, ['buyer + seller', 'buyer + arbiter', 'seller + arbiter']);
 });
 
 test('checkout and public proof models surface manual-review banners and timeline facts', () => {

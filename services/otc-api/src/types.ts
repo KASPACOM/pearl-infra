@@ -1,4 +1,6 @@
 import type {
+  PearlEscrowMode,
+  PearlReleaseSigningMode,
   OtcQuoteSide,
   OtcTrade,
   PublicTradeProof,
@@ -25,13 +27,20 @@ export interface AcceptQuoteRequest {
   buyerUsdcAddress: string;
   sellerPearlRefundAddress: string;
   sellerUsdcReceiveAddress: string;
+  pearlEscrowMode?: PearlEscrowMode;
+  pearlReleaseSigningMode?: PearlReleaseSigningMode;
+  buyerPearlPubkey?: string;
+  sellerPearlPubkey?: string;
+  buyerPearlPubkeyProof?: string;
+  sellerPearlPubkeyProof?: string;
   clientRequestId: string;
 }
 
 export interface OtcApiConfig {
   pearlNetwork: OtcTrade['pearlEscrow']['network'];
-  pearlEscrowAllocator: 'mock' | 'p2tr_xpub';
+  pearlEscrowAllocator: 'mock' | 'p2tr_xpub' | 'p2tr_multisig';
   pearlEscrowXpub?: string;
+  pearlEscrowArbiterPubkey?: string;
   pearlEscrowDerivationPrefix: string;
   allowMainnetPearlEscrow: boolean;
   quoteTtlMs: number;
@@ -41,6 +50,7 @@ export interface OtcApiConfig {
   priceUsdcPerPrl: string;
   feeBps: number;
   pearlEscrowConfirmations: number;
+  pearlReleaseFeeGrains?: string;
   baseEscrowContract: string;
   baseNetwork: 'base' | 'base_sepolia';
   databaseUrl?: string;
@@ -109,6 +119,23 @@ export interface UsdcCreateTradeIntent {
   feeMicros: string;
   expiryUnixSeconds: number;
   sideEffect: OtcSideEffect;
+}
+
+export interface PearlReleaseSigningIntent {
+  tradeId: string;
+  action: 'release';
+  status: 'ready' | 'not_ready';
+  signingMode?: PearlReleaseSigningMode;
+  reason?: string;
+  unsignedTxHex?: string;
+  txTemplateHash?: string;
+  inputOutpoint?: string;
+  inputAmountGrains?: string;
+  outputAmountGrains?: string;
+  feeGrains?: string;
+  destinationAddress?: string;
+  signerSets: string[][];
+  workerCanFinishWithArbiter: boolean;
 }
 
 export interface RecordSideEffectRequest {
