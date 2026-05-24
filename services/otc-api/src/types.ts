@@ -217,6 +217,37 @@ export interface AdminTradeListPage {
   limit: number;
 }
 
+export interface AdminUserQuery {
+  search?: string;
+  walletType?: OtcUserWalletType;
+  referrerUserId?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface AdminUserSummary {
+  userId: string;
+  referralCode: string;
+  email?: string;
+  emailVerified: boolean;
+  notificationEmailEnabled: boolean;
+  referredBy?: OtcReferralAttribution;
+  wallets: OtcUserWallet[];
+  walletCount: number;
+  orderCount: number;
+  tradeCount: number;
+  pointTotal: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUserListPage {
+  items: AdminUserSummary[];
+  nextCursor?: string;
+  total: number;
+  limit: number;
+}
+
 export type AdminDebugRedaction = 'support' | 'operator' | 'admin';
 
 export interface AdminTradeDebugDetail {

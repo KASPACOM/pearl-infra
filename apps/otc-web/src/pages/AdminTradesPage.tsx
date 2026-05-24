@@ -519,6 +519,11 @@ export function AdminTradesPage() {
         <p>Operators can inspect live backlog, blocker, and alert status. Settlement controls are intentionally absent from the UI.</p>
       </div>
 
+      <nav className="admin-tabs" aria-label="Admin sections">
+        <a className="is-active" href="/admin/trades">Trades</a>
+        <a href="/admin/users">Users</a>
+      </nav>
+
       <form className="om-panel admin-auth" onSubmit={onTokenSubmit}>
         <label>
           <span>Admin API token</span>

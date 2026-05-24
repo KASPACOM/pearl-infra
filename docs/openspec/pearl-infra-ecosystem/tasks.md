@@ -1143,10 +1143,15 @@ through one-time wallet challenges before creating user/profile records.
     require the submitted USDC address to match the user's verified Base EVM
     wallet. Pearl-only users stay profile-capable, but market trading remains
     fail-closed until multi-wallet account linking exists.
-- [ ] 12.11 Add user management/admin views for wallet users.
-  - Missing: admin/search view for users, linked wallets, referred-by tree,
-    points ledger, profile/contact status, order history, trade history, and
-    support-safe account actions.
+- [x] 12.11 Add user management/admin views for wallet users.
+  - 2026-05-24: Added `GET /otc/admin/users` with support-read admin auth,
+    search across user ID, referral code, email, referrer, linked wallet
+    address/network/pubkey, wallet-type/referrer filters, pagination, and
+    summaries for linked wallets, profile/contact status, referral attribution,
+    order count, trade count, and points total. Added `/admin/users` with a
+    compact operator search/detail view.
+  - Still deferred: destructive/sensitive account actions stay out of the UI
+    until an explicit operator RBAC policy exists.
 - [x] 12.12 Build the taker trading UX from `/market` into order quote
   creation and quote acceptance, including open-trade/my-trade status views
   for order-linked trades.

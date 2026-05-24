@@ -671,6 +671,72 @@ test('registers Pearl wallet users with address-bound BIP340 ownership proof', a
   });
 });
 
+test('lists wallet users for admin search and referral support', async () => {
+  await withServer(async (baseUrl) => {
+    const referrerWallet = new Wallet('0x59c6995e998f97a5a0044966f094538c5a0d9f0c7f044cd588d0d20d0368a498');
+    const referredWallet = new Wallet('0x8b3a350cf5c34c9194ca6c0b3f8d6f841e252cb3f72b8636505f6dbcbf8f8531');
+
+    const referrerChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referrerWallet.address,
+    });
+    const referrerChallenge = (await referrerChallengeResponse.json()) as { challengeId: string; message: string };
+    const referrerResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: referrerChallenge.challengeId,
+      signature: await referrerWallet.signMessage(referrerChallenge.message),
+      email: 'desk-referrer@example.com',
+    });
+    assert.equal(referrerResponse.status, 201);
+    const referrer = (await referrerResponse.json()) as { userId: string; referralCode: string };
+
+    const referredChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const referredChallenge = (await referredChallengeResponse.json()) as { challengeId: string; message: string };
+    const referredResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: referredChallenge.challengeId,
+      signature: await referredWallet.signMessage(referredChallenge.message),
+      referralCode: referrer.referralCode,
+      email: 'desk-referred@example.com',
+    });
+    assert.equal(referredResponse.status, 201);
+    const referred = (await referredResponse.json()) as { userId: string };
+
+    const unauthorizedResponse = await fetch(`${baseUrl}/otc/admin/users`);
+    assert.equal(unauthorizedResponse.status, 401);
+
+    const searchResponse = await fetch(`${baseUrl}/otc/admin/users?search=${encodeURIComponent(referredWallet.address.slice(0, 12))}`, {
+      headers: supportHeaders,
+    });
+    assert.equal(searchResponse.status, 200);
+    const searchPage = (await searchResponse.json()) as {
+      items: Array<{ userId: string; email?: string; wallets: Array<{ address: string }>; walletCount: number; pointTotal: number }>;
+      total: number;
+    };
+    assert.equal(searchPage.total, 1);
+    assert.equal(searchPage.items[0].userId, referred.userId);
+    assert.equal(searchPage.items[0].email, 'desk-referred@example.com');
+    assert.equal(searchPage.items[0].wallets[0].address, referredWallet.address);
+    assert.equal(searchPage.items[0].walletCount, 1);
+    assert.equal(searchPage.items[0].pointTotal, 25);
+
+    const referralResponse = await fetch(`${baseUrl}/otc/admin/users?referrer_user_id=${encodeURIComponent(referrer.userId)}`, {
+      headers: supportHeaders,
+    });
+    assert.equal(referralResponse.status, 200);
+    const referralPage = (await referralResponse.json()) as {
+      items: Array<{ userId: string; referredBy?: { referrerUserId: string } }>;
+      total: number;
+    };
+    assert.equal(referralPage.total, 1);
+    assert.equal(referralPage.items[0].userId, referred.userId);
+    assert.equal(referralPage.items[0].referredBy?.referrerUserId, referrer.userId);
+  });
+});
+
 test('rejects Pearl wallet users when public key does not derive challenged address', async () => {
   await withServer(async (baseUrl) => {
     const address = createPearlP2trPayment({ network: 'testnet2', internalPubkey: xOnlyPublicKey('08') }).address;

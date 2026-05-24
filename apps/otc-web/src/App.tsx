@@ -2,6 +2,7 @@ import { useEffect, type ComponentType } from 'react';
 
 import { AcceptQuotePage } from './pages/AcceptQuotePage.js';
 import { AdminTradesPage } from './pages/AdminTradesPage.js';
+import { AdminUsersPage } from './pages/AdminUsersPage.js';
 import { AppShell, type AppSection } from './components/AppShell.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { FaqPage } from './pages/FaqPage.js';
@@ -37,6 +38,9 @@ function resolveRoute(pathname: string): { active: AppSection; Page: ComponentTy
     return { active: 'faq', Page: FaqPage };
   }
   if (pathname.startsWith('/admin')) {
+    if (pathname.startsWith('/admin/users')) {
+      return { active: 'admin', Page: AdminUsersPage };
+    }
     return { active: 'admin', Page: AdminTradesPage };
   }
   if (pathname.startsWith('/market') || pathname.startsWith('/orders')) {
