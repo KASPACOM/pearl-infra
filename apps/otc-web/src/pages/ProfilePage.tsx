@@ -4,7 +4,7 @@ import { createOtcClient } from '../api.js';
 import { connectInjectedEvmWallet, signInjectedEvmMessage, type EvmWalletSnapshot } from '../evm-wallet.js';
 import type { OtcNotificationPreference, OtcNotificationType, OtcUser, OtcUserDashboard } from '../otc-api-client.js';
 import { BrandLoader, DataRow, Field } from '../components/Primitives.js';
-import { readStoredReferralCode, readStoredUser, storeUser } from '../user-session.js';
+import { readStoredReferralAttribution, readStoredUser, storeUser } from '../user-session.js';
 
 const emailPreferenceTypes: Array<{ type: OtcNotificationType; label: string }> = [
   { type: 'trade_status', label: 'Trade status' },
@@ -32,7 +32,7 @@ export function ProfilePage() {
   const [orderMakerPearlPubkeyProof, setOrderMakerPearlPubkeyProof] = useState('');
   const [status, setStatus] = useState<'idle' | 'working' | 'error'>('idle');
   const [error, setError] = useState<string>();
-  const [refCode] = useState(() => readStoredReferralCode());
+  const [referralAttribution] = useState(() => readStoredReferralAttribution());
 
   useEffect(() => {
     if (!user || !wallet.connected) return;
@@ -57,8 +57,8 @@ export function ProfilePage() {
       const registered = await client.registerUser({
         challengeId: challenge.challengeId,
         signature,
-        ...(refCode ? { referralCode: refCode } : {}),
-        sourceUrl: typeof window === 'undefined' ? undefined : window.location.href,
+        ...(referralAttribution?.referralCode ? { referralCode: referralAttribution.referralCode } : {}),
+        sourceUrl: referralAttribution?.sourceUrl ?? (typeof window === 'undefined' ? undefined : window.location.href),
       });
       storeUser(registered);
       setUser(registered);
@@ -281,7 +281,7 @@ export function ProfilePage() {
               <DataRow label="Wallet" value={user.wallet.address} />
               <DataRow label="Your referral code" value={user.referralCode} />
               <DataRow label="Referred by" value={user.referredBy?.referralCode ?? '-'} />
-              <DataRow label="Captured ref" value={refCode ?? '-'} />
+              <DataRow label="Captured ref" value={referralAttribution?.referralCode ?? '-'} />
             </>
           ) : (
             <p className="om-empty">Connect an EVM wallet to create or load your profile.</p>
