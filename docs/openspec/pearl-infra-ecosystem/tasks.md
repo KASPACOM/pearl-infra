@@ -1121,6 +1121,10 @@ through one-time wallet challenges before creating user/profile records.
     maker order signer proofs bound to amount/price/min fill/expiry/addresses,
     order-linked multisig accept checks, taker quote signer proof regression
     coverage, and Postgres atomic trade/event/order-fill persistence.
+  - 2026-05-24 loophole hardening: order creation and order-quote creation now
+    require the submitted USDC address to match the user's verified Base EVM
+    wallet. Pearl-only users stay profile-capable, but market trading remains
+    fail-closed until multi-wallet account linking exists.
 - [ ] 12.11 Add user management/admin views for wallet users.
   - Missing: admin/search view for users, linked wallets, referred-by tree,
     points ledger, profile/contact status, order history, trade history, and
@@ -1136,3 +1140,9 @@ through one-time wallet challenges before creating user/profile records.
     added `GET /otc/quotes/:quoteId/order-context` for server-authoritative
     accept-page prefill, clear stale local drafts when no server context
     exists, and sort merged open/partially-filled offers by best price.
+- [ ] 12.13 Add multi-wallet account linking so one user can prove both a Base
+  EVM wallet and one or more Pearl wallets/signers.
+  - Missing: wallet-link challenge route, additional wallet rows per user,
+    primary wallet/profile selection, UI for linked wallet management, and
+    trading flows that accept a Pearl account identity plus verified Base EVM
+    payment wallet without weakening USDC ownership checks.

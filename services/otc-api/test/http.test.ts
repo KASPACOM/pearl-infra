@@ -393,6 +393,25 @@ test('registers wallet-owned users with referral links and wallet-proved profile
     assert.equal(orders.total, 1);
     assert.equal(orders.items[0].orderId, order.orderId);
 
+    const mismatchedOrderQuoteChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referrerWallet.address,
+    });
+    const mismatchedOrderQuoteChallenge = (await mismatchedOrderQuoteChallengeResponse.json()) as { challengeId: string; message: string };
+    const mismatchedOrderQuoteResponse = await postJson(baseUrl, `/otc/orders/${order.orderId}/quotes`, {
+      userId: referrer.userId,
+      challengeId: mismatchedOrderQuoteChallenge.challengeId,
+      signature: await referrerWallet.signMessage(mismatchedOrderQuoteChallenge.message),
+      amountPrl: '50.00000000',
+      pearlAddress: SELLER_TESTNET_REFUND_ADDRESS,
+      usdcAddress: referredWallet.address,
+      clientRequestId: 'order-quote-http-mismatched-usdc',
+    });
+    assert.equal(mismatchedOrderQuoteResponse.status, 400);
+    const mismatchedOrderQuoteError = (await mismatchedOrderQuoteResponse.json()) as { message: string };
+    assert.match(mismatchedOrderQuoteError.message, /usdcAddress must match the verified user wallet/);
+
     const orderQuoteChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
       walletType: 'evm',
       network: 'base_sepolia',
@@ -543,11 +562,46 @@ test('registers Pearl wallet users with address-bound BIP340 ownership proof', a
       publicKeyHex,
     });
     assert.equal(registerResponse.status, 201);
-    const user = (await registerResponse.json()) as { wallet: { walletType: string; network: string; address: string; publicKeyHex: string } };
+    const user = (await registerResponse.json()) as {
+      userId: string;
+      wallet: { walletType: string; network: string; address: string; publicKeyHex: string };
+    };
     assert.equal(user.wallet.walletType, 'pearl');
     assert.equal(user.wallet.network, 'testnet2');
     assert.equal(user.wallet.address, address);
     assert.equal(user.wallet.publicKeyHex, publicKeyHex);
+
+    const orderChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'pearl',
+      network: 'testnet2',
+      address,
+    });
+    const orderChallenge = (await orderChallengeResponse.json()) as { challengeId: string; message: string };
+    const orderResponse = await postJson(baseUrl, '/otc/orders', {
+      userId: user.userId,
+      challengeId: orderChallenge.challengeId,
+      signature: signUserWalletChallenge(orderChallenge.message, '07'),
+      publicKeyHex,
+      side: 'buy_prl',
+      makerPearlAddress: BUYER_TESTNET_ADDRESS,
+      makerUsdcAddress: '0x1111111111111111111111111111111111111111',
+      makerPearlPubkey: publicKeyHex,
+      makerPearlPubkeyProof: signOrderMakerProof({
+        makerUserId: user.userId,
+        side: 'buy_prl',
+        amountPrl: '1.00000000',
+        priceUsdcPerPrl: '0.150000',
+        makerPearlAddress: BUYER_TESTNET_ADDRESS,
+        makerUsdcAddress: '0x1111111111111111111111111111111111111111',
+        makerPearlPubkey: publicKeyHex,
+        privateKeySeed: '07',
+      }),
+      amountPrl: '1.00000000',
+      priceUsdcPerPrl: '0.150000',
+    });
+    assert.equal(orderResponse.status, 400);
+    const orderError = (await orderResponse.json()) as { message: string };
+    assert.match(orderError.message, /trading actions require a verified Base EVM wallet user/);
   });
 });
 
