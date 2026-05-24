@@ -46,6 +46,11 @@ import type {
   OtcOrder,
   OtcPointEvent,
   OtcPointsSummary,
+  OtcNotificationChannel,
+  OtcNotificationDelivery,
+  OtcNotificationDeliveryStatus,
+  OtcNotificationPreference,
+  OtcNotificationType,
   OtcUser,
   OtcUserDashboard,
   OtcUserWalletChallenge,
@@ -61,13 +66,21 @@ import type {
   RecentTradeSummary,
   ReferralCodeLookup,
   RegisterUserRequest,
+  RequestEmailVerificationRequest,
+  RequestEmailVerificationResponse,
   ReplaySupportAlertRequest,
   RecordSupportAlertRequest,
   RecordSideEffectRequest,
+  NotificationPreferencesResponse,
+  UnsubscribeNotificationRequest,
+  UnsubscribeNotificationResponse,
   UpdateUserProfileRequest,
+  UpdateNotificationDeliveryRequest,
+  UpdateNotificationPreferencesRequest,
   UserDashboardRequest,
   UsdcCreateTradeIntent,
   UsdcEscrowVerification,
+  VerifyEmailRequest,
 } from './types.js';
 import type { UsdcEscrowReader } from './usdc-escrow-reader.js';
 
@@ -101,6 +114,16 @@ const REFERRAL_SIGNUP_POINTS = 50;
 const ORDER_CREATED_POINTS = 10;
 const TRADE_COMPLETED_POINTS = 100;
 const REFERRAL_ACTIVITY_BONUS_BPS = 1000;
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const NOTIFICATION_TYPES: OtcNotificationType[] = [
+  'trade_status',
+  'deadline_warning',
+  'order_matched',
+  'price_alert',
+  'new_good_order',
+  'referral_event',
+];
+const NOTIFICATION_CHANNELS: OtcNotificationChannel[] = ['email', 'telegram'];
 
 export class MockPearlEscrowAllocator implements PearlEscrowAllocator {
   async allocateEscrow(input: {
@@ -196,6 +219,9 @@ export class OtcTradeService {
       await this.assertConsumeWalletChallenge(challenge.challengeId, now);
       return existing;
     }
+    if (request.notificationEmailEnabled === true) {
+      throw new Error('email notifications require a verified email');
+    }
 
     const referredByCode = extractReferralCode(request);
     const userId = createRandomId('user');
@@ -230,14 +256,135 @@ export class OtcTradeService {
     verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
     const updatedAt = this.now().toISOString();
     await this.assertConsumeWalletChallenge(challenge.challengeId, updatedAt);
+    const normalizedEmail = request.email === undefined ? undefined : normalizeEmail(request.email);
+    const emailChanges = normalizedEmail !== undefined && normalizedEmail !== user.profile.email;
+    if (request.notificationEmailEnabled === true && (!user.profile.emailVerifiedAt || emailChanges)) {
+      throw new Error('email notifications require a verified email');
+    }
     const profile = await this.repository.updateUserProfile(userId, {
-      ...(request.email === undefined ? {} : { email: normalizeEmail(request.email) }),
+      ...(normalizedEmail === undefined ? {} : { email: normalizedEmail }),
       ...(request.notificationEmailEnabled === undefined
         ? {}
         : { notificationEmailEnabled: request.notificationEmailEnabled }),
       updatedAt,
     });
     return profile;
+  }
+
+  async requestEmailVerification(userId: string, request: RequestEmailVerificationRequest): Promise<RequestEmailVerificationResponse> {
+    assertNonEmptyBounded(userId, 'userId', 80);
+    const email = normalizeEmail(request.email);
+    const { user } = await this.verifyAndConsumeUserWalletChallenge(userId, request);
+    const now = this.now();
+    const createdAt = now.toISOString();
+    const expiresAt = new Date(now.getTime() + EMAIL_VERIFICATION_TTL_MS).toISOString();
+    const token = createSecretToken();
+    const tokenHash = hashSecretToken(token);
+    const tokenId = createStableId('email_verify', [user.userId, email, tokenHash]);
+    await this.repository.updateUserProfile(user.userId, {
+      email,
+      notificationEmailEnabled: false,
+      updatedAt: createdAt,
+    });
+    await this.repository.saveEmailVerificationToken({
+      tokenId,
+      userId: user.userId,
+      email,
+      tokenHash,
+      expiresAt,
+      createdAt,
+    });
+    const delivery = await this.enqueueNotificationDelivery({
+      userId: user.userId,
+      notificationType: 'email_verification',
+      channel: 'email',
+      recipient: email,
+      payload: {
+        kind: 'email_verification',
+        user_id: user.userId,
+        email,
+        verification_token: token,
+        expires_at: expiresAt,
+      },
+      idempotencyKey: createStableId('notification', ['email_verification', tokenId]),
+      createdAt,
+    });
+    return {
+      userId: user.userId,
+      email,
+      status: 'pending',
+      expiresAt,
+      deliveryId: delivery.deliveryId,
+    };
+  }
+
+  async verifyEmail(userId: string, request: VerifyEmailRequest): Promise<OtcUserProfile> {
+    assertNonEmptyBounded(userId, 'userId', 80);
+    assertNonEmptyBounded(request.token, 'token', 256);
+    const token = await this.repository.findEmailVerificationTokenByHash(hashSecretToken(request.token));
+    if (!token || token.userId !== userId) {
+      throw new Error('email verification token is invalid');
+    }
+    if (token.consumedAt) {
+      throw new Error('email verification token already used');
+    }
+    if (new Date(token.expiresAt).getTime() <= this.now().getTime()) {
+      throw new Error('email verification token expired');
+    }
+    return this.repository.consumeEmailVerificationToken(token.tokenId, this.now().toISOString());
+  }
+
+  async getNotificationPreferences(userId: string, request: UserDashboardRequest): Promise<NotificationPreferencesResponse> {
+    const { user } = await this.verifyAndConsumeUserWalletChallenge(userId, request);
+    return {
+      userId: user.userId,
+      preferences: expandNotificationPreferences(user.userId, await this.repository.listNotificationPreferences(user.userId), this.now().toISOString()),
+    };
+  }
+
+  async updateNotificationPreferences(userId: string, request: UpdateNotificationPreferencesRequest): Promise<NotificationPreferencesResponse> {
+    const { user } = await this.verifyAndConsumeUserWalletChallenge(userId, request);
+    validateNotificationPreferencesRequest(request, user.profile);
+    const preferences = await this.repository.saveNotificationPreferences(
+      user.userId,
+      dedupeNotificationPreferences(request.preferences),
+      this.now().toISOString(),
+    );
+    return {
+      userId: user.userId,
+      preferences: expandNotificationPreferences(user.userId, preferences, this.now().toISOString()),
+    };
+  }
+
+  async unsubscribeNotification(request: UnsubscribeNotificationRequest): Promise<UnsubscribeNotificationResponse> {
+    assertNonEmptyBounded(request.token, 'token', 256);
+    const delivery = await this.repository.unsubscribeNotificationByTokenHash(hashSecretToken(request.token), this.now().toISOString());
+    return {
+      ...(delivery.userId ? { userId: delivery.userId } : {}),
+      notificationType: delivery.notificationType,
+      channel: delivery.channel,
+      status: 'unsubscribed',
+    };
+  }
+
+  async listNotificationDeliveries(query: { status?: OtcNotificationDeliveryStatus; limit?: number } = {}): Promise<OtcNotificationDelivery[]> {
+    return this.repository.listNotificationDeliveries(query);
+  }
+
+  async updateNotificationDelivery(deliveryId: string, request: UpdateNotificationDeliveryRequest): Promise<OtcNotificationDelivery> {
+    assertNonEmptyBounded(deliveryId, 'deliveryId', 80);
+    if (!['sent', 'failed', 'cancelled'].includes(request.status)) {
+      throw new Error('notification delivery status must be sent, failed, or cancelled');
+    }
+    if (request.nextAttemptAt && Number.isNaN(new Date(request.nextAttemptAt).getTime())) {
+      throw new Error('nextAttemptAt must be a valid timestamp');
+    }
+    return this.repository.updateNotificationDelivery(deliveryId, {
+      status: request.status,
+      ...(request.error ? { error: assertBoundedString(request.error, 'error', 2048) } : {}),
+      ...(request.nextAttemptAt ? { nextAttemptAt: new Date(request.nextAttemptAt).toISOString() } : {}),
+      updatedAt: this.now().toISOString(),
+    });
   }
 
   async resolveReferralCode(referralCode: string): Promise<ReferralCodeLookup> {
@@ -419,6 +566,38 @@ export class OtcTradeService {
     return summarizePoints(userId, events);
   }
 
+  private async enqueueNotificationDelivery(input: {
+    userId?: string;
+    notificationType: OtcNotificationType;
+    channel: OtcNotificationChannel;
+    recipient: string;
+    payload: Record<string, unknown>;
+    idempotencyKey: string;
+    createdAt: string;
+  }): Promise<OtcNotificationDelivery> {
+    const unsubscribeToken = input.notificationType === 'email_verification' ? undefined : createSecretToken();
+    const delivery: OtcNotificationDelivery = {
+      deliveryId: createStableId('notification_delivery', [input.idempotencyKey]),
+      ...(input.userId ? { userId: input.userId } : {}),
+      notificationType: input.notificationType,
+      channel: input.channel,
+      recipient: input.recipient,
+      status: 'pending',
+      idempotencyKey: input.idempotencyKey,
+      payload: {
+        ...input.payload,
+        ...(unsubscribeToken ? { unsubscribe_token: unsubscribeToken } : {}),
+      },
+      ...(unsubscribeToken ? { unsubscribeTokenHash: hashSecretToken(unsubscribeToken) } : {}),
+      attempts: 0,
+      nextAttemptAt: input.createdAt,
+      createdAt: input.createdAt,
+      updatedAt: input.createdAt,
+    };
+    const saved = await this.repository.saveNotificationDelivery(delivery);
+    return saved.delivery;
+  }
+
   private async assertUsableWalletChallenge(challengeId: string) {
     assertNonEmptyBounded(challengeId, 'challengeId', 80);
     const challenge = await this.repository.findWalletChallenge(challengeId);
@@ -507,7 +686,7 @@ export class OtcTradeService {
           profile: {
             userId: input.userId,
             ...(input.request.email ? { email: normalizeEmail(input.request.email) } : {}),
-            notificationEmailEnabled: input.request.notificationEmailEnabled ?? false,
+            notificationEmailEnabled: false,
           },
           ...(input.referredBy ? { referredBy: input.referredBy } : {}),
         });
@@ -1829,6 +2008,11 @@ function assertNonEmptyBounded(value: unknown, field: string, maxLength: number)
   }
 }
 
+function assertBoundedString(value: unknown, field: string, maxLength: number): string {
+  assertNonEmptyBounded(value, field, maxLength);
+  return value.trim();
+}
+
 function assertEvmAddress(value: unknown, field: string): asserts value is string {
   assertNonEmptyBounded(value, field, 128);
   if (!isAddress(value)) {
@@ -2009,6 +2193,73 @@ function normalizeEmail(value: string): string {
     throw new Error('email must be a valid email address');
   }
   return normalized;
+}
+
+function validateNotificationPreferencesRequest(request: UpdateNotificationPreferencesRequest, profile: OtcUserProfile): void {
+  if (!Array.isArray(request.preferences)) {
+    throw new Error('preferences must be an array');
+  }
+  if (request.preferences.length > 32) {
+    throw new Error('preferences contains too many entries');
+  }
+  for (const preference of request.preferences) {
+    assertOneOf(preference.notificationType, 'notificationType', NOTIFICATION_TYPES);
+    assertOneOf(preference.channel, 'channel', NOTIFICATION_CHANNELS);
+    if (typeof preference.enabled !== 'boolean') {
+      throw new Error('enabled must be a boolean');
+    }
+    if (preference.channel === 'email' && preference.enabled && !profile.emailVerifiedAt) {
+      throw new Error('email notifications require a verified email');
+    }
+    if (preference.channel === 'telegram' && preference.enabled) {
+      throw new Error('telegram notifications require a linked Telegram account');
+    }
+  }
+}
+
+function dedupeNotificationPreferences(
+  preferences: UpdateNotificationPreferencesRequest['preferences'],
+): Omit<OtcNotificationPreference, 'userId' | 'createdAt' | 'updatedAt'>[] {
+  const deduped = new Map<string, Omit<OtcNotificationPreference, 'userId' | 'createdAt' | 'updatedAt'>>();
+  for (const preference of preferences) {
+    deduped.set(`${preference.notificationType}:${preference.channel}`, {
+      notificationType: preference.notificationType,
+      channel: preference.channel,
+      enabled: preference.enabled,
+    });
+  }
+  return Array.from(deduped.values());
+}
+
+function expandNotificationPreferences(
+  userId: string,
+  stored: OtcNotificationPreference[],
+  timestamp: string,
+): OtcNotificationPreference[] {
+  const byKey = new Map(stored.map((preference) => [`${preference.notificationType}:${preference.channel}`, preference]));
+  const preferences: OtcNotificationPreference[] = [];
+  for (const notificationType of NOTIFICATION_TYPES) {
+    for (const channel of NOTIFICATION_CHANNELS) {
+      const existing = byKey.get(`${notificationType}:${channel}`);
+      preferences.push(existing ?? {
+        userId,
+        notificationType,
+        channel,
+        enabled: false,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+    }
+  }
+  return preferences;
+}
+
+function createSecretToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+function hashSecretToken(token: string): string {
+  return createHash('sha256').update(token.trim()).digest('hex');
 }
 
 function normalizeAmountString(value: string): string {

@@ -1052,13 +1052,13 @@ through one-time wallet challenges before creating user/profile records.
     code and referred-by attribution. Remaining: carry anonymous referral
     context through pre-profile quote flows and persist attribution when a
     visitor creates a quote before connecting a wallet profile.
-- [ ] 12.4 Add user profile UX for linked wallets, optional email,
+- [x] 12.4 Add user profile UX for linked wallets, optional email,
   notification preferences, referral code, and referred-by status.
   - 2026-05-24: Added `/profile` for wallet-owned account creation, optional
     email/profile update, referral panel, points summary, my offers, and my
-    trades. Remaining: verified email flow and granular notification
-    preferences. Current email field is contact metadata only; it must not be
-    used for outbound notifications until verification exists.
+    trades.
+  - 2026-05-24: Added email verification request/verify UX, exact-email
+    verification binding, and granular email notification preference controls.
 - [x] 12.5 Add order book persistence and public market APIs for active orders,
   filters, sorting, recent trades, market stats, and volume counters.
   - 2026-05-24: Added `005_orders_points.sql`, `POST /otc/orders`,
@@ -1074,9 +1074,18 @@ through one-time wallet challenges before creating user/profile records.
     trade count, and verified user count.
 - [ ] 12.7 Add notification preferences and delivery jobs for trade status,
   deadline warnings, new matching orders, price alerts, and referral events.
-  - Missing: email verification tokens, verified-email storage, unsubscribe
-    controls, notification preference API/UI, event dispatcher, retry/audit
-    table, and delivery workers for trade, order, price, and referral events.
+  - 2026-05-24: Added `otc_email_verification_tokens`,
+    `otc_notification_preferences`, `otc_notification_deliveries`, wallet-proved
+    preference APIs, public unsubscribe API, admin delivery audit/status APIs,
+    and email verification queueing.
+  - 2026-05-24 hardening pass: profile email changes clear verification and
+    disable email notifications, notification preferences cannot enable email
+    delivery until the exact email is verified, signup cannot pre-enable email
+    notifications, and notification delivery queue read/update is restricted to
+    operator/admin credentials.
+  - Missing: event dispatcher, retry scheduler, SMTP/provider delivery worker,
+    notification templates, and automatic trade/order/price/referral event
+    emission into the delivery queue.
 - [ ] 12.8 Upgrade Telegram from operator alerts to user self-service:
   wallet-linked account binding, `/orders`, `/trades`, `/trade <id>`,
   price alerts, new-order alerts, and private trade-status notifications.

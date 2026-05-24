@@ -2,15 +2,27 @@ import { useEffect, useState } from 'react';
 
 import { createOtcClient } from '../api.js';
 import { connectInjectedEvmWallet, signInjectedEvmMessage, type EvmWalletSnapshot } from '../evm-wallet.js';
-import type { OtcUser, OtcUserDashboard } from '../otc-api-client.js';
+import type { OtcNotificationPreference, OtcNotificationType, OtcUser, OtcUserDashboard } from '../otc-api-client.js';
 import { BrandLoader, DataRow, Field } from '../components/Primitives.js';
 import { readStoredReferralCode, readStoredUser, storeUser } from '../user-session.js';
+
+const emailPreferenceTypes: Array<{ type: OtcNotificationType; label: string }> = [
+  { type: 'trade_status', label: 'Trade status' },
+  { type: 'deadline_warning', label: 'Deadline warnings' },
+  { type: 'order_matched', label: 'Order matched' },
+  { type: 'price_alert', label: 'Price alerts' },
+  { type: 'new_good_order', label: 'New good orders' },
+  { type: 'referral_event', label: 'Referral events' },
+];
 
 export function ProfilePage() {
   const [wallet, setWallet] = useState<EvmWalletSnapshot>({ connected: false });
   const [user, setUser] = useState<OtcUser | undefined>(() => readStoredUser());
   const [dashboard, setDashboard] = useState<OtcUserDashboard>();
   const [email, setEmail] = useState(() => readStoredUser()?.profile.email ?? '');
+  const [emailVerificationToken, setEmailVerificationToken] = useState('');
+  const [notificationPreferences, setNotificationPreferences] = useState<OtcNotificationPreference[]>([]);
+  const [profileMessage, setProfileMessage] = useState<string>();
   const [orderSide, setOrderSide] = useState<'buy_prl' | 'sell_prl'>('buy_prl');
   const [orderAmountPrl, setOrderAmountPrl] = useState('');
   const [orderPrice, setOrderPrice] = useState('');
@@ -25,6 +37,7 @@ export function ProfilePage() {
   useEffect(() => {
     if (!user || !wallet.connected) return;
     void loadDashboard(user);
+    void loadNotificationPreferences(user);
   }, [user?.userId, wallet.connected]);
 
   async function connectProfile() {
@@ -51,6 +64,7 @@ export function ProfilePage() {
       setUser(registered);
       setEmail(registered.profile.email ?? '');
       await loadDashboard(registered, snapshot);
+      await loadNotificationPreferences(registered, snapshot);
       setStatus('idle');
     } catch (connectError) {
       setStatus('error');
@@ -79,6 +93,7 @@ export function ProfilePage() {
       const updated = { ...user, profile };
       storeUser(updated);
       setUser(updated);
+      setProfileMessage('Contact saved.');
       await loadDashboard(updated);
       setStatus('idle');
     } catch (saveError) {
@@ -137,6 +152,118 @@ export function ProfilePage() {
     setDashboard(await client.getUserDashboard(activeUser.userId, { challengeId: challenge.challengeId, signature }));
   }
 
+  async function loadNotificationPreferences(activeUser: OtcUser, activeWallet = wallet) {
+    if (!activeWallet.address) return;
+    const client = createOtcClient();
+    const challenge = await client.createWalletChallenge({
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: activeWallet.address,
+    });
+    const signature = await signInjectedEvmMessage(challenge.message, activeWallet.address);
+    const response = await client.getNotificationPreferences(activeUser.userId, { challengeId: challenge.challengeId, signature });
+    setNotificationPreferences(response.preferences);
+  }
+
+  async function requestEmailVerification() {
+    if (!user || !wallet.address) return;
+    setStatus('working');
+    setError(undefined);
+    setProfileMessage(undefined);
+    try {
+      const client = createOtcClient();
+      const challenge = await client.createWalletChallenge({
+        walletType: 'evm',
+        network: 'base_sepolia',
+        address: wallet.address,
+      });
+      const signature = await signInjectedEvmMessage(challenge.message, wallet.address);
+      const response = await client.requestEmailVerification(user.userId, {
+        challengeId: challenge.challengeId,
+        signature,
+        email,
+      });
+      setProfileMessage(`Verification queued for ${response.email}.`);
+      setStatus('idle');
+    } catch (verificationError) {
+      setStatus('error');
+      setError(verificationError instanceof Error ? verificationError.message : 'Email verification request failed.');
+    }
+  }
+
+  async function verifyEmail() {
+    if (!user) return;
+    setStatus('working');
+    setError(undefined);
+    setProfileMessage(undefined);
+    try {
+      const profile = await createOtcClient().verifyEmail(user.userId, { token: emailVerificationToken });
+      const updated = { ...user, profile };
+      storeUser(updated);
+      setUser(updated);
+      setEmail(profile.email ?? email);
+      setEmailVerificationToken('');
+      setProfileMessage('Email verified.');
+      if (wallet.address) await loadNotificationPreferences(updated);
+      setStatus('idle');
+    } catch (verificationError) {
+      setStatus('error');
+      setError(verificationError instanceof Error ? verificationError.message : 'Email verification failed.');
+    }
+  }
+
+  async function saveNotificationPreferences() {
+    if (!user || !wallet.address) return;
+    setStatus('working');
+    setError(undefined);
+    setProfileMessage(undefined);
+    try {
+      const client = createOtcClient();
+      const challenge = await client.createWalletChallenge({
+        walletType: 'evm',
+        network: 'base_sepolia',
+        address: wallet.address,
+      });
+      const signature = await signInjectedEvmMessage(challenge.message, wallet.address);
+      const response = await client.updateNotificationPreferences(user.userId, {
+        challengeId: challenge.challengeId,
+        signature,
+        preferences: emailPreferenceTypes.map(({ type }) => ({
+          notificationType: type,
+          channel: 'email',
+          enabled: isEmailPreferenceEnabled(type),
+        })),
+      });
+      setNotificationPreferences(response.preferences);
+      setProfileMessage('Notification preferences saved.');
+      setStatus('idle');
+    } catch (preferenceError) {
+      setStatus('error');
+      setError(preferenceError instanceof Error ? preferenceError.message : 'Notification preference update failed.');
+    }
+  }
+
+  function isEmailPreferenceEnabled(type: OtcNotificationType): boolean {
+    return notificationPreferences.some((preference) =>
+      preference.notificationType === type && preference.channel === 'email' && preference.enabled,
+    );
+  }
+
+  function setEmailPreference(type: OtcNotificationType, enabled: boolean) {
+    setNotificationPreferences((current) => {
+      const existing = current.find((preference) => preference.notificationType === type && preference.channel === 'email');
+      if (existing) {
+        return current.map((preference) =>
+          preference.notificationType === type && preference.channel === 'email'
+            ? { ...preference, enabled }
+            : preference,
+        );
+      }
+      const now = new Date().toISOString();
+      return [...current, { userId: user?.userId ?? '', notificationType: type, channel: 'email', enabled, createdAt: now, updatedAt: now }];
+    });
+  }
+
   return (
     <section className="profile-page">
       <div className="om-page-title">
@@ -182,6 +309,33 @@ export function ProfilePage() {
           <button className="om-button" disabled={!user || !wallet.address || status === 'working'} onClick={saveProfile}>
             Save contact
           </button>
+          <DataRow label="Email verified" value={user?.profile.emailVerifiedAt ? 'yes' : 'no'} />
+          <button className="om-button" disabled={!user || !wallet.address || !email || status === 'working'} onClick={requestEmailVerification}>
+            Send verification
+          </button>
+          <Field label="Verification token">
+            <input value={emailVerificationToken} onChange={(event) => setEmailVerificationToken(event.target.value)} spellCheck={false} />
+          </Field>
+          <button className="om-button" disabled={!user || !emailVerificationToken || status === 'working'} onClick={verifyEmail}>
+            Verify email
+          </button>
+          <div className="profile-notification-list">
+            {emailPreferenceTypes.map(({ type, label }) => (
+              <label key={type}>
+                <input
+                  type="checkbox"
+                  checked={isEmailPreferenceEnabled(type)}
+                  disabled={!user?.profile.emailVerifiedAt}
+                  onChange={(event) => setEmailPreference(type, event.target.checked)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <button className="om-button" disabled={!user?.profile.emailVerifiedAt || !wallet.address || status === 'working'} onClick={saveNotificationPreferences}>
+            Save notifications
+          </button>
+          {profileMessage ? <p className="profile-note">{profileMessage}</p> : null}
         </section>
 
         <section className="om-panel profile-wide">

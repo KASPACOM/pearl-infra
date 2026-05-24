@@ -3,6 +3,10 @@ import type { OtcQuote, OtcTrade, TradeEvent } from '@kaspacom/pearl-sdk';
 import type { PgQueryClient, PgTransactionalClient } from './postgres.js';
 import type {
   OtcReferralAttribution,
+  OtcEmailVerificationToken,
+  OtcNotificationDelivery,
+  OtcNotificationDeliveryStatus,
+  OtcNotificationPreference,
   OtcOrder,
   OtcOrderQuoteLink,
   OtcPointEvent,
@@ -91,6 +95,15 @@ export interface OtcRepository {
   updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile>;
   findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined>;
   countUsers(): Promise<number>;
+  saveEmailVerificationToken(token: OtcEmailVerificationToken): Promise<void>;
+  findEmailVerificationTokenByHash(tokenHash: string): Promise<OtcEmailVerificationToken | undefined>;
+  consumeEmailVerificationToken(tokenId: string, consumedAt: string): Promise<OtcUserProfile>;
+  listNotificationPreferences(userId: string): Promise<OtcNotificationPreference[]>;
+  saveNotificationPreferences(userId: string, preferences: Omit<OtcNotificationPreference, 'userId' | 'createdAt' | 'updatedAt'>[], updatedAt: string): Promise<OtcNotificationPreference[]>;
+  saveNotificationDelivery(delivery: OtcNotificationDelivery): Promise<{ delivery: OtcNotificationDelivery; created: boolean }>;
+  listNotificationDeliveries(query?: { status?: OtcNotificationDeliveryStatus; limit?: number }): Promise<OtcNotificationDelivery[]>;
+  updateNotificationDelivery(deliveryId: string, input: { status: OtcNotificationDeliveryStatus; error?: string; nextAttemptAt?: string; updatedAt: string }): Promise<OtcNotificationDelivery>;
+  unsubscribeNotificationByTokenHash(tokenHash: string, updatedAt: string): Promise<OtcNotificationDelivery>;
   saveOrder(order: OtcOrder): Promise<OtcOrder>;
   findOrderById(orderId: string): Promise<OtcOrder | undefined>;
   listOrders(query?: OrderBookQuery): Promise<OrderBookPage>;
@@ -146,6 +159,11 @@ export class InMemoryOtcRepository implements OtcRepository {
   private readonly users = new Map<string, OtcUser>();
   private readonly userByWallet = new Map<string, string>();
   private readonly referralByCode = new Map<string, ReferralCodeLookup>();
+  private readonly emailVerificationTokens = new Map<string, OtcEmailVerificationToken>();
+  private readonly emailVerificationTokenByHash = new Map<string, string>();
+  private readonly notificationPreferences = new Map<string, OtcNotificationPreference>();
+  private readonly notificationDeliveries = new Map<string, OtcNotificationDelivery>();
+  private readonly notificationDeliveryByIdempotencyKey = new Map<string, string>();
   private readonly orders = new Map<string, OtcOrder>();
   private readonly orderQuoteLinks = new Map<string, OtcOrderQuoteLink>();
   private readonly pointEvents = new Map<string, OtcPointEvent>();
@@ -354,12 +372,15 @@ export class InMemoryOtcRepository implements OtcRepository {
   async updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile> {
     const user = this.users.get(userId);
     if (!user) throw new Error(`user not found: ${userId}`);
+    const emailChanged = profile.email !== undefined && profile.email !== user.profile.email;
+    const { emailVerifiedAt: existingEmailVerifiedAt, ...profileWithoutEmailVerification } = user.profile;
     const updatedProfile: OtcUserProfile = {
-      ...user.profile,
+      ...(emailChanged ? profileWithoutEmailVerification : user.profile),
       ...(profile.email === undefined ? {} : { email: profile.email }),
       ...(profile.notificationEmailEnabled === undefined
         ? {}
         : { notificationEmailEnabled: profile.notificationEmailEnabled }),
+      ...(emailChanged ? { notificationEmailEnabled: false } : {}),
       updatedAt: profile.updatedAt,
     };
     this.users.set(userId, { ...user, profile: updatedProfile, updatedAt: profile.updatedAt });
@@ -372,6 +393,114 @@ export class InMemoryOtcRepository implements OtcRepository {
 
   async countUsers(): Promise<number> {
     return this.users.size;
+  }
+
+  async saveEmailVerificationToken(token: OtcEmailVerificationToken): Promise<void> {
+    this.emailVerificationTokens.set(token.tokenId, token);
+    this.emailVerificationTokenByHash.set(token.tokenHash, token.tokenId);
+  }
+
+  async findEmailVerificationTokenByHash(tokenHash: string): Promise<OtcEmailVerificationToken | undefined> {
+    const tokenId = this.emailVerificationTokenByHash.get(tokenHash);
+    return tokenId ? this.emailVerificationTokens.get(tokenId) : undefined;
+  }
+
+  async consumeEmailVerificationToken(tokenId: string, consumedAt: string): Promise<OtcUserProfile> {
+    const token = this.emailVerificationTokens.get(tokenId);
+    if (!token) throw new Error(`email verification token not found: ${tokenId}`);
+    if (token.consumedAt) throw new Error('email verification token already used');
+    const user = this.users.get(token.userId);
+    if (!user) throw new Error(`user not found: ${token.userId}`);
+    const consumed = { ...token, consumedAt };
+    const profile: OtcUserProfile = {
+      ...user.profile,
+      email: token.email,
+      emailVerifiedAt: consumedAt,
+      notificationEmailEnabled: user.profile.notificationEmailEnabled,
+      updatedAt: consumedAt,
+    };
+    this.emailVerificationTokens.set(tokenId, consumed);
+    this.users.set(user.userId, { ...user, profile, updatedAt: consumedAt });
+    return profile;
+  }
+
+  async listNotificationPreferences(userId: string): Promise<OtcNotificationPreference[]> {
+    return Array.from(this.notificationPreferences.values())
+      .filter((preference) => preference.userId === userId)
+      .sort((left, right) => `${left.channel}:${left.notificationType}`.localeCompare(`${right.channel}:${right.notificationType}`));
+  }
+
+  async saveNotificationPreferences(
+    userId: string,
+    preferences: Omit<OtcNotificationPreference, 'userId' | 'createdAt' | 'updatedAt'>[],
+    updatedAt: string,
+  ): Promise<OtcNotificationPreference[]> {
+    for (const preference of preferences) {
+      const key = formatNotificationPreferenceKey(userId, preference.notificationType, preference.channel);
+      const existing = this.notificationPreferences.get(key);
+      this.notificationPreferences.set(key, {
+        userId,
+        notificationType: preference.notificationType,
+        channel: preference.channel,
+        enabled: preference.enabled,
+        createdAt: existing?.createdAt ?? updatedAt,
+        updatedAt,
+      });
+    }
+    return this.listNotificationPreferences(userId);
+  }
+
+  async saveNotificationDelivery(delivery: OtcNotificationDelivery): Promise<{ delivery: OtcNotificationDelivery; created: boolean }> {
+    const existingId = this.notificationDeliveryByIdempotencyKey.get(delivery.idempotencyKey);
+    if (existingId) {
+      const existing = this.notificationDeliveries.get(existingId);
+      if (!existing) throw new Error(`notification delivery not found: ${existingId}`);
+      return { delivery: existing, created: false };
+    }
+    this.notificationDeliveries.set(delivery.deliveryId, delivery);
+    this.notificationDeliveryByIdempotencyKey.set(delivery.idempotencyKey, delivery.deliveryId);
+    return { delivery, created: true };
+  }
+
+  async listNotificationDeliveries(query: { status?: OtcNotificationDeliveryStatus; limit?: number } = {}): Promise<OtcNotificationDelivery[]> {
+    return Array.from(this.notificationDeliveries.values())
+      .filter((delivery) => !query.status || delivery.status === query.status)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .slice(0, query.limit ?? 100);
+  }
+
+  async updateNotificationDelivery(
+    deliveryId: string,
+    input: { status: OtcNotificationDeliveryStatus; error?: string; nextAttemptAt?: string; updatedAt: string },
+  ): Promise<OtcNotificationDelivery> {
+    const delivery = this.notificationDeliveries.get(deliveryId);
+    if (!delivery) throw new Error(`notification delivery not found: ${deliveryId}`);
+    const updated: OtcNotificationDelivery = {
+      ...delivery,
+      status: input.status,
+      attempts: input.status === 'failed' ? delivery.attempts + 1 : delivery.attempts,
+      ...(input.error ? { lastError: input.error } : {}),
+      ...(input.nextAttemptAt ? { nextAttemptAt: input.nextAttemptAt } : {}),
+      ...(input.status === 'sent' ? { sentAt: input.updatedAt } : {}),
+      updatedAt: input.updatedAt,
+    };
+    this.notificationDeliveries.set(deliveryId, updated);
+    return updated;
+  }
+
+  async unsubscribeNotificationByTokenHash(tokenHash: string, updatedAt: string): Promise<OtcNotificationDelivery> {
+    const delivery = Array.from(this.notificationDeliveries.values()).find((candidate) => candidate.unsubscribeTokenHash === tokenHash);
+    if (!delivery) throw new Error('unsubscribe token not found');
+    if (delivery.userId) {
+      await this.saveNotificationPreferences(delivery.userId, [{
+        notificationType: delivery.notificationType,
+        channel: delivery.channel,
+        enabled: false,
+      }], updatedAt);
+    }
+    const updated = { ...delivery, status: 'unsubscribed' as const, updatedAt };
+    this.notificationDeliveries.set(delivery.deliveryId, updated);
+    return updated;
   }
 
   async saveOrder(order: OtcOrder): Promise<OtcOrder> {
@@ -548,6 +677,43 @@ type ReferralCodeRow = Record<string, unknown> & {
   owner_user_id: string;
   status: 'active' | 'disabled';
   created_at: Date | string;
+}
+
+type EmailVerificationTokenRow = Record<string, unknown> & {
+  token_id: string;
+  user_id: string;
+  email: string;
+  token_hash: string;
+  expires_at: Date | string;
+  consumed_at: Date | string | null;
+  created_at: Date | string;
+}
+
+type NotificationPreferenceRow = Record<string, unknown> & {
+  user_id: string;
+  notification_type: OtcNotificationPreference['notificationType'];
+  channel: OtcNotificationPreference['channel'];
+  enabled: boolean;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+type NotificationDeliveryRow = Record<string, unknown> & {
+  delivery_id: string;
+  user_id: string | null;
+  notification_type: OtcNotificationDelivery['notificationType'];
+  channel: OtcNotificationDelivery['channel'];
+  recipient: string;
+  status: OtcNotificationDelivery['status'];
+  idempotency_key: string;
+  payload: Record<string, unknown> | string;
+  unsubscribe_token_hash: string | null;
+  attempts: number;
+  last_error: string | null;
+  next_attempt_at: Date | string;
+  sent_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
 }
 
 type OrderRow = Record<string, unknown> & {
@@ -1048,7 +1214,14 @@ export class PgOtcRepository implements OtcRepository {
     const result = await this.client.query<UserRow>(
       `UPDATE otc_user_profiles
           SET email = COALESCE($2, email),
-              notification_email_enabled = COALESCE($3, notification_email_enabled),
+              email_verified_at = CASE
+                WHEN $2::text IS NOT NULL AND $2::text <> COALESCE(email, '') THEN NULL
+                ELSE email_verified_at
+              END,
+              notification_email_enabled = CASE
+                WHEN $2::text IS NOT NULL AND $2::text <> COALESCE(email, '') THEN false
+                ELSE COALESCE($3, notification_email_enabled)
+              END,
               updated_at = $4
         WHERE user_id = $1
         RETURNING user_id, email, email_verified_at, notification_email_enabled,
@@ -1082,6 +1255,202 @@ export class PgOtcRepository implements OtcRepository {
       'active',
     ]);
     return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async saveEmailVerificationToken(token: OtcEmailVerificationToken): Promise<void> {
+    await this.client.query(
+      `INSERT INTO otc_email_verification_tokens (
+         token_id, user_id, email, token_hash, expires_at, consumed_at, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (token_id) DO NOTHING`,
+      [token.tokenId, token.userId, token.email, token.tokenHash, token.expiresAt, token.consumedAt ?? null, token.createdAt],
+    );
+  }
+
+  async findEmailVerificationTokenByHash(tokenHash: string): Promise<OtcEmailVerificationToken | undefined> {
+    const result = await this.client.query<EmailVerificationTokenRow>(
+      `SELECT token_id, user_id, email, token_hash, expires_at, consumed_at, created_at
+         FROM otc_email_verification_tokens
+        WHERE token_hash = $1`,
+      [tokenHash],
+    );
+    return result.rows[0] ? rowToEmailVerificationToken(result.rows[0]) : undefined;
+  }
+
+  async consumeEmailVerificationToken(tokenId: string, consumedAt: string): Promise<OtcUserProfile> {
+    return this.client.withTransaction(async (tx) => {
+      const tokenResult = await tx.query<EmailVerificationTokenRow>(
+        `UPDATE otc_email_verification_tokens
+            SET consumed_at = $2
+          WHERE token_id = $1
+            AND consumed_at IS NULL
+            AND expires_at > $2
+          RETURNING token_id, user_id, email, token_hash, expires_at, consumed_at, created_at`,
+        [tokenId, consumedAt],
+      );
+      const token = tokenResult.rows[0];
+      if (!token) {
+        throw new Error('email verification token is invalid, expired, or already used');
+      }
+      const profileResult = await tx.query<UserRow>(
+        `UPDATE otc_user_profiles
+            SET email = $2,
+                email_verified_at = $3,
+                updated_at = $3
+          WHERE user_id = $1
+          RETURNING user_id, email, email_verified_at, notification_email_enabled,
+                    created_at AS profile_created_at, updated_at AS profile_updated_at`,
+        [token.user_id, token.email, consumedAt],
+      );
+      const row = profileResult.rows[0];
+      if (!row) throw new Error(`user not found: ${token.user_id}`);
+      return rowToUserProfile(row);
+    });
+  }
+
+  async listNotificationPreferences(userId: string): Promise<OtcNotificationPreference[]> {
+    const result = await this.client.query<NotificationPreferenceRow>(
+      `SELECT user_id, notification_type, channel, enabled, created_at, updated_at
+         FROM otc_notification_preferences
+        WHERE user_id = $1
+        ORDER BY channel ASC, notification_type ASC`,
+      [userId],
+    );
+    return result.rows.map(rowToNotificationPreference);
+  }
+
+  async saveNotificationPreferences(
+    userId: string,
+    preferences: Omit<OtcNotificationPreference, 'userId' | 'createdAt' | 'updatedAt'>[],
+    updatedAt: string,
+  ): Promise<OtcNotificationPreference[]> {
+    for (const preference of preferences) {
+      await this.client.query(
+        `INSERT INTO otc_notification_preferences (
+           user_id, notification_type, channel, enabled, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $5)
+         ON CONFLICT (user_id, notification_type, channel) DO UPDATE
+            SET enabled = EXCLUDED.enabled,
+                updated_at = EXCLUDED.updated_at`,
+        [userId, preference.notificationType, preference.channel, preference.enabled, updatedAt],
+      );
+    }
+    return this.listNotificationPreferences(userId);
+  }
+
+  async saveNotificationDelivery(delivery: OtcNotificationDelivery): Promise<{ delivery: OtcNotificationDelivery; created: boolean }> {
+    const result = await this.client.query<NotificationDeliveryRow>(
+      `INSERT INTO otc_notification_deliveries (
+         delivery_id, user_id, notification_type, channel, recipient, status,
+         idempotency_key, payload, unsubscribe_token_hash, attempts, last_error,
+         next_attempt_at, sent_at, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15)
+       ON CONFLICT (idempotency_key) DO NOTHING
+       RETURNING delivery_id, user_id, notification_type, channel, recipient, status,
+                 idempotency_key, payload, unsubscribe_token_hash, attempts, last_error,
+                 next_attempt_at, sent_at, created_at, updated_at`,
+      [
+        delivery.deliveryId,
+        delivery.userId ?? null,
+        delivery.notificationType,
+        delivery.channel,
+        delivery.recipient,
+        delivery.status,
+        delivery.idempotencyKey,
+        JSON.stringify(delivery.payload),
+        delivery.unsubscribeTokenHash ?? null,
+        delivery.attempts,
+        delivery.lastError ?? null,
+        delivery.nextAttemptAt,
+        delivery.sentAt ?? null,
+        delivery.createdAt,
+        delivery.updatedAt,
+      ],
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      return { delivery: rowToNotificationDelivery(result.rows[0]), created: true };
+    }
+    const existing = await this.client.query<NotificationDeliveryRow>(
+      `SELECT delivery_id, user_id, notification_type, channel, recipient, status,
+              idempotency_key, payload, unsubscribe_token_hash, attempts, last_error,
+              next_attempt_at, sent_at, created_at, updated_at
+         FROM otc_notification_deliveries
+        WHERE idempotency_key = $1`,
+      [delivery.idempotencyKey],
+    );
+    return { delivery: rowToNotificationDelivery(existing.rows[0]), created: false };
+  }
+
+  async listNotificationDeliveries(query: { status?: OtcNotificationDeliveryStatus; limit?: number } = {}): Promise<OtcNotificationDelivery[]> {
+    const values: unknown[] = [];
+    const where: string[] = [];
+    if (query.status) {
+      values.push(query.status);
+      where.push(`status = $${values.length}`);
+    }
+    values.push(Math.max(1, Math.min(query.limit ?? 100, 500)));
+    const result = await this.client.query<NotificationDeliveryRow>(
+      `SELECT delivery_id, user_id, notification_type, channel, recipient, status,
+              idempotency_key, payload, unsubscribe_token_hash, attempts, last_error,
+              next_attempt_at, sent_at, created_at, updated_at
+         FROM otc_notification_deliveries
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY created_at ASC
+        LIMIT $${values.length}`,
+      values,
+    );
+    return result.rows.map(rowToNotificationDelivery);
+  }
+
+  async updateNotificationDelivery(
+    deliveryId: string,
+    input: { status: OtcNotificationDeliveryStatus; error?: string; nextAttemptAt?: string; updatedAt: string },
+  ): Promise<OtcNotificationDelivery> {
+    const result = await this.client.query<NotificationDeliveryRow>(
+      `UPDATE otc_notification_deliveries
+          SET status = $2,
+              attempts = attempts + CASE WHEN $2 = 'failed' THEN 1 ELSE 0 END,
+              last_error = COALESCE($3, last_error),
+              next_attempt_at = COALESCE($4, next_attempt_at),
+              sent_at = CASE WHEN $2 = 'sent' THEN $5 ELSE sent_at END,
+              updated_at = $5
+        WHERE delivery_id = $1
+        RETURNING delivery_id, user_id, notification_type, channel, recipient, status,
+                  idempotency_key, payload, unsubscribe_token_hash, attempts, last_error,
+                  next_attempt_at, sent_at, created_at, updated_at`,
+      [deliveryId, input.status, input.error ?? null, input.nextAttemptAt ?? null, input.updatedAt],
+    );
+    if (!result.rows[0]) throw new Error(`notification delivery not found: ${deliveryId}`);
+    return rowToNotificationDelivery(result.rows[0]);
+  }
+
+  async unsubscribeNotificationByTokenHash(tokenHash: string, updatedAt: string): Promise<OtcNotificationDelivery> {
+    return this.client.withTransaction(async (tx) => {
+      const deliveryResult = await tx.query<NotificationDeliveryRow>(
+        `UPDATE otc_notification_deliveries
+            SET status = 'unsubscribed',
+                updated_at = $2
+          WHERE unsubscribe_token_hash = $1
+          RETURNING delivery_id, user_id, notification_type, channel, recipient, status,
+                    idempotency_key, payload, unsubscribe_token_hash, attempts, last_error,
+                    next_attempt_at, sent_at, created_at, updated_at`,
+        [tokenHash, updatedAt],
+      );
+      const delivery = deliveryResult.rows[0];
+      if (!delivery) throw new Error('unsubscribe token not found');
+      if (delivery.user_id) {
+        await tx.query(
+          `INSERT INTO otc_notification_preferences (
+             user_id, notification_type, channel, enabled, created_at, updated_at
+           ) VALUES ($1, $2, $3, false, $4, $4)
+           ON CONFLICT (user_id, notification_type, channel) DO UPDATE
+              SET enabled = false,
+                  updated_at = EXCLUDED.updated_at`,
+          [delivery.user_id, delivery.notification_type, delivery.channel, updatedAt],
+        );
+      }
+      return rowToNotificationDelivery(delivery);
+    });
   }
 
   async saveOrder(order: OtcOrder): Promise<OtcOrder> {
@@ -1454,6 +1823,60 @@ function rowToReferralCode(row: ReferralCodeRow): ReferralCodeLookup {
   };
 }
 
+function rowToUserProfile(row: Pick<UserRow, 'user_id' | 'email' | 'email_verified_at' | 'notification_email_enabled' | 'profile_created_at' | 'profile_updated_at'>): OtcUserProfile {
+  return {
+    userId: row.user_id,
+    ...(row.email ? { email: row.email } : {}),
+    ...(row.email_verified_at ? { emailVerifiedAt: formatPgDate(row.email_verified_at) } : {}),
+    notificationEmailEnabled: row.notification_email_enabled,
+    createdAt: formatPgDate(row.profile_created_at),
+    updatedAt: formatPgDate(row.profile_updated_at),
+  };
+}
+
+function rowToEmailVerificationToken(row: EmailVerificationTokenRow): OtcEmailVerificationToken {
+  return {
+    tokenId: row.token_id,
+    userId: row.user_id,
+    email: row.email,
+    tokenHash: row.token_hash,
+    expiresAt: formatPgDate(row.expires_at),
+    ...(row.consumed_at ? { consumedAt: formatPgDate(row.consumed_at) } : {}),
+    createdAt: formatPgDate(row.created_at),
+  };
+}
+
+function rowToNotificationPreference(row: NotificationPreferenceRow): OtcNotificationPreference {
+  return {
+    userId: row.user_id,
+    notificationType: row.notification_type,
+    channel: row.channel,
+    enabled: row.enabled,
+    createdAt: formatPgDate(row.created_at),
+    updatedAt: formatPgDate(row.updated_at),
+  };
+}
+
+function rowToNotificationDelivery(row: NotificationDeliveryRow): OtcNotificationDelivery {
+  return {
+    deliveryId: row.delivery_id,
+    ...(row.user_id ? { userId: row.user_id } : {}),
+    notificationType: row.notification_type,
+    channel: row.channel,
+    recipient: row.recipient,
+    status: row.status,
+    idempotencyKey: row.idempotency_key,
+    payload: parseJsonRecord(row.payload),
+    ...(row.unsubscribe_token_hash ? { unsubscribeTokenHash: row.unsubscribe_token_hash } : {}),
+    attempts: Number(row.attempts),
+    ...(row.last_error ? { lastError: row.last_error } : {}),
+    nextAttemptAt: formatPgDate(row.next_attempt_at),
+    ...(row.sent_at ? { sentAt: formatPgDate(row.sent_at) } : {}),
+    createdAt: formatPgDate(row.created_at),
+    updatedAt: formatPgDate(row.updated_at),
+  };
+}
+
 function rowToOrder(row: OrderRow): OtcOrder {
   return {
     orderId: row.order_id,
@@ -1474,6 +1897,18 @@ function rowToOrder(row: OrderRow): OtcOrder {
     createdAt: formatPgDate(row.created_at),
     updatedAt: formatPgDate(row.updated_at),
   };
+}
+
+function parseJsonRecord(value: Record<string, unknown> | string): Record<string, unknown> {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
 }
 
 function rowToOrderQuoteLink(row: OrderQuoteLinkRow): OtcOrderQuoteLink {
@@ -1522,6 +1957,10 @@ function formatPearlEscrowDerivationKey(allocation: Pick<PearlEscrowAllocationIn
 
 function formatWalletKey(walletType: OtcUserWallet['walletType'], network: string, address: string): string {
   return `${walletType}:${network.toLowerCase()}:${address.toLowerCase()}`;
+}
+
+function formatNotificationPreferenceKey(userId: string, notificationType: string, channel: string): string {
+  return `${userId}:${notificationType}:${channel}`;
 }
 
 function formatPgDate(value: Date | string): string {

@@ -360,6 +360,112 @@ export interface UpdateUserProfileRequest {
   notificationEmailEnabled?: boolean;
 }
 
+export type OtcNotificationType =
+  | 'trade_status'
+  | 'deadline_warning'
+  | 'order_matched'
+  | 'price_alert'
+  | 'new_good_order'
+  | 'referral_event'
+  | 'email_verification';
+
+export type OtcNotificationChannel = 'email' | 'telegram';
+export type OtcNotificationDeliveryStatus = 'pending' | 'sent' | 'failed' | 'cancelled' | 'unsubscribed';
+
+export interface OtcEmailVerificationToken {
+  tokenId: string;
+  userId: string;
+  email: string;
+  tokenHash: string;
+  expiresAt: string;
+  consumedAt?: string;
+  createdAt: string;
+}
+
+export interface OtcNotificationPreference {
+  userId: string;
+  notificationType: OtcNotificationType;
+  channel: OtcNotificationChannel;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OtcNotificationDelivery {
+  deliveryId: string;
+  userId?: string;
+  notificationType: OtcNotificationType;
+  channel: OtcNotificationChannel;
+  recipient: string;
+  status: OtcNotificationDeliveryStatus;
+  idempotencyKey: string;
+  payload: Record<string, unknown>;
+  unsubscribeTokenHash?: string;
+  attempts: number;
+  lastError?: string;
+  nextAttemptAt: string;
+  sentAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestEmailVerificationRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  email: string;
+}
+
+export interface RequestEmailVerificationResponse {
+  userId: string;
+  email: string;
+  status: 'pending';
+  expiresAt: string;
+  deliveryId: string;
+}
+
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface UpdateNotificationPreferencesRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  preferences: Array<{
+    notificationType: OtcNotificationType;
+    channel: OtcNotificationChannel;
+    enabled: boolean;
+  }>;
+}
+
+export interface NotificationPreferencesResponse {
+  userId: string;
+  preferences: OtcNotificationPreference[];
+}
+
+export interface UnsubscribeNotificationRequest {
+  token: string;
+}
+
+export interface UnsubscribeNotificationResponse {
+  userId?: string;
+  notificationType: OtcNotificationType;
+  channel: OtcNotificationChannel;
+  status: 'unsubscribed';
+}
+
+export interface ListNotificationDeliveriesQuery {
+  status?: OtcNotificationDeliveryStatus;
+  limit?: number;
+}
+
+export interface UpdateNotificationDeliveryRequest {
+  status: Extract<OtcNotificationDeliveryStatus, 'sent' | 'failed' | 'cancelled'>;
+  error?: string;
+  nextAttemptAt?: string;
+}
+
 export interface ReferralCodeLookup {
   referralCode: string;
   ownerUserId: string;
