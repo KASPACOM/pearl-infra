@@ -132,6 +132,22 @@ test('gets market, orders, and wallet dashboard routes', async () => {
       if (url.toString().endsWith('/otc/orders') && init?.method === 'POST') {
         return jsonResponse({ orderId: 'order_1', side: 'buy_prl', fundingAsset: 'USDC' }, 201);
       }
+      if (url.toString().endsWith('/otc/orders/order_1/quotes')) {
+        return jsonResponse({
+          quote: { quoteId: 'quote_order_1' },
+          order: { orderId: 'order_1' },
+          makerRole: 'buyer',
+          acceptPrefill: { buyerPearlAddress: 'tprl1pbuyer' },
+        }, 201);
+      }
+      if (url.toString().endsWith('/otc/quotes/quote_order_1/order-context')) {
+        return jsonResponse({
+          quoteId: 'quote_order_1',
+          order: { orderId: 'order_1' },
+          makerRole: 'buyer',
+          acceptPrefill: { buyerPearlAddress: 'tprl1pbuyer' },
+        });
+      }
       if (url.toString().includes('/dashboard')) {
         return jsonResponse({ orders: [{ orderId: 'order_1' }], trades: [], points: { totalPoints: 35 } });
       }
@@ -158,9 +174,23 @@ test('gets market, orders, and wallet dashboard routes', async () => {
     challengeId: 'wallet_challenge_1',
     signature: '0xsig',
     side: 'buy_prl',
+    makerPearlAddress: 'tprl1pbuyer',
+    makerUsdcAddress: '0x1111111111111111111111111111111111111111',
+    makerPearlPubkey: '11'.repeat(32),
+    makerPearlPubkeyProof: '22'.repeat(64),
     amountPrl: '100.00000000',
     priceUsdcPerPrl: '0.150000',
   });
+  const orderQuote = await client.createOrderQuote('order_1', {
+    userId: 'user_1',
+    challengeId: 'wallet_challenge_3',
+    signature: '0xsig3',
+    amountPrl: '50.00000000',
+    pearlAddress: 'tprl1pseller',
+    usdcAddress: '0x2222222222222222222222222222222222222222',
+    clientRequestId: 'order-quote-client-1',
+  });
+  const orderContext = await client.getOrderQuoteAcceptContext('quote_order_1');
   const dashboard = await client.getUserDashboard('user_1', {
     challengeId: 'wallet_challenge_2',
     signature: '0xsig2',
@@ -170,6 +200,8 @@ test('gets market, orders, and wallet dashboard routes', async () => {
   assert.equal(recentTrades[0]?.tradeId, 'trade_1');
   assert.equal(orders.items[0]?.orderId, 'order_1');
   assert.equal(order.fundingAsset, 'USDC');
+  assert.equal(orderQuote.quote.quoteId, 'quote_order_1');
+  assert.equal(orderContext.makerRole, 'buyer');
   assert.equal(dashboard.points.totalPoints, 35);
   assert.equal(calls[0].url, 'https://api.example.test/otc/market/stats');
   assert.equal(calls[1].url, 'https://api.example.test/otc/market/recent-trades?limit=12');
@@ -179,7 +211,11 @@ test('gets market, orders, and wallet dashboard routes', async () => {
   );
   assert.equal(calls[3].url, 'https://api.example.test/otc/orders');
   assert.equal(calls[3].init.method, 'POST');
-  assert.equal(calls[4].url, 'https://api.example.test/otc/users/user_1/dashboard');
+  assert.equal(calls[4].url, 'https://api.example.test/otc/orders/order_1/quotes');
+  assert.equal(calls[4].init.method, 'POST');
+  assert.equal(calls[5].url, 'https://api.example.test/otc/quotes/quote_order_1/order-context');
+  assert.equal(calls[5].init.method, 'GET');
+  assert.equal(calls[6].url, 'https://api.example.test/otc/users/user_1/dashboard');
 });
 
 test('gets escrow verification and side-effect routes', async () => {

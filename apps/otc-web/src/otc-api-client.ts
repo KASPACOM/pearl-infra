@@ -348,6 +348,13 @@ export interface OrderQuoteResponse {
   acceptPrefill: Partial<AcceptQuoteRequest>;
 }
 
+export interface OrderQuoteAcceptContext {
+  quoteId: string;
+  order: OtcOrder;
+  makerRole: 'buyer' | 'seller';
+  acceptPrefill: Partial<AcceptQuoteRequest>;
+}
+
 export interface OrderBookQuery {
   side?: 'buy_prl' | 'sell_prl';
   status?: OtcOrderStatus;
@@ -531,6 +538,10 @@ export class OtcApiClient {
 
   createOrderQuote(orderId: string, request: CreateOrderQuoteRequest): Promise<OrderQuoteResponse> {
     return this.post(`/otc/orders/${encodeURIComponent(orderId)}/quotes`, request);
+  }
+
+  getOrderQuoteAcceptContext(quoteId: string): Promise<OrderQuoteAcceptContext> {
+    return this.get(`/otc/quotes/${encodeURIComponent(quoteId)}/order-context`);
   }
 
   getUserDashboard(userId: string, request: UserDashboardRequest): Promise<OtcUserDashboard> {

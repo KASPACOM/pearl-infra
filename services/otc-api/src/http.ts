@@ -142,6 +142,10 @@ export async function handleOtcHttpRequest(
     return { statusCode: 200, body: await service.getQuote(parts[2]) };
   }
 
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'quotes' && parts[3] === 'order-context') {
+    return { statusCode: 200, body: await service.getOrderQuoteAcceptContext(parts[2]) };
+  }
+
   if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'quotes' && parts[3] === 'accept') {
     return { statusCode: 201, body: await service.acceptQuote(parts[2], await readJsonBody(request)) };
   }

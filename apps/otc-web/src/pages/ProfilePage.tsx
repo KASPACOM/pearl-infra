@@ -4,10 +4,7 @@ import { createOtcClient } from '../api.js';
 import { connectInjectedEvmWallet, signInjectedEvmMessage, type EvmWalletSnapshot } from '../evm-wallet.js';
 import type { OtcUser, OtcUserDashboard } from '../otc-api-client.js';
 import { BrandLoader, DataRow, Field } from '../components/Primitives.js';
-import { getBrowserSearch } from '../routing.js';
-
-const USER_STORAGE_KEY = 'oysters.otc.user';
-const REFERRAL_STORAGE_KEY = 'oysters.otc.referral';
+import { readStoredReferralCode, readStoredUser, storeUser } from '../user-session.js';
 
 export function ProfilePage() {
   const [wallet, setWallet] = useState<EvmWalletSnapshot>({ connected: false });
@@ -289,33 +286,6 @@ export function ProfilePage() {
       </div>
     </section>
   );
-}
-
-function readStoredUser(): OtcUser | undefined {
-  if (typeof window === 'undefined') return undefined;
-  const raw = window.localStorage.getItem(USER_STORAGE_KEY);
-  if (!raw) return undefined;
-  try {
-    return JSON.parse(raw) as OtcUser;
-  } catch {
-    return undefined;
-  }
-}
-
-function storeUser(user: OtcUser): void {
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-  }
-}
-
-function readStoredReferralCode(): string | undefined {
-  if (typeof window === 'undefined') return undefined;
-  const fromUrl = new URLSearchParams(getBrowserSearch()).get('ref')?.trim();
-  if (fromUrl) {
-    window.localStorage.setItem(REFERRAL_STORAGE_KEY, fromUrl);
-    return fromUrl;
-  }
-  return window.localStorage.getItem(REFERRAL_STORAGE_KEY)?.trim() || undefined;
 }
 
 function createOrderMakerSignerProofMessage(input: {

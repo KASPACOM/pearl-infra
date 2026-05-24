@@ -93,6 +93,53 @@
   margin-top: 16px;
 }
 
+.market-fill-button {
+  width: fit-content;
+  min-width: 70px;
+  border: 1px solid var(--om-line);
+  border-radius: 6px;
+  background: var(--om-surface);
+  color: var(--om-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+
+.market-ticket {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--om-line);
+
+  label {
+    display: grid;
+    gap: 6px;
+    color: var(--om-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  input {
+    min-width: 0;
+    border: 1px solid var(--om-line);
+    border-radius: 8px;
+    background: var(--om-surface-2);
+    color: var(--om-ink);
+    font: inherit;
+    padding: 11px 12px;
+  }
+}
+
+.market-ticket__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 @media (max-width: 980px) {
   .market-stats,
   .market-grid {
