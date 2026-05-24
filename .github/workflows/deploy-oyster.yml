@@ -52,6 +52,27 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Validate prod runtime secret
+        if: github.ref_name == 'main'
+        run: |
+          set -euo pipefail
+          secret_json="$(aws secretsmanager get-secret-value \
+            --region "$AWS_REGION" \
+            --secret-id prod/oyster-otc-api \
+            --query SecretString \
+            --output text)"
+          printf '%s' "$secret_json" | jq -e '
+            has("OTC_API_DATABASE_URL") and
+            has("BASE_RPC_URL") and
+            has("PEARL_ESCROW_XPUB") and
+            has("PEARL_INDEXER_WATCH_URL") and
+            (has("OTC_ADMIN_API_TOKENS") or has("OTC_ADMIN_API_TOKEN")) and
+            (
+              has("OTC_ALERT_WEBHOOK_URL") or
+              (has("OTC_ALERT_TELEGRAM_BOT_TOKEN") and has("OTC_ALERT_TELEGRAM_CHAT_ID"))
+            )
+          ' >/dev/null
+
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
