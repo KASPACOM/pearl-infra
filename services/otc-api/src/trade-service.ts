@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
-import { isAddress } from 'ethers';
+import { getAddress, isAddress, verifyMessage } from 'ethers';
 
 import {
   assertTradeTransition,
@@ -14,6 +14,7 @@ import {
   createPearlSignerProofMessage,
   type PearlReleaseSigningMode,
   type PearlSignerProofRole,
+  normalizeProofPubkey,
   type TradeEvent,
   type TradeState,
   tradeStateIsTerminal,
@@ -34,16 +35,24 @@ import type {
   AdminTradeQuery,
   AdminTradeSummary,
   CreateQuoteRequest,
+  CreateWalletChallengeRequest,
+  CreateWalletChallengeResponse,
   MarkManualReviewRequest,
   MarkManualReviewOptions,
   OtcApiConfig,
+  OtcUser,
+  OtcUserWalletChallenge,
+  OtcUserProfile,
   OtcSideEffect,
   PearlReleaseSigningIntent,
   PrepareUsdcCreateTradeRequest,
   PublicTradeProof,
+  ReferralCodeLookup,
+  RegisterUserRequest,
   ReplaySupportAlertRequest,
   RecordSupportAlertRequest,
   RecordSideEffectRequest,
+  UpdateUserProfileRequest,
   UsdcCreateTradeIntent,
   UsdcEscrowVerification,
 } from './types.js';
@@ -124,6 +133,183 @@ export class OtcTradeService {
     this.pearlEscrowWatchRegistrar = pearlEscrowWatchRegistrar;
     this.pearlProofReader = pearlProofReader;
     this.supportAlertNotifier = supportAlertNotifier;
+  }
+
+  async createWalletChallenge(request: CreateWalletChallengeRequest): Promise<CreateWalletChallengeResponse> {
+    validateCreateWalletChallengeRequest(request, this.config.pearlNetwork);
+    const createdAt = this.now();
+    const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000).toISOString();
+    const nonce = randomBytes(16).toString('hex');
+    const address = normalizeWalletAddress(request.walletType, request.address);
+    const challengeId = createStableId('wallet_challenge', [
+      request.walletType,
+      request.network.toLowerCase(),
+      address.toLowerCase(),
+      nonce,
+    ]);
+    const message = createUserWalletChallengeMessage({
+      challengeId,
+      walletType: request.walletType,
+      network: request.network,
+      address,
+      nonce,
+      expiresAt,
+    });
+    await this.repository.saveWalletChallenge({
+      challengeId,
+      walletType: request.walletType,
+      network: request.network,
+      address,
+      message,
+      nonce,
+      expiresAt,
+      createdAt: createdAt.toISOString(),
+    });
+    return { challengeId, message, expiresAt };
+  }
+
+  async registerUser(request: RegisterUserRequest): Promise<OtcUser> {
+    const challenge = await this.assertUsableWalletChallenge(request.challengeId);
+    verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
+    const now = this.now().toISOString();
+    const existing = await this.repository.findUserByWallet(challenge.walletType, challenge.network, challenge.address);
+    if (existing) {
+      await this.assertConsumeWalletChallenge(challenge.challengeId, now);
+      return existing;
+    }
+
+    const referredByCode = extractReferralCode(request);
+    const userId = createRandomId('user');
+    const referredBy = referredByCode
+      ? await this.resolveReferralAttribution(userId, referredByCode, request.sourceUrl, now)
+      : undefined;
+    await this.assertConsumeWalletChallenge(challenge.challengeId, now);
+    const user = await this.saveUserWithFreshReferralCode({
+      userId,
+      challenge,
+      request,
+      now,
+      referredBy,
+    });
+    return user;
+  }
+
+  async updateUserProfile(userId: string, request: UpdateUserProfileRequest): Promise<OtcUserProfile> {
+    assertNonEmptyBounded(userId, 'userId', 80);
+    const user = await this.repository.findUserById(userId);
+    if (!user) {
+      throw new Error(`user not found: ${userId}`);
+    }
+    const challenge = await this.assertUsableWalletChallenge(request.challengeId);
+    if (
+      challenge.walletType !== user.wallet.walletType ||
+      challenge.network !== user.wallet.network ||
+      challenge.address.toLowerCase() !== user.wallet.address.toLowerCase()
+    ) {
+      throw new Error('wallet challenge does not belong to user');
+    }
+    verifyWalletChallenge(challenge, request.signature, request.publicKeyHex);
+    const updatedAt = this.now().toISOString();
+    await this.assertConsumeWalletChallenge(challenge.challengeId, updatedAt);
+    const profile = await this.repository.updateUserProfile(userId, {
+      ...(request.email === undefined ? {} : { email: normalizeEmail(request.email) }),
+      ...(request.notificationEmailEnabled === undefined
+        ? {}
+        : { notificationEmailEnabled: request.notificationEmailEnabled }),
+      updatedAt,
+    });
+    return profile;
+  }
+
+  async resolveReferralCode(referralCode: string): Promise<ReferralCodeLookup> {
+    const normalized = normalizeReferralCode(referralCode);
+    const lookup = await this.repository.findReferralCode(normalized);
+    if (!lookup || lookup.status !== 'active') {
+      throw new Error(`referral code not found: ${normalized}`);
+    }
+    return lookup;
+  }
+
+  private async assertUsableWalletChallenge(challengeId: string) {
+    assertNonEmptyBounded(challengeId, 'challengeId', 80);
+    const challenge = await this.repository.findWalletChallenge(challengeId);
+    if (!challenge) {
+      throw new Error(`wallet challenge not found: ${challengeId}`);
+    }
+    if (challenge.consumedAt) {
+      throw new Error('wallet challenge already used');
+    }
+    if (new Date(challenge.expiresAt).getTime() <= this.now().getTime()) {
+      throw new Error('wallet challenge expired');
+    }
+    return challenge;
+  }
+
+  private async assertConsumeWalletChallenge(challengeId: string, consumedAt: string): Promise<void> {
+    if (!(await this.repository.consumeWalletChallenge(challengeId, consumedAt))) {
+      throw new Error('wallet challenge already used');
+    }
+  }
+
+  private async resolveReferralAttribution(
+    newUserId: string,
+    referralCode: string,
+    sourceUrl: string | undefined,
+    attributedAt: string,
+  ) {
+    const lookup = await this.resolveReferralCode(referralCode);
+    if (lookup.ownerUserId === newUserId) {
+      throw new Error('users cannot refer themselves');
+    }
+    return {
+      referralCode: lookup.referralCode,
+      referrerUserId: lookup.ownerUserId,
+      ...(sourceUrl ? { sourceUrl: normalizeSourceUrl(sourceUrl) } : {}),
+      attributedAt,
+    };
+  }
+
+  private async saveUserWithFreshReferralCode(input: {
+    userId: string;
+    challenge: OtcUserWalletChallenge;
+    request: RegisterUserRequest;
+    now: string;
+    referredBy?: {
+      referralCode: string;
+      referrerUserId: string;
+      sourceUrl?: string;
+      attributedAt: string;
+    };
+  }): Promise<OtcUser> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const referralCode = createRandomReferralCode();
+      try {
+        return await this.repository.saveUser({
+          userId: input.userId,
+          referralCode,
+          wallet: {
+            userId: input.userId,
+            walletType: input.challenge.walletType,
+            network: input.challenge.network,
+            address: input.challenge.address,
+            ...(input.request.publicKeyHex ? { publicKeyHex: normalizeProofPubkeyForUser(input.request.publicKeyHex) } : {}),
+            verifiedAt: input.now,
+          },
+          profile: {
+            userId: input.userId,
+            ...(input.request.email ? { email: normalizeEmail(input.request.email) } : {}),
+            notificationEmailEnabled: input.request.notificationEmailEnabled ?? false,
+          },
+          ...(input.referredBy ? { referredBy: input.referredBy } : {}),
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'ReferralCodeCollisionError') {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error('failed to allocate unique referral code');
   }
 
   async createQuote(request: CreateQuoteRequest): Promise<OtcQuote> {
@@ -1002,6 +1188,21 @@ function isAlertSeverity(value: unknown): value is 'info' | 'warning' | 'critica
   return value === 'info' || value === 'warning' || value === 'critical';
 }
 
+function validateCreateWalletChallengeRequest(
+  request: CreateWalletChallengeRequest,
+  pearlNetwork: OtcApiConfig['pearlNetwork'],
+): void {
+  if (request.walletType !== 'evm' && request.walletType !== 'pearl') {
+    throw new Error('walletType must be evm or pearl');
+  }
+  assertNonEmptyBounded(request.network, 'network', 40);
+  if (request.walletType === 'evm') {
+    assertEvmAddress(request.address, 'address');
+  } else {
+    assertLikelyPearlAddress(request.address, 'address', pearlNetwork);
+  }
+}
+
 function validateCreateQuoteRequest(request: CreateQuoteRequest, pearlNetwork: OtcApiConfig['pearlNetwork']): void {
   assertOneOf(request.side, 'side', ['buy_prl', 'sell_prl']);
   assertOneOf(request.settlementAsset, 'settlementAsset', ['USDC']);
@@ -1083,6 +1284,23 @@ function verifyPearlSignerProof(input: VerifyPearlSignerProofInput): boolean {
   const signature = parseSchnorrSignature(input.signatureHex);
   const messageHash = createPearlSignerProofHash(input);
   return ecc.verifySchnorr(messageHash, pubkey, signature);
+}
+
+function verifyWalletChallenge(
+  challenge: OtcUserWalletChallenge,
+  signature: string,
+  publicKeyHex: string | undefined,
+): void {
+  if (challenge.walletType === 'evm') {
+    const recovered = getAddress(verifyMessage(challenge.message, signature));
+    if (recovered !== getAddress(challenge.address)) {
+      throw new Error('EVM wallet challenge signature does not match address');
+    }
+    return;
+  }
+
+  void publicKeyHex;
+  throw new Error('Pearl wallet user registration is blocked until address-to-pubkey ownership verification is implemented');
 }
 
 function createPearlSignerProofHash(input: Omit<VerifyPearlSignerProofInput, 'signatureHex'>): Uint8Array {
@@ -1213,6 +1431,89 @@ function calculateImpliedPrice(trade: OtcTrade): string {
 function createStableId(prefix: string, parts: readonly string[]): string {
   const hash = createHash('sha256').update(parts.join('\0')).digest('hex').slice(0, 24);
   return `${prefix}_${hash}`;
+}
+
+function createRandomId(prefix: string): string {
+  return `${prefix}_${randomBytes(16).toString('hex')}`;
+}
+
+function createRandomReferralCode(): string {
+  return randomBytes(8)
+    .toString('base64url')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 10)
+    .toUpperCase();
+}
+
+function createUserWalletChallengeMessage(input: {
+  challengeId: string;
+  walletType: string;
+  network: string;
+  address: string;
+  nonce: string;
+  expiresAt: string;
+}): string {
+  return [
+    'Pearl OTC user wallet v1',
+    `challenge_id=${input.challengeId}`,
+    `wallet_type=${input.walletType}`,
+    `network=${input.network}`,
+    `address=${input.address}`,
+    `nonce=${input.nonce}`,
+    `expires_at=${input.expiresAt}`,
+  ].join('\n');
+}
+
+function normalizeWalletAddress(walletType: string, address: string): string {
+  return walletType === 'evm' ? getAddress(address) : address.trim();
+}
+
+function extractReferralCode(request: Pick<RegisterUserRequest, 'referralCode' | 'sourceUrl'>): string | undefined {
+  if (request.referralCode) {
+    return normalizeReferralCode(request.referralCode);
+  }
+  if (!request.sourceUrl) {
+    return undefined;
+  }
+  const sourceUrl = normalizeSourceUrl(request.sourceUrl);
+  const ref = new URL(sourceUrl).searchParams.get('ref');
+  return ref ? normalizeReferralCode(ref) : undefined;
+}
+
+function normalizeReferralCode(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{3,32}$/.test(normalized)) {
+    throw new Error('referralCode must be 3-32 characters using letters, numbers, underscore, or dash');
+  }
+  return normalized;
+}
+
+function normalizeEmail(value: string): string {
+  assertNonEmptyBounded(value, 'email', 254);
+  const normalized = value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error('email must be a valid email address');
+  }
+  return normalized;
+}
+
+function normalizeSourceUrl(value: string): string {
+  assertNonEmptyBounded(value, 'sourceUrl', 2048);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('sourceUrl must be a valid URL');
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('sourceUrl must be an http or https URL');
+  }
+  return url.toString();
+}
+
+function normalizeProofPubkeyForUser(value: string): string {
+  assertLikelyPearlPubkey(value, 'publicKeyHex');
+  return normalizeProofPubkey(value);
 }
 
 function createPayloadHash(kind: string, payload: unknown): string {

@@ -1,7 +1,15 @@
 import type { OtcQuote, OtcTrade, TradeEvent } from '@kaspacom/pearl-sdk';
 
-import type { PgTransactionalClient } from './postgres.js';
-import type { OtcSideEffect } from './types.js';
+import type { PgQueryClient, PgTransactionalClient } from './postgres.js';
+import type {
+  OtcReferralAttribution,
+  OtcSideEffect,
+  OtcUser,
+  OtcUserProfile,
+  OtcUserWallet,
+  OtcUserWalletChallenge,
+  ReferralCodeLookup,
+} from './types.js';
 
 export interface QuoteIdempotencyRecord {
   quote: OtcQuote;
@@ -56,6 +64,40 @@ export interface OtcRepository {
   saveSideEffect(sideEffect: OtcSideEffect): Promise<{ sideEffect: OtcSideEffect; created: boolean }>;
   findSideEffectByIdempotencyKey(idempotencyKey: string): Promise<OtcSideEffect | undefined>;
   listSideEffects(tradeId: string): Promise<OtcSideEffect[]>;
+  saveWalletChallenge(challenge: OtcUserWalletChallenge): Promise<void>;
+  findWalletChallenge(challengeId: string): Promise<OtcUserWalletChallenge | undefined>;
+  consumeWalletChallenge(challengeId: string, consumedAt: string): Promise<boolean>;
+  findUserByWallet(walletType: OtcUserWallet['walletType'], network: string, address: string): Promise<OtcUser | undefined>;
+  findUserById(userId: string): Promise<OtcUser | undefined>;
+  saveUser(input: SaveUserInput): Promise<OtcUser>;
+  updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile>;
+  findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined>;
+}
+
+export class ReferralCodeCollisionError extends Error {
+  constructor(referralCode: string) {
+    super(`referral code already exists: ${referralCode}`);
+    this.name = 'ReferralCodeCollisionError';
+  }
+}
+
+export interface SaveUserInput {
+  userId: string;
+  referralCode: string;
+  wallet: Omit<OtcUserWallet, 'createdAt'>;
+  profile: Omit<OtcUserProfile, 'createdAt' | 'updatedAt'>;
+  referredBy?: {
+    referralCode: string;
+    referrerUserId: string;
+    sourceUrl?: string;
+    attributedAt: string;
+  };
+}
+
+export interface UpdateUserProfileInput {
+  email?: string;
+  notificationEmailEnabled?: boolean;
+  updatedAt: string;
 }
 
 export class InMemoryOtcRepository implements OtcRepository {
@@ -70,6 +112,10 @@ export class InMemoryOtcRepository implements OtcRepository {
   private readonly pearlEscrowAllocationByDerivation = new Map<string, string>();
   private readonly events = new Map<string, TradeEvent[]>();
   private readonly sideEffects = new Map<string, OtcSideEffect>();
+  private readonly walletChallenges = new Map<string, OtcUserWalletChallenge>();
+  private readonly users = new Map<string, OtcUser>();
+  private readonly userByWallet = new Map<string, string>();
+  private readonly referralByCode = new Map<string, ReferralCodeLookup>();
 
   async saveQuote(quote: OtcQuote, clientRequestId: string, requestHash?: string): Promise<void> {
     this.quotes.set(quote.quoteId, quote);
@@ -191,6 +237,97 @@ export class InMemoryOtcRepository implements OtcRepository {
       .filter((sideEffect) => sideEffect.tradeId === tradeId)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
+
+  async saveWalletChallenge(challenge: OtcUserWalletChallenge): Promise<void> {
+    this.walletChallenges.set(challenge.challengeId, challenge);
+  }
+
+  async findWalletChallenge(challengeId: string): Promise<OtcUserWalletChallenge | undefined> {
+    return this.walletChallenges.get(challengeId);
+  }
+
+  async consumeWalletChallenge(challengeId: string, consumedAt: string): Promise<boolean> {
+    const challenge = this.walletChallenges.get(challengeId);
+    if (!challenge || challenge.consumedAt) return false;
+    this.walletChallenges.set(challengeId, { ...challenge, consumedAt });
+    return true;
+  }
+
+  async findUserByWallet(
+    walletType: OtcUserWallet['walletType'],
+    network: string,
+    address: string,
+  ): Promise<OtcUser | undefined> {
+    const userId = this.userByWallet.get(formatWalletKey(walletType, network, address));
+    return userId ? this.users.get(userId) : undefined;
+  }
+
+  async findUserById(userId: string): Promise<OtcUser | undefined> {
+    return this.users.get(userId);
+  }
+
+  async saveUser(input: SaveUserInput): Promise<OtcUser> {
+    const existing = await this.findUserByWallet(input.wallet.walletType, input.wallet.network, input.wallet.address);
+    if (existing) {
+      return existing;
+    }
+    const existingReferralCode = this.referralByCode.get(input.referralCode);
+    if (existingReferralCode && existingReferralCode.ownerUserId !== input.userId) {
+      throw new ReferralCodeCollisionError(input.referralCode);
+    }
+    const createdAt = input.wallet.verifiedAt;
+    const user: OtcUser = {
+      userId: input.userId,
+      referralCode: input.referralCode,
+      wallet: { ...input.wallet, createdAt },
+      profile: {
+        ...input.profile,
+        createdAt,
+        updatedAt: createdAt,
+      },
+      ...(input.referredBy
+        ? {
+            referredBy: {
+              referredUserId: input.userId,
+              referrerUserId: input.referredBy.referrerUserId,
+              referralCode: input.referredBy.referralCode,
+              ...(input.referredBy.sourceUrl ? { sourceUrl: input.referredBy.sourceUrl } : {}),
+              attributedAt: input.referredBy.attributedAt,
+            },
+          }
+        : {}),
+      createdAt,
+      updatedAt: createdAt,
+    };
+    this.users.set(user.userId, user);
+    this.userByWallet.set(formatWalletKey(input.wallet.walletType, input.wallet.network, input.wallet.address), user.userId);
+    this.referralByCode.set(input.referralCode, {
+      referralCode: input.referralCode,
+      ownerUserId: user.userId,
+      status: 'active',
+      createdAt,
+    });
+    return user;
+  }
+
+  async updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error(`user not found: ${userId}`);
+    const updatedProfile: OtcUserProfile = {
+      ...user.profile,
+      ...(profile.email === undefined ? {} : { email: profile.email }),
+      ...(profile.notificationEmailEnabled === undefined
+        ? {}
+        : { notificationEmailEnabled: profile.notificationEmailEnabled }),
+      updatedAt: profile.updatedAt,
+    };
+    this.users.set(userId, { ...user, profile: updatedProfile, updatedAt: profile.updatedAt });
+    return updatedProfile;
+  }
+
+  async findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined> {
+    return this.referralByCode.get(referralCode);
+  }
 }
 
 type QuoteRow = Record<string, unknown> & {
@@ -234,6 +371,48 @@ type PearlEscrowAllocationRow = Record<string, unknown> & {
   escrow_address: string;
   internal_pubkey_hex: string;
   taproot_output_script_hex: string;
+  created_at: Date | string;
+}
+
+type WalletChallengeRow = Record<string, unknown> & {
+  challenge_id: string;
+  wallet_type: string;
+  network: string;
+  address: string;
+  message: string;
+  nonce: string;
+  expires_at: Date | string;
+  consumed_at: Date | string | null;
+  created_at: Date | string;
+}
+
+type UserRow = Record<string, unknown> & {
+  user_id: string;
+  referral_code: string;
+  status?: string;
+  user_created_at: Date | string;
+  user_updated_at: Date | string;
+  wallet_type: string;
+  network: string;
+  address: string;
+  public_key_hex: string | null;
+  verified_at: Date | string;
+  wallet_created_at: Date | string;
+  email: string | null;
+  email_verified_at: Date | string | null;
+  notification_email_enabled: boolean;
+  profile_created_at: Date | string;
+  profile_updated_at: Date | string;
+  referrer_user_id: string | null;
+  referred_by_code: string | null;
+  source_url: string | null;
+  attributed_at: Date | string | null;
+}
+
+type ReferralCodeRow = Record<string, unknown> & {
+  referral_code: string;
+  owner_user_id: string;
+  status: 'active' | 'disabled';
   created_at: Date | string;
 }
 
@@ -500,6 +679,220 @@ export class PgOtcRepository implements OtcRepository {
     );
     return result.rows.map(rowToSideEffect);
   }
+
+  async saveWalletChallenge(challenge: OtcUserWalletChallenge): Promise<void> {
+    await this.client.query(
+      `INSERT INTO otc_user_wallet_challenges (
+         challenge_id, wallet_type, network, address, message, nonce, expires_at, consumed_at, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        challenge.challengeId,
+        challenge.walletType,
+        challenge.network,
+        challenge.address,
+        challenge.message,
+        challenge.nonce,
+        challenge.expiresAt,
+        challenge.consumedAt ?? null,
+        challenge.createdAt,
+      ],
+    );
+  }
+
+  async findWalletChallenge(challengeId: string): Promise<OtcUserWalletChallenge | undefined> {
+    const result = await this.client.query<WalletChallengeRow>(
+      `SELECT challenge_id, wallet_type, network, address, message, nonce, expires_at, consumed_at, created_at
+         FROM otc_user_wallet_challenges
+        WHERE challenge_id = $1`,
+      [challengeId],
+    );
+    return result.rows[0] ? rowToWalletChallenge(result.rows[0]) : undefined;
+  }
+
+  async consumeWalletChallenge(challengeId: string, consumedAt: string): Promise<boolean> {
+    const result = await this.client.query(
+      `UPDATE otc_user_wallet_challenges
+          SET consumed_at = $2
+        WHERE challenge_id = $1
+          AND consumed_at IS NULL`,
+      [challengeId, consumedAt],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async findUserByWallet(
+    walletType: OtcUserWallet['walletType'],
+    network: string,
+    address: string,
+  ): Promise<OtcUser | undefined> {
+    const result = await this.client.query<UserRow>(USER_SELECT_BY_WALLET_SQL, [walletType, network, address]);
+    return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+  }
+
+  async findUserById(userId: string): Promise<OtcUser | undefined> {
+    const result = await this.client.query<UserRow>(USER_SELECT_BY_ID_SQL, [userId]);
+    return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+  }
+
+  async saveUser(input: SaveUserInput): Promise<OtcUser> {
+    return this.client.withTransaction(async (tx) => {
+      const existing = await findUserByWalletWithClient(tx, input.wallet.walletType, input.wallet.network, input.wallet.address);
+      if (existing) {
+        return existing;
+      }
+
+      await tx.query(
+        `INSERT INTO otc_users (user_id, created_at, updated_at)
+         VALUES ($1, $2, $2)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [input.userId, input.wallet.verifiedAt],
+      );
+      await tx.query(
+        `INSERT INTO otc_user_wallets (
+           user_id, wallet_type, network, address, public_key_hex, verified_at, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $6)
+         ON CONFLICT (wallet_type, network, address) DO NOTHING`,
+        [
+          input.userId,
+          input.wallet.walletType,
+          input.wallet.network,
+          input.wallet.address,
+          input.wallet.publicKeyHex ?? null,
+          input.wallet.verifiedAt,
+        ],
+      );
+      await tx.query(
+        `INSERT INTO otc_user_profiles (
+           user_id, email, notification_email_enabled, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $4)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [
+          input.userId,
+          input.profile.email ?? null,
+          input.profile.notificationEmailEnabled,
+          input.wallet.verifiedAt,
+        ],
+      );
+      await tx.query(
+        `INSERT INTO otc_referral_codes (referral_code, owner_user_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $3)
+         ON CONFLICT (referral_code) DO NOTHING`,
+        [input.referralCode, input.userId, input.wallet.verifiedAt],
+      );
+      const referralCodeOwner = await tx.query<ReferralCodeRow>(
+        `SELECT referral_code, owner_user_id, status, created_at
+           FROM otc_referral_codes
+          WHERE referral_code = $1`,
+        [input.referralCode],
+      );
+      if (referralCodeOwner.rows[0]?.owner_user_id !== input.userId) {
+        throw new ReferralCodeCollisionError(input.referralCode);
+      }
+      if (input.referredBy && input.referredBy.referrerUserId !== input.userId) {
+        await tx.query(
+          `INSERT INTO otc_referral_attributions (
+             referred_user_id, referrer_user_id, referral_code, source_url, attributed_at
+           ) VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (referred_user_id) DO NOTHING`,
+          [
+            input.userId,
+            input.referredBy.referrerUserId,
+            input.referredBy.referralCode,
+            input.referredBy.sourceUrl ?? null,
+            input.referredBy.attributedAt,
+          ],
+        );
+      }
+
+      const saved = await findUserByIdWithClient(tx, input.userId);
+      if (!saved) throw new Error(`user insert failed: ${input.userId}`);
+      return saved;
+    });
+  }
+
+  async updateUserProfile(userId: string, profile: UpdateUserProfileInput): Promise<OtcUserProfile> {
+    const result = await this.client.query<UserRow>(
+      `UPDATE otc_user_profiles
+          SET email = COALESCE($2, email),
+              notification_email_enabled = COALESCE($3, notification_email_enabled),
+              updated_at = $4
+        WHERE user_id = $1
+        RETURNING user_id, email, email_verified_at, notification_email_enabled,
+                  created_at AS profile_created_at, updated_at AS profile_updated_at`,
+      [userId, profile.email ?? null, profile.notificationEmailEnabled ?? null, profile.updatedAt],
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error(`user not found: ${userId}`);
+    return {
+      userId: row.user_id,
+      ...(row.email ? { email: row.email } : {}),
+      ...(row.email_verified_at ? { emailVerifiedAt: formatPgDate(row.email_verified_at) } : {}),
+      notificationEmailEnabled: row.notification_email_enabled,
+      createdAt: formatPgDate(row.profile_created_at),
+      updatedAt: formatPgDate(row.profile_updated_at),
+    };
+  }
+
+  async findReferralCode(referralCode: string): Promise<ReferralCodeLookup | undefined> {
+    const result = await this.client.query<ReferralCodeRow>(
+      `SELECT referral_code, owner_user_id, status, created_at
+         FROM otc_referral_codes
+        WHERE referral_code = $1`,
+      [referralCode],
+    );
+    return result.rows[0] ? rowToReferralCode(result.rows[0]) : undefined;
+  }
+}
+
+const USER_SELECT_FIELDS = `
+  SELECT u.user_id,
+         rc.referral_code,
+         u.created_at AS user_created_at,
+         u.updated_at AS user_updated_at,
+         w.wallet_type,
+         w.network,
+         w.address,
+         w.public_key_hex,
+         w.verified_at,
+         w.created_at AS wallet_created_at,
+         p.email,
+         p.email_verified_at,
+         p.notification_email_enabled,
+         p.created_at AS profile_created_at,
+         p.updated_at AS profile_updated_at,
+         attr.referrer_user_id,
+         attr.referral_code AS referred_by_code,
+         attr.source_url,
+         attr.attributed_at
+    FROM otc_users u
+    JOIN otc_user_wallets w ON w.user_id = u.user_id
+    JOIN otc_user_profiles p ON p.user_id = u.user_id
+    JOIN otc_referral_codes rc ON rc.owner_user_id = u.user_id
+    LEFT JOIN otc_referral_attributions attr ON attr.referred_user_id = u.user_id`;
+
+const USER_SELECT_BY_WALLET_SQL = `${USER_SELECT_FIELDS}
+   WHERE w.wallet_type = $1 AND w.network = $2 AND w.address = $3
+   ORDER BY w.created_at ASC
+   LIMIT 1`;
+
+const USER_SELECT_BY_ID_SQL = `${USER_SELECT_FIELDS}
+   WHERE u.user_id = $1
+   ORDER BY w.created_at ASC
+   LIMIT 1`;
+
+async function findUserByWalletWithClient(
+  client: PgQueryClient,
+  walletType: OtcUserWallet['walletType'],
+  network: string,
+  address: string,
+): Promise<OtcUser | undefined> {
+  const result = await client.query<UserRow>(USER_SELECT_BY_WALLET_SQL, [walletType, network, address]);
+  return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
+}
+
+async function findUserByIdWithClient(client: PgQueryClient, userId: string): Promise<OtcUser | undefined> {
+  const result = await client.query<UserRow>(USER_SELECT_BY_ID_SQL, [userId]);
+  return result.rows[0] ? rowToUser(result.rows[0]) : undefined;
 }
 
 function rowToSideEffect(row: SideEffectRow): OtcSideEffect {
@@ -522,6 +915,66 @@ function rowToSideEffect(row: SideEffectRow): OtcSideEffect {
   };
 }
 
+function rowToWalletChallenge(row: WalletChallengeRow): OtcUserWalletChallenge {
+  return {
+    challengeId: row.challenge_id,
+    walletType: row.wallet_type as OtcUserWalletChallenge['walletType'],
+    network: row.network,
+    address: row.address,
+    message: row.message,
+    nonce: row.nonce,
+    expiresAt: formatPgDate(row.expires_at),
+    ...(row.consumed_at ? { consumedAt: formatPgDate(row.consumed_at) } : {}),
+    createdAt: formatPgDate(row.created_at),
+  };
+}
+
+function rowToUser(row: UserRow): OtcUser {
+  return {
+    userId: row.user_id,
+    referralCode: row.referral_code,
+    wallet: {
+      userId: row.user_id,
+      walletType: row.wallet_type as OtcUserWallet['walletType'],
+      network: row.network,
+      address: row.address,
+      ...(row.public_key_hex ? { publicKeyHex: row.public_key_hex } : {}),
+      verifiedAt: formatPgDate(row.verified_at),
+      createdAt: formatPgDate(row.wallet_created_at),
+    },
+    profile: {
+      userId: row.user_id,
+      ...(row.email ? { email: row.email } : {}),
+      ...(row.email_verified_at ? { emailVerifiedAt: formatPgDate(row.email_verified_at) } : {}),
+      notificationEmailEnabled: row.notification_email_enabled,
+      createdAt: formatPgDate(row.profile_created_at),
+      updatedAt: formatPgDate(row.profile_updated_at),
+    },
+    ...(row.referrer_user_id && row.referred_by_code && row.attributed_at
+      ? {
+          referredBy: {
+            referredUserId: row.user_id,
+            referrerUserId: row.referrer_user_id,
+            referralCode: row.referred_by_code,
+            ...(row.source_url ? { sourceUrl: row.source_url } : {}),
+            attributedAt: formatPgDate(row.attributed_at),
+          },
+        }
+      : {}),
+    createdAt: formatPgDate(row.user_created_at),
+    updatedAt: formatPgDate(row.user_updated_at),
+  };
+}
+
+function rowToReferralCode(row: ReferralCodeRow): ReferralCodeLookup {
+  return {
+    referralCode: row.referral_code,
+    ownerUserId: row.owner_user_id,
+    status: row.status,
+    createdAt: formatPgDate(row.created_at),
+  };
+}
+
 function rowToPearlEscrowAllocation(row: PearlEscrowAllocationRow): PearlEscrowAllocation {
   return {
     tradeId: row.trade_id,
@@ -538,6 +991,14 @@ function rowToPearlEscrowAllocation(row: PearlEscrowAllocationRow): PearlEscrowA
 
 function formatPearlEscrowDerivationKey(allocation: Pick<PearlEscrowAllocationInput, 'allocatorKey' | 'derivationPrefix' | 'derivationIndex'>): string {
   return `${allocation.allocatorKey}:${allocation.derivationPrefix}:${allocation.derivationIndex}`;
+}
+
+function formatWalletKey(walletType: OtcUserWallet['walletType'], network: string, address: string): string {
+  return `${walletType}:${network.toLowerCase()}:${address.toLowerCase()}`;
+}
+
+function formatPgDate(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 function isPgUniqueViolation(error: unknown, constraint: string): boolean {

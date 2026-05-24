@@ -219,6 +219,76 @@ export interface PublicSupportAlertRequest {
   metadata?: Record<string, unknown>;
 }
 
+export type OtcUserWalletType = 'evm' | 'pearl';
+
+export interface CreateWalletChallengeRequest {
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+}
+
+export interface CreateWalletChallengeResponse {
+  challengeId: string;
+  message: string;
+  expiresAt: string;
+}
+
+export interface RegisterUserRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  referralCode?: string;
+  sourceUrl?: string;
+  email?: string;
+  notificationEmailEnabled?: boolean;
+}
+
+export interface UpdateUserProfileRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  email?: string;
+  notificationEmailEnabled?: boolean;
+}
+
+export interface OtcUser {
+  userId: string;
+  referralCode: string;
+  wallet: {
+    userId: string;
+    walletType: OtcUserWalletType;
+    network: string;
+    address: string;
+    publicKeyHex?: string;
+    verifiedAt: string;
+    createdAt: string;
+  };
+  profile: {
+    userId: string;
+    email?: string;
+    emailVerifiedAt?: string;
+    notificationEmailEnabled: boolean;
+    createdAt: string;
+    updatedAt: string;
+  };
+  referredBy?: {
+    referredUserId: string;
+    referrerUserId: string;
+    referralCode: string;
+    sourceUrl?: string;
+    attributedAt: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferralCodeLookup {
+  referralCode: string;
+  ownerUserId: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+}
+
 export interface RecordSideEffectRequest {
   idempotencyKey: string;
   effectType: OtcSideEffectType;
@@ -281,6 +351,22 @@ export class OtcApiClient {
 
   getPearlReleaseSigningIntent(tradeId: string): Promise<PearlReleaseSigningIntent> {
     return this.get(`/otc/trades/${encodeURIComponent(tradeId)}/pearl-release/intent`);
+  }
+
+  createWalletChallenge(request: CreateWalletChallengeRequest): Promise<CreateWalletChallengeResponse> {
+    return this.post('/otc/users/wallet-challenges', request);
+  }
+
+  registerUser(request: RegisterUserRequest): Promise<OtcUser> {
+    return this.post('/otc/users', request);
+  }
+
+  resolveReferralCode(referralCode: string): Promise<ReferralCodeLookup> {
+    return this.get(`/otc/users/referrals/${encodeURIComponent(referralCode)}`);
+  }
+
+  updateUserProfile(userId: string, request: UpdateUserProfileRequest): Promise<OtcUser['profile']> {
+    return this.post(`/otc/users/${encodeURIComponent(userId)}/profile`, request);
   }
 
   prepareUsdcCreateTrade(tradeId: string, request: PrepareUsdcCreateTradeRequest, adminToken?: string): Promise<UsdcCreateTradeIntent> {

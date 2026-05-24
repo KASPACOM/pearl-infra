@@ -82,6 +82,22 @@ export async function handleOtcHttpRequest(
     return { statusCode: 201, body: await service.createQuote(await readJsonBody(request)) };
   }
 
+  if (method === 'POST' && path === '/otc/users/wallet-challenges') {
+    return { statusCode: 201, body: await service.createWalletChallenge(await readJsonBody(request)) };
+  }
+
+  if (method === 'POST' && path === '/otc/users') {
+    return { statusCode: 201, body: await service.registerUser(await readJsonBody(request)) };
+  }
+
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[2] === 'referrals') {
+    return { statusCode: 200, body: await service.resolveReferralCode(parts[3]) };
+  }
+
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'otc' && parts[1] === 'users' && parts[3] === 'profile') {
+    return { statusCode: 200, body: await service.updateUserProfile(parts[2], await readJsonBody(request)) };
+  }
+
   if (method === 'GET' && parts.length === 3 && parts[0] === 'otc' && parts[1] === 'quotes') {
     return { statusCode: 200, body: await service.getQuote(parts[2]) };
   }
@@ -433,6 +449,9 @@ function mapError(error: unknown): JsonResponse {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('is required') || message.includes('is invalid')) {
+    return { statusCode: 400, body: { error: 'bad_request', message } };
+  }
+  if (message.includes('challenge') || message.includes('signature') || message.includes('blocked until')) {
     return { statusCode: 400, body: { error: 'bad_request', message } };
   }
   if (message.includes('deadline passed') || message.includes('terminal')) {

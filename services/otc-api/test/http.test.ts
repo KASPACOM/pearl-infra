@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AddressInfo } from 'node:net';
 
+import { Wallet } from 'ethers';
+
 import { createOtcHttpServer } from '../src/http.ts';
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import { OtcTradeService, type PearlEscrowAllocator } from '../src/trade-service.ts';
@@ -75,6 +77,118 @@ async function postJson(baseUrl: string, path: string, body: unknown, headers: R
     body: JSON.stringify(body),
   });
 }
+
+test('registers wallet-owned users with referral links and wallet-proved profile updates', async () => {
+  await withServer(async (baseUrl) => {
+    const referrerWallet = new Wallet('0x59c6995e998f97a5a0044966f094538c5a0d9f0c7f044cd588d0d20d0368a498');
+    const referredWallet = new Wallet('0x8b3a350cf5c34c9194ca6c0b3f8d6f841e252cb3f72b8636505f6dbcbf8f8531');
+
+    const referrerChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referrerWallet.address,
+    });
+    assert.equal(referrerChallengeResponse.status, 201);
+    const referrerChallenge = (await referrerChallengeResponse.json()) as {
+      challengeId: string;
+      message: string;
+      expiresAt: string;
+    };
+    assert.match(referrerChallenge.message, /Pearl OTC user wallet v1/);
+
+    const referrerResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: referrerChallenge.challengeId,
+      signature: await referrerWallet.signMessage(referrerChallenge.message),
+      email: 'REFERRER@EXAMPLE.COM',
+      notificationEmailEnabled: true,
+    });
+    assert.equal(referrerResponse.status, 201);
+    const referrer = (await referrerResponse.json()) as {
+      userId: string;
+      referralCode: string;
+      wallet: { address: string };
+      profile: { email: string; notificationEmailEnabled: boolean };
+    };
+    assert.equal(referrer.wallet.address, referrerWallet.address);
+    assert.equal(referrer.profile.email, 'referrer@example.com');
+    assert.equal(referrer.profile.notificationEmailEnabled, true);
+
+    const lookupResponse = await fetch(`${baseUrl}/otc/users/referrals/${referrer.referralCode.toLowerCase()}`);
+    assert.equal(lookupResponse.status, 200);
+    const lookup = (await lookupResponse.json()) as { referralCode: string; ownerUserId: string };
+    assert.equal(lookup.referralCode, referrer.referralCode);
+    assert.equal(lookup.ownerUserId, referrer.userId);
+
+    const referredChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const referredChallenge = (await referredChallengeResponse.json()) as { challengeId: string; message: string };
+    const referredResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: referredChallenge.challengeId,
+      signature: await referredWallet.signMessage(referredChallenge.message),
+      sourceUrl: `https://oysters.market/?ref=${referrer.referralCode}`,
+    });
+    assert.equal(referredResponse.status, 201);
+    const referred = (await referredResponse.json()) as {
+      referralCode: string;
+      userId: string;
+      referredBy: { referrerUserId: string; referralCode: string; sourceUrl: string };
+    };
+    assert.notEqual(referred.referralCode, referrer.referralCode);
+    assert.equal(referred.referredBy.referrerUserId, referrer.userId);
+    assert.equal(referred.referredBy.referralCode, referrer.referralCode);
+    assert.equal(referred.referredBy.sourceUrl, `https://oysters.market/?ref=${referrer.referralCode}`);
+
+    const replayResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: referredChallenge.challengeId,
+      signature: await referredWallet.signMessage(referredChallenge.message),
+      sourceUrl: `https://oysters.market/?ref=${referrer.referralCode}`,
+    });
+    assert.equal(replayResponse.status, 400);
+    const replayError = (await replayResponse.json()) as { message: string };
+    assert.match(replayError.message, /already used/);
+
+    const profileChallengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'evm',
+      network: 'base_sepolia',
+      address: referredWallet.address,
+    });
+    const profileChallenge = (await profileChallengeResponse.json()) as { challengeId: string; message: string };
+    const profileResponse = await postJson(baseUrl, `/otc/users/${referred.userId}/profile`, {
+      challengeId: profileChallenge.challengeId,
+      signature: await referredWallet.signMessage(profileChallenge.message),
+      email: 'TRADER@EXAMPLE.COM',
+      notificationEmailEnabled: true,
+    });
+    assert.equal(profileResponse.status, 200);
+    const profile = (await profileResponse.json()) as { email: string; notificationEmailEnabled: boolean };
+    assert.equal(profile.email, 'trader@example.com');
+    assert.equal(profile.notificationEmailEnabled, true);
+  });
+});
+
+test('fails closed for Pearl wallet users until address ownership verification exists', async () => {
+  await withServer(async (baseUrl) => {
+    const challengeResponse = await postJson(baseUrl, '/otc/users/wallet-challenges', {
+      walletType: 'pearl',
+      network: 'testnet2',
+      address: 'tprl1ppearlexample',
+    });
+    assert.equal(challengeResponse.status, 201);
+    const challenge = (await challengeResponse.json()) as { challengeId: string };
+
+    const registerResponse = await postJson(baseUrl, '/otc/users', {
+      challengeId: challenge.challengeId,
+      signature: '11'.repeat(64),
+      publicKeyHex: '22'.repeat(32),
+    });
+    assert.equal(registerResponse.status, 400);
+    const error = (await registerResponse.json()) as { message: string };
+    assert.match(error.message, /blocked until address-to-pubkey ownership verification/);
+  });
+});
 
 test('serves quote, accept, trade, and proof routes', async () => {
   await withServer(async (baseUrl) => {

@@ -1013,3 +1013,41 @@ blockers visible for planning. See
 - [ ] 11.14 Finalize the post-pilot federation/threshold-signing design:
   federation membership, relayer independence, custody boundary, quorum
   threshold, and threshold/FROST-style release authorization or equivalent.
+
+## 12. Oysters Market UX, Users, Referrals, and Notifications
+
+This section tracks the product layer above the settlement-grade quote/trade
+pipeline. Persistent data for these tasks lives in the OTC API Postgres
+database configured by `OTC_API_DATABASE_URL`; wallet ownership is proven
+through one-time wallet challenges before creating user/profile records.
+
+- [x] 12.1 Add persistent user, wallet, profile, referral-code,
+  referral-attribution, and wallet-challenge tables.
+  - 2026-05-24: Added `004_users_referrals.sql` for `otc_users`,
+    `otc_user_wallets`, `otc_user_profiles`, `otc_referral_codes`,
+    `otc_referral_attributions`, and `otc_user_wallet_challenges`.
+- [x] 12.2 Add API support for wallet-owned users and referral-link capture.
+  - 2026-05-24: Added wallet challenge creation, user registration,
+    `ref=` URL attribution, referral-code lookup, and wallet-proved profile
+    update routes. EVM challenges verify `personal_sign`-style signatures;
+    Pearl challenges verify BIP340 signatures against the submitted signer
+    public key.
+  - 2026-05-24 hardening pass: referral codes and user ids are random
+    non-derived identifiers, wallet challenges are consumed once, users retain
+    both their own referral code and their immutable referred-by attribution,
+    and Pearl wallet-as-user registration stays fail-closed until address to
+    public-key ownership verification is implemented.
+- [ ] 12.3 Add frontend referral capture so `?ref=<code>` is persisted through
+  quote/order/user registration and shown in the profile referral panel.
+- [ ] 12.4 Add user profile UX for linked wallets, optional email,
+  notification preferences, referral code, and referred-by status.
+- [ ] 12.5 Add order book persistence and public market APIs for active orders,
+  filters, sorting, recent trades, market stats, and volume counters.
+- [ ] 12.6 Add the public order book and market dashboard UI: best price,
+  size, active volume, total volume, total successful trades, and verified
+  user count.
+- [ ] 12.7 Add notification preferences and delivery jobs for trade status,
+  deadline warnings, new matching orders, price alerts, and referral events.
+- [ ] 12.8 Upgrade Telegram from operator alerts to user self-service:
+  wallet-linked account binding, `/orders`, `/trades`, `/trade <id>`,
+  price alerts, new-order alerts, and private trade-status notifications.

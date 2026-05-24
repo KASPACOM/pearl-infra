@@ -66,6 +66,56 @@ test('gets trade and proof routes', async () => {
   ]);
 });
 
+test('posts wallet user, referral, and profile routes', async () => {
+  const calls: Array<{ url: string; init: RequestInit; body?: unknown }> = [];
+  const client = new OtcApiClient({
+    baseUrl: 'https://api.example.test',
+    fetcher: async (url, init) => {
+      const text = typeof init?.body === 'string' ? init.body : undefined;
+      calls.push({ url: String(url), init: init ?? {}, ...(text ? { body: JSON.parse(text) } : {}) });
+      if (url.toString().endsWith('/wallet-challenges')) {
+        return jsonResponse({ challengeId: 'wallet_challenge_1', message: 'sign me', expiresAt: '2026-05-24T12:10:00.000Z' }, 201);
+      }
+      if (url.toString().includes('/referrals/')) {
+        return jsonResponse({ referralCode: 'ABC123', ownerUserId: 'user_referrer', status: 'active' });
+      }
+      if (url.toString().endsWith('/profile')) {
+        return jsonResponse({ userId: 'user_1', email: 'user@example.test', notificationEmailEnabled: true });
+      }
+      return jsonResponse({ userId: 'user_1', referralCode: 'ABC123', wallet: { address: '0xabc' }, profile: {} }, 201);
+    },
+  });
+
+  const challenge = await client.createWalletChallenge({
+    walletType: 'evm',
+    network: 'base_sepolia',
+    address: '0x1111111111111111111111111111111111111111',
+  });
+  const user = await client.registerUser({
+    challengeId: challenge.challengeId,
+    signature: '0xsig',
+    sourceUrl: 'https://oysters.market/?ref=ABC123',
+  });
+  const lookup = await client.resolveReferralCode('ABC123');
+  const profile = await client.updateUserProfile('user_1', {
+    challengeId: 'wallet_challenge_2',
+    signature: '0xsig2',
+    email: 'user@example.test',
+    notificationEmailEnabled: true,
+  });
+
+  assert.equal(challenge.challengeId, 'wallet_challenge_1');
+  assert.equal(user.userId, 'user_1');
+  assert.equal(lookup.ownerUserId, 'user_referrer');
+  assert.equal(profile.notificationEmailEnabled, true);
+  assert.equal(calls[0].url, 'https://api.example.test/otc/users/wallet-challenges');
+  assert.equal(calls[1].url, 'https://api.example.test/otc/users');
+  assert.equal(calls[2].url, 'https://api.example.test/otc/users/referrals/ABC123');
+  assert.equal(calls[3].url, 'https://api.example.test/otc/users/user_1/profile');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[2].init.method, 'GET');
+});
+
 test('gets escrow verification and side-effect routes', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const client = new OtcApiClient({

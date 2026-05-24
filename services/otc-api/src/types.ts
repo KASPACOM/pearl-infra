@@ -278,3 +278,91 @@ export interface UsdcEscrowVerification {
   };
   onChain?: UsdcEscrowOnChainTrade;
 }
+
+export type OtcUserWalletType = 'evm' | 'pearl';
+
+export interface OtcUserWalletChallenge {
+  challengeId: string;
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+  message: string;
+  nonce: string;
+  expiresAt: string;
+  consumedAt?: string;
+  createdAt: string;
+}
+
+export interface CreateWalletChallengeRequest {
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+}
+
+export interface CreateWalletChallengeResponse {
+  challengeId: string;
+  message: string;
+  expiresAt: string;
+}
+
+export interface OtcUserWallet {
+  userId: string;
+  walletType: OtcUserWalletType;
+  network: string;
+  address: string;
+  publicKeyHex?: string;
+  verifiedAt: string;
+  createdAt: string;
+}
+
+export interface OtcUserProfile {
+  userId: string;
+  email?: string;
+  emailVerifiedAt?: string;
+  notificationEmailEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OtcReferralAttribution {
+  referredUserId: string;
+  referrerUserId: string;
+  referralCode: string;
+  sourceUrl?: string;
+  attributedAt: string;
+}
+
+export interface OtcUser {
+  userId: string;
+  referralCode: string;
+  wallet: OtcUserWallet;
+  profile: OtcUserProfile;
+  referredBy?: OtcReferralAttribution;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegisterUserRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  referralCode?: string;
+  sourceUrl?: string;
+  email?: string;
+  notificationEmailEnabled?: boolean;
+}
+
+export interface UpdateUserProfileRequest {
+  challengeId: string;
+  signature: string;
+  publicKeyHex?: string;
+  email?: string;
+  notificationEmailEnabled?: boolean;
+}
+
+export interface ReferralCodeLookup {
+  referralCode: string;
+  ownerUserId: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+}
