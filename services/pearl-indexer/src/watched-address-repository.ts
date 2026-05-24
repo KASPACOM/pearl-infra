@@ -155,7 +155,19 @@ export class PgWatchedAddressRepository implements WatchedAddressRepository {
         if (diffs.length > 0) {
           throw new WatchConflictError(input.watchId, diffs);
         }
-        return { watch, created: false };
+        const updated = await tx.query<WatchedAddressRow>(
+          `UPDATE watched_addresses
+              SET metadata = metadata || $2::jsonb,
+                  updated_at = CASE
+                    WHEN metadata = metadata || $2::jsonb THEN updated_at
+                    ELSE now()
+                  END
+            WHERE watch_id = $1
+            RETURNING watch_id, purpose, network, address, required_confirmations, status,
+                      metadata, created_at, updated_at`,
+          [input.watchId, JSON.stringify(input.metadata ?? {})],
+        );
+        return { watch: rowToWatch(updated.rows[0]), created: false };
       }
 
       const inserted = await tx.query<WatchedAddressRow>(
@@ -400,7 +412,14 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
       if (diffs.length > 0) {
         throw new WatchConflictError(input.watchId, diffs);
       }
-      return { watch: existing, created: false };
+      const mergedMetadata = { ...existing.metadata, ...(input.metadata ?? {}) };
+      const updated: WatchedAddress = {
+        ...existing,
+        metadata: mergedMetadata,
+        updatedAt: shallowRecordEqual(existing.metadata, mergedMetadata) ? existing.updatedAt : new Date().toISOString(),
+      };
+      this.watches.set(input.watchId, updated);
+      return { watch: updated, created: false };
     }
     const now = new Date().toISOString();
     const watch: WatchedAddress = {
@@ -551,4 +570,10 @@ export class MemoryWatchedAddressRepository implements WatchedAddressRepository 
     }
     return detached;
   }
+}
+
+function shallowRecordEqual(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
 }

@@ -62,6 +62,8 @@ Current state after PR #81:
    - The OTC API now records durable `live_proof_evidence` side effects and
      exposes a public evidence route so the verifier can rerun from public
      routes after shutdown when the trade is persisted.
+   - OTC escrow watch registration now records distinct Pearl release/refund
+     destinations plus templates so fee-adjusted spends classify cleanly.
    - PR #106 plus the 2026-05-24 review hardening covers paste/submit signed
      release broadcast. Native browser Pearl wallet signing and first-class
      refund signing UX remain open.

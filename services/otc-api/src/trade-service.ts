@@ -2256,6 +2256,9 @@ function validateAcceptQuoteRequest(request: AcceptQuoteRequest, pearlNetwork: O
   assertNonEmptyBounded(request.clientRequestId, 'clientRequestId', 128);
   assertLikelyPearlAddress(request.buyerPearlAddress, 'buyerPearlAddress', pearlNetwork);
   assertLikelyPearlAddress(request.sellerPearlRefundAddress, 'sellerPearlRefundAddress', pearlNetwork);
+  if (request.buyerPearlAddress.trim().toLowerCase() === request.sellerPearlRefundAddress.trim().toLowerCase()) {
+    throw new Error('buyerPearlAddress and sellerPearlRefundAddress must be distinct');
+  }
   assertEvmAddress(request.buyerUsdcAddress, 'buyerUsdcAddress');
   assertEvmAddress(request.sellerUsdcReceiveAddress, 'sellerUsdcReceiveAddress');
   if (request.pearlEscrowMode && !['coordinator', 'multisig'].includes(request.pearlEscrowMode)) {

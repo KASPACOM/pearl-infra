@@ -103,9 +103,9 @@ persisted in Postgres or replayed through a live API instance.
 ## Remaining Productization
 
 The verifier and durable evidence route close the repeatable evidence harness
-gap for trades persisted in Postgres or another live API repository. The
-successful testnet2 run also exposed one remaining productization requirement:
+gap for trades persisted in Postgres or another live API repository.
 
-- include release/refund destination metadata in Pearl watches, preferably with
-  distinct release and refund addresses, so fee-adjusted spends classify as
-  `release` or `refund` instead of `unknown_spend`.
+OTC watch registration now includes `release_address`, `refund_address`,
+release/refund templates, and accept-time distinct destination validation. That
+keeps fee-adjusted spends classifiable as `release` or `refund` instead of
+falling to `unknown_spend`.
