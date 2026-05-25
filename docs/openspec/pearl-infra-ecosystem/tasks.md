@@ -203,16 +203,23 @@ Merged implementation checkpoints:
   proves it maps to exactly one mirrored exit, normalizes amount/address fields,
   rejects wrong-purpose reserve watches, and enforces duplicate release/exit
   guards in local repositories as well as Postgres.
-- Open PR #96 — wires and hardens the OTC dev multisig app flow:
+- PR #96 — wired and hardened the OTC dev multisig app flow:
   `p2tr_multisig` API allocation, trade-id-committed 2-of-3 Pearl Taproot
   escrows, buyer/seller signer-ownership proofs bound to quote terms, public
   release-intent templates, FE custody/release-signing choices, and dev env
   defaults for multisig custody.
-- Open PR #99 — binds public order execution to maker signer proofs:
+- PR #99 — bound public order execution to maker signer proofs:
   order creation now requires a maker BIP340 signer proof, order-priced quotes
   carry maker accept prefill, order-linked quote accept requires multisig and
   verifies maker/taker signer ownership, and order fill plus trade/event
   persistence is atomic in Postgres.
+- PRs #100-#116 — wired order-backed market fills, wallet/referral/user
+  management, notifications, admin user views, Pearl release broadcast, durable
+  live-proof replay, OTC spend-classification hardening, Oyster deployment smoke
+  evidence, and prod deployment guards.
+- PR #117 — fixed the OTC web browser load blocker by exporting the browser-safe
+  Pearl signer-proof helper, keeping `bitcoinjs`/`buffer` code out of the web
+  bundle, and closing two market wallet-linking/prefill loopholes.
 
 Review snapshot after PR #90 follow-up audit: PRs #71-#89 are merged into `dev`.
 The bridge service and PRL-side proof strategy now fail closed for the known
@@ -255,7 +262,7 @@ Current Pearl OTC code/workflow status:
   support/error alert form. PR #96 adds the public multisig custody and release
   intent UX while keeping direct release/refund execution controls absent.
 
-Current delegation queue after PR #99:
+Current delegation queue after PR #117:
 
 - Bridge proof/scanner owner: PR #88 closed the strategy loopholes in code and
   tests, and the 2026-05-20 simnet proof rerun passed with
@@ -279,20 +286,19 @@ Current delegation queue after PR #99:
   rehearsal, covering ownership transfer, operator/relayer permissions, cap
   semantics, pause behavior, replay protection, exit liabilities, deployment
   scripts, and verification evidence.
-- OTC evidence owner: productize the 2026-05-21 testnet2/Base Sepolia proof by
-  persisting live proof trades in Postgres or replaying them through a durable
-  API process. The remaining evidence blocker is repeatable runtime evidence
-  from public routes, not the one-off transaction proof itself.
-- OTC order execution owner: build the remaining `/market` taker UX that calls
-  `POST /otc/orders/:orderId/quotes`, carries the returned maker prefill into
-  quote accept, and shows order-linked open trades in the user dashboard.
-- Oyster/dev ops owner: after PR #96 merges, add the dev
-  `PEARL_ESCROW_ARBITER_PUBKEY` secret, switch the dev API allocator to
-  `p2tr_multisig`, deploy the new API/web images, and smoke the browser path
-  through quote, multisig accept with buyer/seller signer proofs, Pearl
-  funding/proof, Base create/deposit, and release intent. A settlement-worker
-  Kubernetes runtime is still missing and must be packaged/deployed before
-  unattended settlement can be claimed.
+- OTC evidence owner: keep the durable live-proof replay path healthy from
+  public routes after process restarts. The one-off 2026-05-21 transaction proof
+  is productized, but production evidence still waits on approved mainnet
+  funding/custody.
+- OTC order execution owner: the `/market` taker quote path is implemented.
+  Remaining market work is notification price-alert rules, Telegram
+  self-service, broader account-management policy, and live settlement-worker
+  coverage.
+- Oyster/dev ops owner: dev API/web are deployed and healthy on commit
+  `8ebda4c` after PR #117, and the live web bundle no longer contains
+  `Buffer.alloc`, `Buffer.allocUnsafe`, `bitcoinjs`, `bitcoinjs-lib`, or
+  `safe-buffer`. A settlement-worker Kubernetes runtime is still missing and
+  must be packaged/deployed before unattended settlement can be claimed.
 - Base ops owner: `9.6.7` is complete on Base Sepolia; keep `9.6.9` blocked
   until explicit Base mainnet approval.
 - Oyster/prod ops owner: finish `9.10.6.c`, `9.10.8.e`, `9.10.9.b`, and
@@ -796,6 +802,10 @@ Loophole tracker after PR #74:
   - 2026-05-18: `oyster-otc-web` and `oyster-otc-api` are both 1/1 Running;
     API uses Postgres persistence, Base Sepolia reader, Pearl watch registrar,
     and Telegram alert notifier.
+  - 2026-05-24: PR #117 deployed to dev on image tag `8ebda4c`; CI and Deploy
+    Oyster passed, `dev-oyster.kaspa.com/healthz` returned `ok`, and the live
+    asset `/assets/index-AmJuRweB.js` no longer contains `Buffer.alloc`,
+    `Buffer.allocUnsafe`, `bitcoinjs`, `bitcoinjs-lib`, or `safe-buffer`.
 - [ ] 9.10.8.d Package and deploy a dev settlement-worker runtime.
   - 2026-05-23: Verified the current dev namespace only has
     `oyster-otc-api` and `oyster-otc-web`; `services/settlement-worker` has
@@ -1071,6 +1081,8 @@ blockers visible for planning. See
   - 2026-05-24: dev release path is proven on commit `b5b5dbb` via Deploy
     Oyster, Argo image update, running dev pods, HTTPS health checks, persisted
     quote/accept, watch registration, admin search, and support-alert smoke.
+    The frontend load blocker found after this smoke is fixed and deployed on
+    dev commit `8ebda4c` by PR #117.
     Production remains blocked by missing `prod/oyster-otc-api` secret,
     unregistered prod Argo Application CRs, empty prod ECR images, unresolved
     prod DNS, and `main` being 119 commits behind `dev`.
@@ -1206,6 +1218,10 @@ through one-time wallet challenges before creating user/profile records.
     added `GET /otc/quotes/:quoteId/order-context` for server-authoritative
     accept-page prefill, clear stale local drafts when no server context
     exists, and sort merged open/partially-filled offers by best price.
+  - 2026-05-24 load-blocker fix: market fills no longer silently register over
+    a stored OTC user when the connected EVM wallet is not linked, and market
+    fill tickets no longer prefill a Pearl wallet address into the Base/USDC
+    address field.
 - [x] 12.13 Add multi-wallet account linking so one user can prove both a Base
   EVM wallet and one or more Pearl wallets/signers.
   - 2026-05-24: Added `POST /otc/users/:userId/wallets` with dual ownership
