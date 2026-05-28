@@ -158,6 +158,13 @@ function evaluateSettlementSnapshot(
     };
   }
 
+  if (isBaseCreateTradeNeeded(snapshot, now)) {
+    return {
+      action: 'prepare_base_create_trade',
+      reason: 'Pearl escrow is allocated but Base trade record does not exist yet',
+    };
+  }
+
   if (
     ['seen', 'confirmed'].includes(snapshot.pearl.status) &&
     ['none', 'created', 'cancelled'].includes(snapshot.base.status) &&
@@ -202,6 +209,20 @@ function getManualReviewReason(snapshot: SettlementSnapshot): string | undefined
     return 'PRL release and USDC refund both observed';
   }
   return undefined;
+}
+
+function isBaseCreateTradeNeeded(snapshot: SettlementSnapshot, now: Date): boolean {
+  // Worker auto-creates the Base trade record after the Pearl escrow is allocated and
+  // before USDC deposit becomes possible. Skip if the trade was already created on Base
+  // (status indexed != 'none') or if the trade is past the USDC deposit deadline (no
+  // point opening a window that closes immediately).
+  if (snapshot.base.status !== 'none') return false;
+  if (now.getTime() >= new Date(snapshot.trade.deadlines.usdcDepositDeadline).getTime()) return false;
+  // Only act for trades whose state semantics anchor the Pearl side as the source of
+  // truth — same modes that the auto-release path supports. Skip for legacy trades that
+  // never had a multisig escrow allocated.
+  if (snapshot.trade.pearlEscrowMode !== 'multisig') return false;
+  return ['pearl_escrow_pending', 'pearl_escrow_seen', 'pearl_escrow_confirmed'].includes(snapshot.trade.state);
 }
 
 function isPrlReleaseAllowed(snapshot: SettlementSnapshot): boolean {

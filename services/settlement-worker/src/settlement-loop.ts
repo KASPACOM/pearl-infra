@@ -79,6 +79,11 @@ export async function executeSettlementDecision(
     case 'prepare_prl_refund':
       await dependencies.trades.applyTradeState?.(trade.tradeId, decision.toState ?? 'refund_pending', decision);
       return dependencies.signer.preparePrlRefund(trade, decision);
+    case 'prepare_base_create_trade':
+      if (dependencies.broadcaster.prepareBaseCreateTrade) {
+        return dependencies.broadcaster.prepareBaseCreateTrade(trade, decision);
+      }
+      return undefined;
     case 'prepare_usdc_release':
       return dependencies.broadcaster.prepareUsdcRelease(trade, decision);
     case 'mark_released':
