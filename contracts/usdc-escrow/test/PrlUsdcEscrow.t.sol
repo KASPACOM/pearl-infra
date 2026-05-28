@@ -384,4 +384,124 @@ contract PrlUsdcEscrowTest {
     function _assertEq(uint256 actual, uint256 expected) private pure {
         require(actual == expected, "uint mismatch");
     }
+
+    // ---------- Operator role ----------
+
+    function testOperatorStartsUnset() external view {
+        _assertEq(escrow.operator(), address(0));
+    }
+
+    function testSetOperatorOnlyOwner() external {
+        VM.prank(STRANGER);
+        VM.expectRevert();
+        escrow.setOperator(NEW_OWNER);
+    }
+
+    function testOwnerCanSetAndRotateOperator() external {
+        escrow.setOperator(NEW_OWNER);
+        _assertEq(escrow.operator(), NEW_OWNER);
+        escrow.setOperator(STRANGER);
+        _assertEq(escrow.operator(), STRANGER);
+    }
+
+    function testOperatorCanCreateTradeAndRelease() external {
+        escrow.setOperator(NEW_OWNER);
+
+        VM.prank(NEW_OWNER);
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+
+        _fundApproveAndDeposit(TRADE_ID, BUYER, AMOUNT + FEE);
+
+        VM.prank(NEW_OWNER);
+        escrow.release(TRADE_ID);
+
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Released);
+        _assertEq(usdc.balanceOf(SELLER), AMOUNT);
+        _assertEq(usdc.balanceOf(FEE_RECIPIENT), FEE);
+    }
+
+    function testOperatorCanForceRefundBeforeExpiry() external {
+        escrow.setOperator(NEW_OWNER);
+        _depositTrade();
+
+        VM.prank(NEW_OWNER);
+        escrow.refund(TRADE_ID);
+
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Refunded);
+        _assertEq(usdc.balanceOf(BUYER), AMOUNT + FEE);
+    }
+
+    function testOwnerStillRetainsOperatorPowersWhenOperatorUnset() external {
+        // Operator never set; owner must still be able to drive trades.
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+        _fundApproveAndDeposit(TRADE_ID, BUYER, AMOUNT + FEE);
+        escrow.release(TRADE_ID);
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Released);
+    }
+
+    function testRotatingOperatorRevokesOldKey() external {
+        escrow.setOperator(NEW_OWNER);
+        escrow.setOperator(STRANGER);
+
+        VM.prank(NEW_OWNER);
+        VM.expectRevert(bytes("not operator"));
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+
+        // The newly-installed operator still works.
+        VM.prank(STRANGER);
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Created);
+    }
+
+    function testNonOperatorNonOwnerCannotCreateOrRelease() external {
+        escrow.setOperator(NEW_OWNER);
+
+        VM.prank(STRANGER);
+        VM.expectRevert(bytes("not operator"));
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+
+        _createTrade();
+        _fundApproveAndDeposit(TRADE_ID, BUYER, AMOUNT + FEE);
+
+        VM.prank(STRANGER);
+        VM.expectRevert(bytes("not operator"));
+        escrow.release(TRADE_ID);
+    }
+
+    function testOperatorCannotPause() external {
+        escrow.setOperator(NEW_OWNER);
+        VM.prank(NEW_OWNER);
+        VM.expectRevert();
+        escrow.pause();
+    }
+
+    function testOperatorCannotChangeFeeRecipient() external {
+        escrow.setOperator(NEW_OWNER);
+        VM.prank(NEW_OWNER);
+        VM.expectRevert();
+        escrow.setFeeRecipient(STRANGER);
+    }
+
+    function testOperatorCannotRotateOperator() external {
+        escrow.setOperator(NEW_OWNER);
+        VM.prank(NEW_OWNER);
+        VM.expectRevert();
+        escrow.setOperator(STRANGER);
+    }
+
+    // ---------- setFeeRecipient ----------
+
+    function testOwnerCanRotateFeeRecipient() external {
+        escrow.setFeeRecipient(NEW_OWNER);
+        _assertEq(escrow.feeRecipient(), NEW_OWNER);
+
+        _depositTrade();
+        escrow.release(TRADE_ID);
+        _assertEq(usdc.balanceOf(NEW_OWNER), FEE);
+    }
+
+    function testSetFeeRecipientRejectsZero() external {
+        VM.expectRevert(bytes("fee recipient required"));
+        escrow.setFeeRecipient(address(0));
+    }
 }
