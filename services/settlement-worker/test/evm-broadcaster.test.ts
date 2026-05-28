@@ -91,8 +91,18 @@ test('decision engine: prepare_prl_release fires from pearl_escrow_pending when 
   assert.equal(decision.toState, 'release_pending');
 });
 
-test('decision engine: terminal/already-releasing states still skip prepare_prl_release', () => {
-  for (const state of ['release_pending', 'released', 'refund_pending', 'refunded'] as const) {
+test('decision engine: states outside the auto-release allowlist do NOT fire prepare_prl_release', () => {
+  // Includes terminal states + non-terminal states that need human signal before
+  // release (disputed, refund_available) + pre-allocation states (quoted).
+  const blockedStates = [
+    'quoted',
+    'release_pending', 'released',
+    'refund_available', 'refund_pending', 'refunded',
+    'disputed', 'cancelled',
+    // failed_manual_review + the edge-review states are caught by the
+    // terminal/manual-review checks at the top of evaluateSettlementSnapshot.
+  ] as const;
+  for (const state of blockedStates) {
     const trade = tradeFixture({ state });
     trade.pearlEscrow.buyerReleasePresignature = {
       psbtBase64: 'cHNidP8BAAA=', buyerPubkey: '00'.padStart(64, '0'),
@@ -107,7 +117,54 @@ test('decision engine: terminal/already-releasing states still skip prepare_prl_
       now: new Date(),
     });
     const decision = createSettlementDecisionRecord(snapshot);
-    assert.notEqual(decision.action, 'prepare_prl_release', `state ${state} should not re-trigger release`);
+    assert.notEqual(decision.action, 'prepare_prl_release', `state ${state} should not trigger release`);
+  }
+});
+
+// ---------- L-W-3 fix: prepare_prl_refund gated on allowlist of states ----------
+
+test('decision engine: prepare_prl_refund does NOT fire from disputed state', () => {
+  const trade = tradeFixture({
+    state: 'disputed',
+    deadlines: {
+      quoteExpiresAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      pearlFundingDeadline: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      usdcDepositDeadline: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      settlementDeadline: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      refundAvailableAt: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
+    },
+  });
+  const observedAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  const snapshot = createSettlementSnapshot({
+    trade,
+    pearl: { status: 'confirmed', sourceEventId: 'p:confirmed', confirmations: 3, observedAt },
+    base: { status: 'none', sourceEventId: 'b:none', confirmations: 0, observedAt: new Date(0).toISOString() },
+    now: new Date(),
+  });
+  assert.notEqual(createSettlementDecisionRecord(snapshot).action, 'prepare_prl_refund');
+});
+
+test('decision engine: prepare_prl_refund fires from refund_available + early funding states', () => {
+  for (const state of ['pearl_escrow_pending', 'pearl_escrow_confirmed', 'refund_available'] as const) {
+    const trade = tradeFixture({
+      state,
+      deadlines: {
+        quoteExpiresAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        pearlFundingDeadline: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        usdcDepositDeadline: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        settlementDeadline: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        refundAvailableAt: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
+      },
+    });
+    // Pearl observed within the funding deadline (so getManualReviewReason doesn't trip).
+    const observedAt = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+    const snapshot = createSettlementSnapshot({
+      trade,
+      pearl: { status: 'confirmed', sourceEventId: 'p:confirmed', confirmations: 3, observedAt },
+      base: { status: 'none', sourceEventId: 'b:none', confirmations: 0, observedAt: new Date(0).toISOString() },
+      now: new Date(),
+    });
+    assert.equal(createSettlementDecisionRecord(snapshot).action, 'prepare_prl_refund', `state ${state} should refund`);
   }
 });
 

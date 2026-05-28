@@ -166,6 +166,7 @@ function evaluateSettlementSnapshot(
   }
 
   if (
+    AUTO_REFUND_FROM_STATES.includes(snapshot.trade.state) &&
     ['seen', 'confirmed'].includes(snapshot.pearl.status) &&
     ['none', 'created', 'cancelled'].includes(snapshot.base.status) &&
     now.getTime() >= new Date(snapshot.trade.deadlines.refundAvailableAt).getTime()
@@ -225,16 +226,43 @@ function isBaseCreateTradeNeeded(snapshot: SettlementSnapshot, now: Date): boole
   return ['pearl_escrow_pending', 'pearl_escrow_seen', 'pearl_escrow_confirmed'].includes(snapshot.trade.state);
 }
 
+// Explicit allowlist of states from which the worker may auto-release. Deny-list was
+// unsafe because `disputed` and `refund_available` are non-terminal per the
+// TradeState transition table — a deny-list would let the worker race past human
+// review or the refund window. Production has no path to write the later intermediate
+// states (no Base event indexer + no auto-transition on Pearl indexer updates), so
+// the early states must be accepted; the snapshot is the authoritative signal.
+//
+// IMPORTANT: only valid because PgOtcRepositorySettlementTradeSource.applyTradeState
+// writes the new state directly via repository.updateTrade, bypassing transitionTrade
+// + assertTradeTransition. If anyone reroutes the worker through transitionTrade,
+// this allowlist must be matched in pearl-sdk's ALLOWED_TRANSITIONS (e.g.
+// pearl_escrow_pending must explicitly list release_pending) or the API will reject
+// the transition and the worker will retry forever.
+const AUTO_RELEASE_FROM_STATES: readonly TradeState[] = [
+  'pearl_escrow_pending',
+  'pearl_escrow_seen',
+  'pearl_escrow_confirmed',
+  'usdc_escrow_pending',
+  'usdc_escrow_confirmed',
+];
+
+// States from which the worker may auto-trigger a PRL refund. `disputed` is
+// intentionally excluded — refunds during a dispute should be admin-driven.
+// `usdc_escrow_confirmed` is excluded — once USDC is confirmed, the legitimate
+// next step is release, not refund. `refund_available` is the natural landing
+// state when USDC missed the deposit window, so we accept it here.
+const AUTO_REFUND_FROM_STATES: readonly TradeState[] = [
+  'pearl_escrow_pending',
+  'pearl_escrow_seen',
+  'pearl_escrow_confirmed',
+  'usdc_escrow_pending',
+  'refund_available',
+];
+
 function isPrlReleaseAllowed(snapshot: SettlementSnapshot): boolean {
-  // Trade state check is intentionally NOT included: production has no path to write
-  // the intermediate states (pearl_escrow_seen/confirmed, usdc_escrow_pending/confirmed)
-  // because there's no event indexer for Base events and the OTC API never auto-
-  // transitions on Pearl indexer updates. The authoritative signal is the snapshot
-  // (pearl/base confirmation counts), and the prepare_prl_release action transitions
-  // trade.state to release_pending via its toState field, so forward progress is
-  // preserved. Terminal-state guard is enforced at the top of evaluateSettlementSnapshot.
+  if (!AUTO_RELEASE_FROM_STATES.includes(snapshot.trade.state)) return false;
   const baseConditionsMet =
-    !['release_pending', 'released', 'refund_pending', 'refunded'].includes(snapshot.trade.state) &&
     snapshot.pearl.status === 'confirmed' &&
     snapshot.base.status === 'deposited' &&
     snapshot.pearl.confirmations >= snapshot.trade.pearlEscrow.requiredConfirmations &&
