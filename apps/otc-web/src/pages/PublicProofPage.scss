@@ -1,0 +1,46 @@
+.proof-page {
+  display: grid;
+  gap: 18px;
+}
+
+.proof-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.proof-page__header h1 {
+  margin: 4px 0 0;
+}
+
+.proof-page__notice {
+  border: 1px solid var(--om-warn-line);
+  border-radius: 8px;
+  background: var(--om-warn-soft);
+  color: var(--om-warn);
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.proof-page__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+@media print {
+  .om-topbar {
+    display: none;
+  }
+
+  .proof-page {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 900px) {
+  .proof-page__grid {
+    grid-template-columns: 1fr;
+  }
+}

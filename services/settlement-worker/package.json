@@ -4,7 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "echo \"settlement-worker scaffold: no worker code yet\"",
-    "test": "echo \"settlement-worker scaffold: no tests yet\""
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@kaspacom/otc-api": "0.0.0",
+    "@kaspacom/pearl-escrow": "0.0.0",
+    "@kaspacom/pearl-rpc": "0.0.0",
+    "@kaspacom/pearl-sdk": "0.0.0",
+    "@kaspacom/usdc-escrow-client": "0.0.0",
+    "ethers": "^6.16.0",
+    "pg": "^8.20.0",
+    "tiny-secp256k1": "^2.2.4"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0"
   }
 }

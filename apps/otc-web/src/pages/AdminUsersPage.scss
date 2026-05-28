@@ -1,0 +1,97 @@
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+
+  a {
+    border: 1px solid var(--om-line);
+    border-radius: 8px;
+    color: var(--om-muted);
+    padding: 8px 12px;
+    text-decoration: none;
+
+    &.is-active {
+      background: var(--om-surface-2);
+      color: var(--om-ink);
+      font-weight: 700;
+    }
+  }
+}
+
+.admin-users-toolbar {
+  grid-template-columns: minmax(240px, 1fr) minmax(140px, auto) minmax(190px, auto) minmax(120px, auto);
+}
+
+.admin-users-list table {
+  min-width: 860px;
+
+  tr {
+    cursor: pointer;
+  }
+}
+
+.admin-user-detail header {
+  border-bottom: 1px solid var(--om-line);
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+
+  p,
+  small {
+    color: var(--om-muted);
+    font-family: var(--om-mono);
+    font-size: 11px;
+    margin: 0;
+  }
+
+  h2 {
+    font-size: 20px;
+    margin: 6px 0;
+  }
+}
+
+.admin-user-data-line {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+
+  span {
+    color: var(--om-muted);
+    font-size: 12px;
+  }
+
+  strong {
+    overflow-wrap: anywhere;
+  }
+}
+
+.admin-user-wallets {
+  display: grid;
+  gap: 10px;
+
+  div {
+    border: 1px solid var(--om-line);
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  strong,
+  span,
+  small {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  span,
+  small {
+    color: var(--om-muted);
+    font-family: var(--om-mono);
+    font-size: 11px;
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 980px) {
+  .admin-users-toolbar {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@kaspacom/bridge-service",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && node --test test/*.test.ts",
+    "rehearse:simnet-bridge": "npm run typecheck && node scripts/bridge-simnet-rehearsal.mjs"
+  }
+}

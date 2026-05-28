@@ -1,0 +1,154 @@
+name: Deploy Oyster
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-push-and-update-argo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Pearl infra
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test
+        run: npm test
+
+      - name: Select deployment target
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "AWS_REGION=us-east-1" >> "$GITHUB_ENV"
+            echo "OTC_API_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-api-prod" >> "$GITHUB_ENV"
+            echo "OTC_WEB_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-web-prod" >> "$GITHUB_ENV"
+            echo "OTC_WORKER_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-settlement-worker-prod" >> "$GITHUB_ENV"
+            echo "OTC_WEB_API_BASE_URL=https://api-oyster.kaspa.com" >> "$GITHUB_ENV"
+            echo "OTC_WEB_PEARL_ESCROW_MODE=coordinator" >> "$GITHUB_ENV"
+            echo "ARGO_API_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-api/deployment.yaml" >> "$GITHUB_ENV"
+            echo "ARGO_WEB_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-web/deployment.yaml" >> "$GITHUB_ENV"
+            echo "ARGO_WORKER_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-settlement-worker/deployment.yaml" >> "$GITHUB_ENV"
+          else
+            echo "AWS_REGION=eu-central-1" >> "$GITHUB_ENV"
+            echo "OTC_API_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-api-dev" >> "$GITHUB_ENV"
+            echo "OTC_WEB_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-web-dev" >> "$GITHUB_ENV"
+            echo "OTC_WORKER_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-settlement-worker-dev" >> "$GITHUB_ENV"
+            echo "OTC_WEB_API_BASE_URL=https://dev-api-oyster.kaspa.com" >> "$GITHUB_ENV"
+            echo "OTC_WEB_PEARL_ESCROW_MODE=multisig" >> "$GITHUB_ENV"
+            echo "ARGO_API_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-api/deployment.yaml" >> "$GITHUB_ENV"
+            echo "ARGO_WEB_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-web/deployment.yaml" >> "$GITHUB_ENV"
+            echo "ARGO_WORKER_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-settlement-worker/deployment.yaml" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate prod runtime secret
+        if: github.ref_name == 'main'
+        run: |
+          set -euo pipefail
+          secret_json="$(aws secretsmanager get-secret-value \
+            --region "$AWS_REGION" \
+            --secret-id prod/oyster-otc-api \
+            --query SecretString \
+            --output text)"
+          printf '%s' "$secret_json" | jq -e '
+            has("OTC_API_DATABASE_URL") and
+            has("BASE_RPC_URL") and
+            has("PEARL_ESCROW_XPUB") and
+            has("PEARL_INDEXER_WATCH_URL") and
+            (has("OTC_ADMIN_API_TOKENS") or has("OTC_ADMIN_API_TOKEN")) and
+            (
+              has("OTC_ALERT_WEBHOOK_URL") or
+              (has("OTC_ALERT_TELEGRAM_BOT_TOKEN") and has("OTC_ALERT_TELEGRAM_CHAT_ID"))
+            )
+          ' >/dev/null
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push OTC API image
+        run: |
+          docker build \
+            -f services/otc-api/Dockerfile \
+            -t "$OTC_API_ECR_REPO:${GITHUB_SHA}" \
+            -t "$OTC_API_ECR_REPO:latest" \
+            .
+          docker push "$OTC_API_ECR_REPO:${GITHUB_SHA}"
+          docker push "$OTC_API_ECR_REPO:latest"
+
+      - name: Build and push OTC web image
+        run: |
+          docker build \
+            -f apps/otc-web/Dockerfile \
+            --build-arg "VITE_OTC_API_BASE_URL=$OTC_WEB_API_BASE_URL" \
+            --build-arg "VITE_PEARL_ESCROW_MODE=$OTC_WEB_PEARL_ESCROW_MODE" \
+            -t "$OTC_WEB_ECR_REPO:${GITHUB_SHA}" \
+            -t "$OTC_WEB_ECR_REPO:latest" \
+            .
+          docker push "$OTC_WEB_ECR_REPO:${GITHUB_SHA}"
+          docker push "$OTC_WEB_ECR_REPO:latest"
+
+      - name: Build and push OTC settlement worker image
+        run: |
+          docker build \
+            -f services/settlement-worker/Dockerfile \
+            -t "$OTC_WORKER_ECR_REPO:${GITHUB_SHA}" \
+            -t "$OTC_WORKER_ECR_REPO:latest" \
+            .
+          docker push "$OTC_WORKER_ECR_REPO:${GITHUB_SHA}"
+          docker push "$OTC_WORKER_ECR_REPO:latest"
+
+      - name: Generate ArgoCD token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          owner: KASPACOM
+          repositories: argo-cd
+          app-id: ${{ secrets.ARGO_GH_APP_ID }}
+          private-key: ${{ secrets.ARGO_GH_APP_PRIVATE_KEY }}
+
+      - name: Checkout ArgoCD repository
+        uses: actions/checkout@v4
+        with:
+          repository: KASPACOM/argo-cd
+          token: ${{ steps.generate-token.outputs.token }}
+          path: argo-cd
+
+      - name: Update ArgoCD image tags
+        working-directory: argo-cd
+        run: |
+          sed -i "s|image: .*oyster-otc-api-.*|image: $OTC_API_ECR_REPO:${GITHUB_SHA}|" "$ARGO_API_DEPLOYMENT"
+          sed -i "s|image: .*oyster-otc-web-.*|image: $OTC_WEB_ECR_REPO:${GITHUB_SHA}|" "$ARGO_WEB_DEPLOYMENT"
+          tracked_files=("$ARGO_API_DEPLOYMENT" "$ARGO_WEB_DEPLOYMENT")
+          if [ -f "$ARGO_WORKER_DEPLOYMENT" ]; then
+            sed -i "s|image: .*oyster-otc-settlement-worker-.*|image: $OTC_WORKER_ECR_REPO:${GITHUB_SHA}|" "$ARGO_WORKER_DEPLOYMENT"
+            tracked_files+=("$ARGO_WORKER_DEPLOYMENT")
+          else
+            echo "settlement-worker Argo manifest not yet registered at $ARGO_WORKER_DEPLOYMENT — skipping image-tag bump"
+          fi
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add "${tracked_files[@]}"
+          if git diff --cached --quiet; then
+            echo "ArgoCD image tags already current"
+          else
+            git commit -m "Update Oyster image tags to ${GITHUB_SHA}"
+            git push
+          fi

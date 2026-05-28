@@ -1,24 +1,20 @@
 # OTC Web App
 
-Frontend for the Pearl OTC settlement desk.
+Frontend for Oysters Market.
 
 ## Responsibility
 
-- RFQ buy/sell PRL flow.
+- Quote buy/sell PRL flow.
 - Trade checkout page.
 - Pearl escrow proof display.
-- Arbitrum USDC escrow payment status.
+- Base USDC escrow payment status.
 - Public proof page.
 - Admin/dispute views can start here, but should split once they grow.
 
 ## Dependencies
 
-The app should consume shared contracts from:
-
-- `@kaspacom/pearl-sdk`
-- `@kaspacom/pearl-indexer`
-- `@kaspacom/usdc-escrow-client`
+The app consumes the shared Pearl SDK, Pearl indexer contracts, and Base USDC escrow client from the workspace.
 
 ## Status
 
-Scaffold only. Build actual UI after the backend contracts and first end-to-end test flow are stable.
+Rendered app screens, quote flow, proof views, admin wiring, landing page, and FAQ are implemented for testnet operation.

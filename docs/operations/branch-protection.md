@@ -1,6 +1,6 @@
 # Branch Protection
 
-Protect `main` before merging production work.
+Protect `dev` for normal integration work. Protect `main` for release merges from `dev`.
 
 ## Required Rules
 
@@ -29,7 +29,7 @@ Use this after authenticating with an admin/maintainer token:
 ```bash
 gh api \
   --method PUT \
-  repos/KASPACOM/pearl-infra/branches/main/protection \
+  repos/KASPACOM/pearl-infra/branches/dev/protection \
   --input - <<'JSON'
 {
   "required_status_checks": {

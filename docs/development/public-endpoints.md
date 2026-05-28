@@ -50,7 +50,7 @@ Run:
 
 - at least one mainnet `pearld`
 - one marketplace-focused indexer
-- one Arbitrum RPC/indexer path for USDC escrow events
+- one Base RPC/indexer path for USDC escrow events
 - alerting for lag, reorgs, and failed broadcasts
 
 Recommended production rule:

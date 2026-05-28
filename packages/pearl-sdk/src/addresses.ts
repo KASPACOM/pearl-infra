@@ -41,7 +41,9 @@ function networkFromPrefix(prefix: string): PearlAddressValidation['network'] | 
   switch (prefix) {
     case 'prl':
       return 'mainnet';
-    case 'prlsim':
+    case 'tprl':
+      return 'testnet2';
+    case 'rprl':
       return 'simnet';
     default:
       return undefined;

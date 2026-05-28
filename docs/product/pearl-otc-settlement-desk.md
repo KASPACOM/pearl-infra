@@ -5,7 +5,7 @@
 Build a checkout-grade OTC venue for PRL/USDC that is smoother and safer than the current Pearl OTC marketplace by combining:
 
 - Pearl Taproot escrow and partial-signed recovery transactions.
-- Arbitrum USDC escrow instead of direct buyer-to-seller payment.
+- Base USDC escrow instead of direct buyer-to-seller payment.
 - A KaspaCom trade coordinator that never needs unilateral control of PRL.
 - A Pearl indexer that makes trade state independently verifiable.
 
@@ -23,7 +23,7 @@ Existing Pearl OTC already appears to use per-trade Pearl escrow. The product ga
 KaspaCom should differentiate on two-sided escrow, proof, speed, and liquidity:
 
 - Buyer sees PRL escrow proof before paying.
-- Buyer pays USDC into an Arbitrum escrow contract, not straight to the seller.
+- Buyer pays USDC into a Base escrow contract, not straight to the seller.
 - Seller pre-signs Pearl release/refund paths once, then can leave.
 - Indexer-backed status page shows both legs, confirmations, release/refund txs, and audit events.
 - RFQ/liquidity-provider mode gives users a firm "buy/sell now" price without hunting offers.
@@ -108,18 +108,18 @@ MVP should implement Mode 1 first and keep the state machine compatible with Mod
    - Stores signed release/refund packages.
    - Broadcasts release/refund transactions when the state machine authorizes them.
 
-6. **Arbitrum USDC escrow service**
+6. **Base USDC escrow service**
    - Deploys or calls a minimal USDC escrow contract.
    - Tracks deposits, releases, refunds, and fee collection.
    - Emits events keyed by `tradeId`.
 
-7. **Arbitrum indexer**
+7. **Base indexer**
    - Watches USDC escrow contract events.
    - Confirms deposit finality.
    - Feeds the trade state machine.
 
 8. **Settlement worker**
-   - Joins Pearl and Arbitrum state.
+   - Joins Pearl and Base state.
    - Broadcasts PRL release after USDC escrow is confirmed.
    - Releases/refunds USDC after PRL state is confirmed.
 
@@ -170,8 +170,8 @@ MVP should implement Mode 1 first and keep the state machine compatible with Mod
 2. Quote engine locks `amountPrl`, `amountUsdc`, `fee`, `expiresAt`.
 3. Seller/liquidity desk funds Pearl Taproot escrow.
 4. Pearl indexer confirms the escrow outpoint.
-5. Buyer pays USDC into Arbitrum escrow contract for `tradeId`.
-6. Arbitrum indexer confirms USDC escrow deposit.
+5. Buyer pays USDC into Base escrow contract for `tradeId`.
+6. Base indexer confirms USDC escrow deposit.
 7. Settlement worker broadcasts pre-signed PRL release to buyer.
 8. Pearl indexer confirms PRL release.
 9. USDC escrow releases seller proceeds and KaspaCom fee.
@@ -208,7 +208,7 @@ Minimum useful escrow package per trade:
 - Refund eligibility height/time.
 - Verification record from simnet before mainnet use.
 
-## Arbitrum USDC Escrow Contract
+## Base USDC Escrow Contract
 
 The contract should be deliberately small:
 
@@ -316,7 +316,7 @@ Build only what proves the settlement advantage:
 - KaspaCom-owned Pearl node/indexer path.
 - One buy-PRL checkout flow.
 - Pearl escrow proof tracking.
-- Arbitrum USDC escrow deposit tracking.
+- Base USDC escrow deposit tracking.
 - Release/refund state machine.
 - Public proof page.
 - Admin/manual override with audit log.
@@ -342,7 +342,7 @@ Planning phase is complete when:
 MVP implementation is complete only when:
 
 - Pearl escrow flow passes on simnet.
-- USDC escrow flow passes on Arbitrum testnet or local fork.
+- USDC escrow flow passes on Base Sepolia or local fork.
 - End-to-end trade completes from quote to release in a test environment.
 - Reorg/confirmation handling has tests.
 - No private keys, seeds, or RPC credentials are committed.

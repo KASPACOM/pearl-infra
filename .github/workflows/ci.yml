@@ -3,9 +3,11 @@ name: CI
 on:
   pull_request:
     branches:
+      - dev
       - main
   push:
     branches:
+      - dev
       - main
 
 jobs:
@@ -28,3 +30,17 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run typecheck
+
+  usdc-escrow-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: npm install
+      - run: npm run build --workspace @kaspacom/prl-usdc-escrow-contracts
+      - run: npm test --workspace @kaspacom/prl-usdc-escrow-contracts

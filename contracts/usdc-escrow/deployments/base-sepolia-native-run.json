@@ -1,0 +1,49 @@
+{
+  "network": "base_sepolia",
+  "chainId": 84532,
+  "runName": "base-sepolia-native-usdc-escrow-run-2026-05-17",
+  "scope": "testnet-only",
+  "contractName": "PrlUsdcEscrow",
+  "contractAddress": "0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9",
+  "usdcToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "tradeId": "0xe46b4a5ee4d72e8dcf59a4666e3a1d29c40da9a71d591b5866594a16cbb92a5f",
+  "buyer": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "seller": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+  "feeRecipient": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "sellerAmount": "10000000",
+  "feeAmount": "1000000",
+  "totalDeposited": "11000000",
+  "sellerReceived": "10000000",
+  "feeRecipientReceived": "1000000",
+  "finalTradeStatus": "Released",
+  "finalEscrowUsdcBalance": "0",
+  "finalSellerUsdcBalance": "10000000",
+  "finalFeeRecipientUsdcBalance": "10000000",
+  "owner": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "pendingOwner": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+  "ownershipAccepted": false,
+  "blockNumber": 41632306,
+  "blockHash": "0x3de3108d2fb5612025449aedaf2b315b0f8ae8b365746488095c5bbf326ca573",
+  "ranAtUtc": "2026-05-17T15:48:20Z",
+  "transactions": {
+    "createTrade": "0x94ce8e963a899ddc1243f085395fd11efaedc188ae6fcb2a16c46c91c21903a7",
+    "approve": "0xd15698a9a6d54a51c5dd8f09e48fcee2f3855beae6ef882ee1827160cae84bf3",
+    "deposit": "0x2fecdaf0e6795b4d8beea50215bcc4419adf64dc7e6526dd504c685c5456255c",
+    "release": "0xf9b427bd887101ab7d57b9502a32475820fe93197cf8179c1614696e67d987e2",
+    "transferOwnership": "0x8243026466d947479621106facb59d180dcf4f1e1878abc8310d6e60ad8e994e"
+  },
+  "explorerUrls": {
+    "contract": "https://sepolia.basescan.org/address/0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9",
+    "createTrade": "https://sepolia.basescan.org/tx/0x94ce8e963a899ddc1243f085395fd11efaedc188ae6fcb2a16c46c91c21903a7",
+    "approve": "https://sepolia.basescan.org/tx/0xd15698a9a6d54a51c5dd8f09e48fcee2f3855beae6ef882ee1827160cae84bf3",
+    "deposit": "https://sepolia.basescan.org/tx/0x2fecdaf0e6795b4d8beea50215bcc4419adf64dc7e6526dd504c685c5456255c",
+    "release": "https://sepolia.basescan.org/tx/0xf9b427bd887101ab7d57b9502a32475820fe93197cf8179c1614696e67d987e2",
+    "transferOwnership": "https://sepolia.basescan.org/tx/0x8243026466d947479621106facb59d180dcf4f1e1878abc8310d6e60ad8e994e"
+  },
+  "notes": [
+    "This run uses the original Base Sepolia escrow deployed with native Base Sepolia USDC.",
+    "The lifecycle covered createTrade, buyer USDC approval, deposit, release, and transferOwnership.",
+    "Ownership transfer is pending; the approved testnet owner must call acceptOwnership() from 0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978 before task 9.6.7 is complete.",
+    "This is testnet evidence only and is not Base mainnet deployment approval."
+  ]
+}

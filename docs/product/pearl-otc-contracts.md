@@ -8,7 +8,7 @@ This task is complete when:
 
 - RFQ quote and trade lifecycle APIs are defined.
 - Pearl escrow package fields are defined.
-- Arbitrum USDC escrow interface/events are defined.
+- Base USDC escrow interface/events are defined.
 - Pearl indexer proof APIs are defined.
 - Security gates block accidental mainnet custody or unverified escrow code.
 
@@ -25,7 +25,7 @@ Request:
   "side": "buy_prl",
   "amountPrl": "1000.00000000",
   "settlementAsset": "USDC",
-  "settlementNetwork": "arbitrum",
+  "settlementNetwork": "base",
   "buyerPearlAddress": "prl1p...",
   "usdcRefundAddress": "0x...",
   "clientRequestId": "uuid"
@@ -84,8 +84,10 @@ Response:
     "refundEligibleAfterHeight": 123456
   },
   "usdcEscrow": {
-    "network": "arbitrum",
+    "network": "base",
+    "chainId": 8453,
     "contract": "0x...",
+    "usdcToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "tradeKey": "0x...",
     "expectedAmountUsdc": "170.00",
     "requiredConfirmations": 6,
@@ -99,6 +101,11 @@ Rules:
 - Accepting a quote creates one trade.
 - Trade owns all settlement addresses and expected amounts.
 - Payment instructions must come from backend state, not frontend calculation.
+- The EVM USDC escrow `createTrade()` call happens only after a quote is
+  accepted or otherwise matched. It must not happen during quote preview or page
+  load.
+- The frontend may show the USDC deposit action only after it verifies the
+  on-chain escrow terms match the backend trade terms.
 
 ### Get Trade
 
@@ -135,7 +142,7 @@ Public response:
     "releaseTxid": "txid",
     "releaseConfirmations": 3
   },
-  "arbitrum": {
+  "base": {
     "depositTxHash": "0x...",
     "depositConfirmations": 6,
     "releaseTxHash": "0x..."
@@ -172,6 +179,53 @@ Transition rules:
 - Current state is derived from the latest accepted event.
 - Any chain reorg emits a correcting event rather than mutating history.
 - Release/refund side effects require idempotency keys.
+- Late chain observations do not revive expired trades. A PRL funding output
+  observed after the Pearl funding deadline must not authorize PRL release to
+  the buyer.
+
+## Deadlines And Release Invariants
+
+Every trade needs separate deadlines:
+
+- `quote_expires_at` - last time the quote may be accepted.
+- `pearl_funding_deadline` - last time PRL funding can count as valid escrow
+  funding.
+- `usdc_deposit_deadline` - last time buyer should be allowed to deposit USDC.
+- `settlement_deadline` - last time the worker may auto-settle without manual
+  review.
+- `refund_available_at` - first time the eligible party can request refund.
+
+The settlement worker may authorize PRL release only when all are true:
+
+- trade is in an active settlement state;
+- USDC escrow is still `Deposited`, not `Refunded`, `Released`, or `Cancelled`;
+- PRL funding was observed before `pearl_funding_deadline`;
+- USDC deposit was observed before `usdc_deposit_deadline`;
+- both sides meet confirmation thresholds;
+- neither side is stale, detached, reorged, underpaid, overpaid, duplicated, or
+  unknown;
+- the release side effect has not already been processed.
+
+If any condition fails, the trade goes to manual review or the relevant refund
+path. In particular: if the buyer deposits USDC, expiry passes, the buyer
+refunds USDC, and the seller funds PRL late, the worker must never release PRL
+to the buyer.
+
+## Edge Cases To Test
+
+The implementation test suite must cover:
+
+- buyer accepts quote but never deposits USDC;
+- seller funds PRL but buyer never deposits USDC;
+- buyer deposits USDC and seller funds PRL after the funding deadline;
+- buyer deposits USDC, expiry passes, buyer refunds, then PRL arrives late;
+- both sides fund, then PRL release broadcast fails;
+- both sides fund, then PRL funding is detached by reorg;
+- duplicate EVM and Pearl observations do not double-release;
+- wrong amount, wrong recipient, unknown spend, or stale indexer state goes to
+  manual review;
+- pause blocks new risky actions but does not block eligible buyer refunds or
+  cleanup of expired created trades.
 
 ## Pearl Escrow Package
 
@@ -240,7 +294,14 @@ Rules:
 - OP_CHECKXMSSSIG is not allowed in hot-wallet escrow.
 - OP_CAT is not allowed in MVP escrow templates.
 
-## Arbitrum USDC Escrow Contract Interface
+## Base USDC Escrow Contract Interface
+
+MVP network config:
+
+| Environment | Chain ID | Native USDC |
+|---|---:|---|
+| Base mainnet | 8453 | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Base Sepolia | 84532 | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 
 Minimal Solidity-facing interface:
 
@@ -249,7 +310,6 @@ interface IPrlUsdcEscrow {
     struct Trade {
         address buyer;
         address seller;
-        address usdcToken;
         uint256 amount;
         uint256 fee;
         uint64 expiry;
@@ -262,6 +322,7 @@ interface IPrlUsdcEscrow {
     event Refunded(bytes32 indexed tradeId, address indexed buyer, uint256 amount);
     event Cancelled(bytes32 indexed tradeId);
 
+    function usdcToken() external view returns (address);
     function createTrade(bytes32 tradeId, address buyer, address seller, uint256 amount, uint256 fee, uint64 expiry) external;
     function deposit(bytes32 tradeId) external;
     function release(bytes32 tradeId) external;
@@ -278,10 +339,19 @@ MVP authorization:
 
 Security rules:
 
-- Use OpenZeppelin `SafeERC20`, `Pausable`, and role access control.
+- Use OpenZeppelin `SafeERC20`, `Pausable`, and reviewed ownership/access control.
 - No upgradeability in MVP unless there is an explicit governance decision.
 - No arbitrary token support in MVP; USDC only.
-- Every event must include `tradeId`.
+- Every trade lifecycle event must include `tradeId`.
+- Base Sepolia deployment uses native USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`.
+- Base mainnet deployment remains disabled until review, multisig ownership, and testnet evidence exist.
+- Custody owner handoff must use two-step ownership transfer; ownership renounce is disabled.
+- Emergency pause must not block expired buyer refunds or expired created-trade cleanup.
+- Implementation PRs that add escrow code/tests are not deployment approval and must not be treated as evidence of a deployed contract.
+- Base Sepolia testnet escrow is deployed at `0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9` by tx `0x450b48091ea67a46de25d3d40ab394e621011f7c099f01237052797eb730a981`; this is testnet evidence only and is not Base mainnet approval.
+- Base Sepolia native-USDC lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-native-run.json`. It uses the original native-USDC escrow deployment and records create, native USDC approve, deposit, release, final balances, and pending ownership transfer evidence.
+- Secondary isolated lifecycle evidence is recorded in `contracts/usdc-escrow/deployments/base-sepolia-mock-run.json`, using a mock USDC-style token.
+- Deployment evidence must include contract address, deploy tx, owner/multisig acceptance tx, fee recipient, native USDC address, and verification link.
 
 ## Pearl Indexer APIs
 
@@ -372,5 +442,27 @@ Implementation verification once code exists:
 npm run typecheck
 npm test
 npm run test:simnet
-npm run test:arbitrum-fork
+npm run test:base-fork
 ```
+
+## Test Ladder
+
+You do not need a running Pearl node for every MVP test.
+
+Can run before `pearld`/indexer is live:
+
+- quote and trade state-machine unit tests;
+- API validation and idempotency tests;
+- database migration/repository tests;
+- Base USDC escrow contract unit tests;
+- Base Sepolia or local EVM fork tests;
+- mocked Pearl indexer proof fixtures;
+- frontend checkout/proof views against mocked API responses.
+
+Requires a real `pearld` plus marketplace indexer:
+
+- detecting actual Pearl escrow funding outpoints;
+- detecting Pearl release/refund spends;
+- confirmation and reorg handling against real block data;
+- broadcasting signed Pearl transactions;
+- full quote-to-release integration tests involving PRL.

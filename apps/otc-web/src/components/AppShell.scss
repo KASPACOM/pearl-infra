@@ -1,0 +1,141 @@
+.om-shell {
+  min-height: 100vh;
+  background: var(--om-bg);
+  color: var(--om-ink);
+}
+
+.om-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 56px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--om-line);
+  background: rgba(7, 6, 10, 0.86);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+.om-shell--admin .om-topbar {
+  background: rgba(26, 22, 38, 0.92);
+}
+
+.om-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 252px;
+  color: inherit;
+  text-decoration: none;
+
+  strong,
+  small {
+    display: block;
+  }
+
+  strong {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  small {
+    margin-top: 6px;
+    color: var(--om-muted);
+    font-family: var(--om-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+}
+
+.om-brand__mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  background: url("/brand/oysters-mark.svg") center / contain no-repeat;
+  filter: drop-shadow(0 7px 18px rgba(139, 92, 246, 0.34));
+}
+
+.om-env {
+  border: 1px solid var(--om-warn-line);
+  border-radius: 999px;
+  background: var(--om-warn-soft);
+  color: var(--om-warn);
+  font-family: var(--om-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  padding: 5px 11px;
+  text-transform: uppercase;
+}
+
+.om-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  a {
+    border-radius: 7px;
+    color: var(--om-muted);
+    font-size: 13px;
+    padding: 8px 10px;
+    text-decoration: none;
+
+    &.is-active {
+      background: var(--om-surface-2);
+      color: var(--om-ink);
+      font-weight: 700;
+    }
+  }
+}
+
+.om-operator {
+  margin-left: auto;
+  color: var(--om-muted);
+  font-family: var(--om-mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.om-main {
+  padding: 28px;
+}
+
+@media (max-width: 980px) {
+  .om-topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+  }
+
+  .om-brand {
+    min-width: 0;
+  }
+
+  .om-nav {
+    order: 3;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+    overflow: visible;
+
+    a {
+      min-width: 0;
+      padding: 8px 6px;
+      text-align: center;
+    }
+  }
+
+  .om-main {
+    padding: 18px;
+  }
+
+  .om-operator {
+    display: none;
+  }
+}

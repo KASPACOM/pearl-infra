@@ -1,0 +1,219 @@
+:root {
+  color-scheme: dark;
+  --om-bg: #07060a;
+  --om-bg-2: #0d0b14;
+  --om-surface: #14111d;
+  --om-surface-2: #1a1626;
+  --om-surface-3: #1a1626;
+  --om-ink: #ffffff;
+  --om-ink-2: #e9e6f1;
+  --om-muted: #a39db3;
+  --om-muted-2: #6d6781;
+  --om-line: #251f33;
+  --om-line-strong: #2e2742;
+  --om-pp-50: #f6f3ff;
+  --om-pp-100: #ece5ff;
+  --om-pp-200: #d4c5ff;
+  --om-pp-300: #b69aff;
+  --om-pp-400: #9b7dff;
+  --om-accent: #8b5cf6;
+  --om-accent-2: var(--om-pp-300);
+  --om-pp-600: #7c3aed;
+  --om-pp-700: #6d28d9;
+  --om-pp-800: #4c1d95;
+  --om-pp-900: #2e1065;
+  --om-accent-soft: rgba(139, 92, 246, 0.16);
+  --om-accent-line: rgba(139, 92, 246, 0.48);
+  --om-ok: #22c55e;
+  --om-ok-soft: rgba(34, 197, 94, 0.12);
+  --om-ok-line: rgba(34, 197, 94, 0.42);
+  --om-warn: #d4a92b;
+  --om-warn-soft: rgba(212, 169, 43, 0.12);
+  --om-warn-line: rgba(212, 169, 43, 0.42);
+  --om-danger: #ef4444;
+  --om-danger-soft: rgba(239, 68, 68, 0.12);
+  --om-danger-line: rgba(239, 68, 68, 0.42);
+  --om-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --om-serif: "Instrument Serif", Georgia, serif;
+  --om-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 18% -8%, rgba(139, 92, 246, 0.18), transparent 30%),
+    linear-gradient(180deg, rgba(13, 11, 20, 0.96), rgba(7, 6, 10, 1) 340px),
+    var(--om-bg);
+  color: var(--om-ink);
+  font-family: var(--om-font);
+  font-size: 14px;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+code {
+  font-family: var(--om-mono);
+  font-size: 12px;
+}
+
+a {
+  color: var(--om-accent);
+}
+
+.om-page-title {
+  max-width: 780px;
+  margin-bottom: 22px;
+
+  span,
+  p {
+    color: var(--om-muted);
+  }
+
+  span {
+    font-family: var(--om-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 5px 0 8px;
+    font-size: 42px;
+    line-height: 1.05;
+  }
+
+  p {
+    margin: 0;
+    line-height: 1.6;
+  }
+}
+
+.om-panel {
+  border: 1px solid var(--om-line);
+  border-radius: 8px;
+  background: var(--om-surface);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.22);
+  padding: 18px;
+
+  h2 {
+    margin: 0 0 14px;
+  }
+}
+
+.om-kicker {
+  color: var(--om-muted);
+  font-family: var(--om-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.om-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid var(--om-line);
+  border-radius: 8px;
+  background: var(--om-surface);
+  color: var(--om-ink);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0 14px;
+  text-decoration: none;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+}
+
+@media (max-width: 640px) {
+  .om-page-title h1 {
+    font-size: 32px;
+  }
+}
+
+.om-button--primary {
+  border-color: var(--om-accent);
+  background: var(--om-accent);
+  box-shadow: 0 12px 30px rgba(155, 92, 255, 0.28);
+  color: #07060a;
+}
+
+.om-form-error {
+  color: var(--om-danger);
+  margin: 0;
+}
+
+.profile-grid,
+.market-grid,
+.accept-page__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.profile-wide {
+  grid-column: 1 / -1;
+}
+
+.profile-order-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-note,
+.om-empty {
+  color: var(--om-muted);
+  line-height: 1.5;
+}
+
+.profile-notification-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+
+  label {
+    align-items: center;
+    color: var(--om-ink-2);
+    display: flex;
+    gap: 8px;
+  }
+}
+
+.market-table {
+  display: grid;
+  gap: 8px;
+}
+
+.market-table__row {
+  align-items: center;
+  border-bottom: 1px solid var(--om-line);
+  color: var(--om-ink-2);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: 38px;
+  text-decoration: none;
+
+  &.is-head {
+    color: var(--om-muted);
+    font-family: var(--om-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}

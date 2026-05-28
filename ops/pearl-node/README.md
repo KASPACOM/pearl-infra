@@ -19,6 +19,30 @@ pearl-indexer
 otc trade state machine / proof API
 ```
 
+## Hardware Sizing
+
+These are MVP operator targets, not upstream Pearl protocol minimums.
+
+### Testnet / Simnet Development
+
+- 2 vCPU
+- 4 GB RAM
+- 50-100 GB SSD
+- Docker on Ubuntu 22.04/24.04
+- RPC bound to localhost or a private network
+
+### Mainnet Node + Marketplace Indexer
+
+- 4 vCPU minimum; 8 vCPU preferred once indexer load grows
+- 8 GB RAM minimum; 16 GB preferred
+- 200-500 GB NVMe SSD with room to grow
+- 100 Mbps network minimum
+- static IP or stable private networking
+- volume snapshots/backups for node and indexer data
+- separate Postgres volume/database for marketplace state
+
+No GPU is required for a non-mining OTC node/indexer. GPU hardware is only needed if KaspaCom also runs Pearl useful-work mining or inference services.
+
 ## Ports
 
 | Network | RPC | P2P | Wallet Server |
@@ -82,6 +106,28 @@ docker compose -f docker-compose.testnet2.yml up -d
 ```
 
 Health check uses port `44111`.
+
+## Testnet2 Deployment Checklist
+
+Use this checklist before any `testnet2-base-sepolia` OTC evidence run.
+
+- Create secrets using the names in
+  [`otc-deployment-env-contract.md`](../../docs/operations/otc-deployment-env-contract.md):
+  `pearl-node-testnet2-rpc` and `pearl-indexer-testnet2-db`.
+- Confirm `PEARLD_MINING_ADDRESS` is a testnet2 address, not a mainnet address.
+- Start `pearld` with RPC bound to localhost or the private Docker/Kubernetes
+  network only.
+- Confirm P2P `44112` is reachable from peers when using the single-machine
+  Docker profile.
+- Confirm RPC `44111` is not publicly reachable.
+- Run `getblockcount`, `getbestblockhash`, and `getrawmempool`.
+- Record node image tag/digest, volume name, RPC bind address, P2P bind address,
+  and first healthy block height in the evidence note.
+- Start the Pearl indexer against this node and confirm it advances
+  `indexer_state.next_height`.
+- Register and close one disposable watched-address entry through the private
+  watched-address API.
+- Compare one recent block or tx against public Blockbook as a cross-check only.
 
 ## MVP Definition Of Done
 

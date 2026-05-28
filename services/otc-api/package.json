@@ -3,8 +3,27 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "typecheck": "echo \"otc-api scaffold: no service code yet\"",
-    "test": "echo \"otc-api scaffold: no tests yet\""
+    "migrate": "node dist/migrate.js",
+    "notifications:worker": "node dist/notification-worker.js",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@kaspacom/pearl-escrow": "0.0.0",
+    "@kaspacom/pearl-rpc": "0.0.0",
+    "@kaspacom/pearl-script": "0.0.0",
+    "@kaspacom/pearl-sdk": "0.0.0",
+    "@kaspacom/usdc-escrow-client": "0.0.0",
+    "bip32": "^5.0.1",
+    "ethers": "^6.16.0",
+    "pg": "^8.20.0",
+    "tiny-secp256k1": "^2.2.4"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0"
   }
 }

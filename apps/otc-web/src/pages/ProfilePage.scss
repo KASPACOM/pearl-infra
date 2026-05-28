@@ -1,0 +1,41 @@
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.profile-wide {
+  grid-column: 1 / -1;
+}
+
+.profile-order-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-note {
+  margin: 12px 0 16px;
+  color: var(--om-muted);
+  line-height: 1.55;
+}
+
+.profile-link-wallet {
+  border-top: 1px solid var(--om-line);
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.profile-page .om-panel h2 {
+  margin: 6px 0 12px;
+}
+
+@media (max-width: 980px) {
+  .profile-grid,
+  .profile-order-form {
+    grid-template-columns: 1fr;
+  }
+}

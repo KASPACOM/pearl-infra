@@ -1,0 +1,196 @@
+{
+  "generatedAt": "2026-05-20T12:39:17.440Z",
+  "scope": "bridge-simnet-rehearsal",
+  "pearlEvidenceSource": "/root/work/pearl-fresh-simnet/docs/operations/pearl-multisig-funded-simnet-evidence-20260520.json",
+  "pearlEvidenceRunId": "multisig-pr88-1779272704",
+  "limitation": "Pearl-side txids are imported from the freshly-created writable Pearl simnet multisig proof evidence; Igra receipts are fresh local Anvil receipts.",
+  "pearlEvidence": {
+    "depositTxid": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e",
+    "depositOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+    "depositAmountGrains": "127000000",
+    "depositBlockHash": "36699c3be2a8bb341b573c88583fd74731fa61dde9d1a510ed15484dd0e902e3",
+    "depositHeight": 272,
+    "releaseTxid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+    "releaseAmountGrains": "126990000",
+    "releaseBlockHash": "0ad37bedd1e6a869e0021986c3c4684902407c3066aa39bc30265d375ccbebd9",
+    "releaseHeight": 275,
+    "reserveAddress": "rprl1p4p2cgjcda76fg3vt74tjt5dcat3mteu9gl7lu7ewexcekq6em6lqjhs0wj",
+    "pearlRecipient": "rprl1pxvzzgg6epudglal2hxundqs4euxvsjjsz5uxmfmeaj2ydvgx8kysnyc4gp"
+  },
+  "igraEvidence": {
+    "chainId": 19416,
+    "rpcUrl": "http://127.0.0.1:19545",
+    "wrappedPearlAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "pearlBridgeAddress": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+    "mintTxHash": "0x0243886d2d8e759d282dc180fb2bf28bf08061c7178ae0b913cbfb2564eb5fa1",
+    "exitRequestTxHash": "0x876a706e78f9fb8dd386b3641a13220b8dcf7dc90a928eae0e84aa13463eb33e",
+    "exitProcessTxHash": "0xf0f401150c88f5a4f95b9be6d0f7174f595a6bfb8c9e294a6b92f735796b9d7b",
+    "exitId": "0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17"
+  },
+  "policyDecisions": {
+    "depositMint": {
+      "action": "prepare_mint",
+      "reason": "confirmed Pearl deposit is approved for wPRL mint",
+      "idempotencyKey": "bridge:prepare_mint:f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2+multisig-pr88-1779272704-bridge-rehearsal-deposit:4b68d1e0c0131ea8d01eca2f",
+      "sourceIds": [
+        "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+        "multisig-pr88-1779272704-bridge-rehearsal-deposit"
+      ],
+      "metadata": {
+        "amountGrains": "127000000",
+        "approvalId": "bridge-rehearsal-mint-approval-20260519",
+        "eventHash": "0x2c907436ff33db93b4491291c257b3258b042f5868bb09e9e37f3a1be2102594",
+        "eventId": "0xd63a142a5ae372c4b99b2cd4f3e9ceedac91dfab78ad99f1f374118b1381ebe9",
+        "relayerAttestations": 2
+      }
+    },
+    "exitRelease": {
+      "action": "prepare_exit_release",
+      "reason": "pending Igra exit is approved for Pearl reserve release",
+      "idempotencyKey": "bridge:prepare_exit_release:0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17+0x876a706e78f9fb8dd386b3641a13220b8dcf7dc90a928eae0e84aa13463eb33e:683f910603eabf33b66dd7cf",
+      "sourceIds": [
+        "0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17",
+        "0x876a706e78f9fb8dd386b3641a13220b8dcf7dc90a928eae0e84aa13463eb33e"
+      ],
+      "metadata": {
+        "amountGrains": "126990000",
+        "approvalId": "bridge-rehearsal-release-approval-20260519",
+        "eventHash": "0xeb89591bbeabe8fbdfa61c1a939c5151a51d1bcc336ec6cd6a4444d4aa3b59df",
+        "eventId": "0x52f893bddc8281781a21ee6306a6ca5dc2d33435fa3182f7bc090bed0d10b3b5",
+        "relayerAttestations": 2
+      }
+    }
+  },
+  "pollResult": {
+    "fromBlock": 1,
+    "toBlock": 8,
+    "latestSafeBlock": 8,
+    "logsRead": 6,
+    "eventsSaved": 6,
+    "exitsTouched": 2
+  },
+  "spendMatches": [
+    {
+      "spendTxid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+      "status": "matched_exit_release",
+      "exitId": "0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17",
+      "blockers": [],
+      "updatedExit": {
+        "exitId": "0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17",
+        "igraBurnTxid": "0x876a706e78f9fb8dd386b3641a13220b8dcf7dc90a928eae0e84aa13463eb33e",
+        "igraBurnLogIndex": 1,
+        "igraBurnBlock": 7,
+        "igraChainId": 19416,
+        "requestedAmountGrains": "126990000",
+        "pearlRecipient": "rprl1pxvzzgg6epudglal2hxundqs4euxvsjjsz5uxmfmeaj2ydvgx8kysnyc4gp",
+        "status": "released",
+        "metadata": {
+          "mirrored_event_id": "igra:19416:0x876a706e78f9fb8dd386b3641a13220b8dcf7dc90a928eae0e84aa13463eb33e:1",
+          "requester": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+          "processed_event_id": "igra:19416:0xf0f401150c88f5a4f95b9be6d0f7174f595a6bfb8c9e294a6b92f735796b9d7b:0",
+          "canonical_event_id": "0x52f893bddc8281781a21ee6306a6ca5dc2d33435fa3182f7bc090bed0d10b3b5",
+          "canonical_event_hash": "0xeb89591bbeabe8fbdfa61c1a939c5151a51d1bcc336ec6cd6a4444d4aa3b59df",
+          "relayer_attestation_count": 2,
+          "relayer_quorum_required": 2,
+          "release_decision_idempotency_key": "bridge:prepare_exit_release:0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17+0x876a706e78f9fb8dd386b3641a13220b8dcf7dc90a928eae0e84aa13463eb33e:683f910603eabf33b66dd7cf",
+          "pearl_release_spent_outpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+          "pearl_release_classification": "exit_release",
+          "pearl_release_observed_at": "2026-05-20T10:25:08.174Z"
+        },
+        "createdAt": "2026-05-20T10:25:08.174Z",
+        "updatedAt": "2026-05-20T10:25:08.174Z",
+        "pearlReleaseTxid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+        "pearlReleaseBlock": 275,
+        "releasedAt": "2026-05-20T10:25:08.174Z"
+      }
+    }
+  ],
+  "finalReconciliation": {
+    "observedAt": "2026-05-20T10:25:08.174Z",
+    "mintedSupplyGrains": "10000",
+    "confirmedDepositGrains": "127000000",
+    "pendingDepositGrains": "0",
+    "confirmedReserveGrains": "127000000",
+    "knownReserveSpendGrains": "126990000",
+    "pendingExitGrains": "0",
+    "reserveAvailableGrains": "10000",
+    "reserveSurplusGrains": "0",
+    "reserveDeficitGrains": "0",
+    "deposits": [
+      {
+        "depositId": "multisig-pr88-1779272704-bridge-rehearsal-deposit",
+        "address": "rprl1p4p2cgjcda76fg3vt74tjt5dcat3mteu9gl7lu7ewexcekq6em6lqjhs0wj",
+        "status": "consumed",
+        "outpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+        "amountGrains": "127000000",
+        "confirmations": 1,
+        "blockers": []
+      }
+    ],
+    "reserveSpends": [
+      {
+        "reserveId": "multisig-pr88-1779272704-bridge-rehearsal-reserve",
+        "spendTxid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+        "spentOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+        "classification": "exit_release",
+        "matchStatus": "matched_exit_release",
+        "exitId": "0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17",
+        "amountGrains": "126990000",
+        "blockers": [],
+        "unknown": false
+      }
+    ],
+    "pendingExits": [],
+    "unknownReserveSpendCount": 0,
+    "staleWatchIds": [],
+    "blockers": []
+  },
+  "publicProof": {
+    "observedAt": "2026-05-20T10:25:08.174Z",
+    "deposits": [
+      {
+        "depositId": "multisig-pr88-1779272704-bridge-rehearsal-deposit",
+        "status": "consumed",
+        "pearlAddress": "rprl1p4p2cgjcda76fg3vt74tjt5dcat3mteu9gl7lu7ewexcekq6em6lqjhs0wj",
+        "pearlOutpoint": "f1a315b9fb9d3a220e5ec097bfb3e8633f458fb256fe42e4f6ad063d9825a02e:2",
+        "amountGrains": "127000000",
+        "confirmations": 1,
+        "blockers": [],
+        "eventId": "0xd63a142a5ae372c4b99b2cd4f3e9ceedac91dfab78ad99f1f374118b1381ebe9",
+        "eventHash": "0x2c907436ff33db93b4491291c257b3258b042f5868bb09e9e37f3a1be2102594",
+        "relayerAttestationCount": 2,
+        "relayerQuorumRequired": 2,
+        "mintTxHash": "0x0243886d2d8e759d282dc180fb2bf28bf08061c7178ae0b913cbfb2564eb5fa1",
+        "igraRecipient": "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+      }
+    ],
+    "exits": [
+      {
+        "exitId": "0x4b4d5b8f3b313d6bf8e909e22d0c18232ac63baa3d118f3e77b5199da73a7c17",
+        "status": "released",
+        "igraBurnTxid": "0x876a706e78f9fb8dd386b3641a13220b8dcf7dc90a928eae0e84aa13463eb33e",
+        "igraBurnLogIndex": 1,
+        "amountGrains": "126990000",
+        "pearlRecipient": "rprl1pxvzzgg6epudglal2hxundqs4euxvsjjsz5uxmfmeaj2ydvgx8kysnyc4gp",
+        "pearlReleaseTxid": "8dfcc3c78c839fe9954d553bb9b7ffd76dfb8471d61a5a7b7d14747d536c517a",
+        "eventId": "0x52f893bddc8281781a21ee6306a6ca5dc2d33435fa3182f7bc090bed0d10b3b5",
+        "eventHash": "0xeb89591bbeabe8fbdfa61c1a939c5151a51d1bcc336ec6cd6a4444d4aa3b59df",
+        "relayerAttestationCount": 2,
+        "relayerQuorumRequired": 2,
+        "blockers": []
+      }
+    ],
+    "reserveBacking": {
+      "mintedSupplyGrains": "10000",
+      "confirmedReserveGrains": "127000000",
+      "knownReserveSpendGrains": "126990000",
+      "pendingExitGrains": "0",
+      "reserveAvailableGrains": "10000",
+      "reserveSurplusGrains": "0",
+      "reserveDeficitGrains": "0",
+      "unknownReserveSpendCount": 0,
+      "staleWatchIds": [],
+      "blockers": []
+    }
+  }
+}

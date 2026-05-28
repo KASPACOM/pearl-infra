@@ -1,0 +1,25 @@
+{
+  "network": "base_sepolia",
+  "chainId": 84532,
+  "contractName": "PrlUsdcEscrow",
+  "contractAddress": "0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9",
+  "deploymentTransactionHash": "0x450b48091ea67a46de25d3d40ab394e621011f7c099f01237052797eb730a981",
+  "deployedAtBlock": 41603287,
+  "deployedAtUtc": "2026-05-16T23:41:02Z",
+  "deployer": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "owner": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "pendingOwner": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+  "feeRecipient": "0x537dB45aC71bf8e1f1e28530732FAeabD607778E",
+  "usdcToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "paused": false,
+  "blockExplorerUrl": "https://sepolia.basescan.org/address/0x7edf75ceB2441d80aBC6599CeB4E62Eeb23BB2a9",
+  "transactionUrl": "https://sepolia.basescan.org/tx/0x450b48091ea67a46de25d3d40ab394e621011f7c099f01237052797eb730a981",
+  "nativeLifecycleEvidence": "deployments/base-sepolia-native-run.json",
+  "scope": "testnet-only",
+  "mainnetApproval": false,
+  "notes": [
+    "Base mainnet deployment remains blocked until review, multisig ownership transfer evidence, testnet evidence, and explicit approval are recorded.",
+    "Testnet owner and fee recipient are the deployer wallet for this Base Sepolia deployment.",
+    "transferOwnership has been initiated to 0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978 but acceptOwnership is still required."
+  ]
+}

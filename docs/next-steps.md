@@ -2,123 +2,91 @@
 
 ## Current Status
 
-The repo is now a clean Pearl infrastructure knowledge base and planning repo.
+The repo is now an implementation repo for the Pearl OTC settlement desk and
+the PRL -> Igra bridge track. The original planning/bootstrap phase is complete.
 
-Completed:
+Current state after PR #81:
 
-- GitHub repo created/pushed: https://github.com/marciano147/Pearl-infra-ecosystem
-- OpenSpec proposal/design/specs/tasks added under `docs/openspec/pearl-infra-ecosystem/`
-- Resource hub added: `docs/resources.md`
-- Upstream manifest added: `docs/upstream-manifest.md`
-- App thesis added: `docs/research/pearl-app-thesis.md`
-- Upstream Pearl source linked as pinned submodule at `upstream/pearl`
-- Goal-based contribution checklist added in `CONTRIBUTING.md`
+- OTC API, web app, Pearl indexer, settlement worker, signer boundary, admin
+  controls, monitoring docs, and dev Oyster deployment scaffolding are merged.
+- Dev Oyster API/web have deployment and smoke evidence.
+- `WrappedPearl` and `PearlBridge` contracts are implemented and tested.
+- Bridge-service has Pearl watch registration, Igra event mirroring,
+  reconciliation snapshots, reserve-spend matching, public proof DTOs, admin
+  decisions, persisted state, and alert evaluation.
+- Guarded bridge deployment tooling exists for `local`, `galleon`, and
+  `igra-mainnet`, with mainnet blocked behind explicit chain ID and approval
+  gates.
+- A local-Igra bridge rehearsal exists using real public Pearl simnet deposit
+  and release txids.
 
-## Existing Pearl Explorer Finding
+## Immediate Priorities
 
-Pearl already has a public explorer:
+1. Fix the live Igra deployment path.
+   - Galleon deployment currently fails before broadcast because the configured
+     RPC rejects the underlying Kaspa fee as below standardness minimum.
+   - Re-run with an accepted fee/gas path or replace the deployment route and
+     commit evidence.
 
-- Mainnet UI: `https://explorer.pearlresearch.ai/?network=mainnet`
-- Observed UI routes: `/`, `/blocks`, `/transactions`, `/block/:hash`, `/tx/:txid`
+2. Repeat bridge rehearsal with writable Pearl simnet txids.
+   - Use freshly-created wallet-funded Pearl simnet deposit/release txids, not
+     only public fixture txids.
+   - Keep Pearl mainnet custody disabled.
 
-So KaspaCom should **not** build another generic explorer UI first. Build only:
+3. Define live bridge custody policy.
+   - Select reserve addresses, signer ownership, hot/warm/cold cap limits,
+     emergency pause authority, relayer/operator identities, and final
+     multisig owner.
+   - Explicitly decide whether OTC mainnet starts with the current
+     coordinator-signed P2TR escrow model or waits for true PRL multisig escrow.
+   - Simnet 2-of-3 P2TR address/package construction now passes locally and
+     has funded spend evidence: OTC release classified as `release`, OTC CLTV
+     refund classified as `refund`, and bridge reserve release spent through
+     the same 2-of-3 script-path signer policy.
+   - The bridge reserve scanner gate passed on 2026-05-20:
+     `kaspacom-pearl-indexer-simnet` was redeployed from `origin/dev`, and the
+     proof rerun with `PEARL_REQUIRE_BRIDGE_EXIT_RELEASE=1` classified the
+     bridge reserve spend as `exit_release` with `amount_grains` and
+     `pearl_recipient` metadata.
+   - Remaining bridge custody gate: record approved live reserve addresses,
+     signer custody, relayer/operator identities, cap limits, and the full
+     low-cap entry/exit rehearsal evidence.
+   - Treat `exit_release` as classification only; actual release authorization
+     must still come from bridge-service matching against an approved pending
+     exit, unique release txid, clean reconciliation, and cap limits.
 
-1. reusable chain-data adapters;
-2. SDK primitives for wallets/payments;
-3. app-specific views/widgets where the existing explorer does not solve the business use case.
+4. Replay OTC live evidence from durable API state.
+   - The 2026-05-21 testnet2/Base Sepolia proof recorded real PRL
+     funding/release, Base `createTrade`, `approve`, `deposit`, and `release`
+     txids, plus public proof fields.
+   - The OTC API now records durable `live_proof_evidence` side effects and
+     exposes a public evidence route so the verifier can rerun from public
+     routes after shutdown when the trade is persisted.
+   - OTC escrow watch registration now records distinct Pearl release/refund
+     destinations plus templates so fee-adjusted spends classify cleanly.
+   - PR #106 plus the 2026-05-24 review hardening covers paste/submit signed
+     release broadcast. Native browser Pearl wallet signing and first-class
+     refund signing UX remain open.
 
-## Smart Contract Finding
+5. Finish production Oyster release.
+   - Populate prod secrets, execute prod image path, configure prod DNS, and
+     smoke prod `/healthz`, quote, support-alert, and admin-auth routes.
 
-Current evidence says Pearl is a Bitcoin-style UTXO chain, not an EVM/smart-contract L1. The repo and docs show:
+## Do Not Do Yet
 
-- `pearld` full node forked from `btcd`;
-- `oyster` wallet forked from `btcwallet`;
-- UTXO transactions, Taproot, P2SH/multisig, and txscript-style scripts;
-- no obvious Solidity/EVM/WASM contract deployment or call RPCs;
-- the whitepaper mentions future/native settlement of compute contracts as a possible direction, not current deployed general-purpose smart contracts.
+- Do not deploy Igra mainnet bridge contracts until
+  `PEARL_BRIDGE_MAINNET_APPROVED=1`,
+  `PEARL_BRIDGE_MAINNET_READY_CHECKLIST=1`, chain ID `38833`, final owner,
+  relayer, and operator are explicit.
+- Do not point bridge signing or reserve release at Pearl mainnet during simnet
+  rehearsals.
+- Do not seed a `wPRL/USDC` pool until one low-cap bridge entry and one low-cap
+  bridge exit have public proof and clean reserve reconciliation.
+- Do not enable broad mainnet PRL release/refund code paths from testnet
+  assumptions. Finish simnet proof first, then run only explicitly approved
+  low-cap mainnet with real txids, public proof, and clean reconciliation.
 
-Practical implication: app ideas should center on wallets, payments, indexing, OTC/market data, mining/inference ops, and off-chain compute-marketplace workflows, not DeFi smart contracts.
+## Detailed Gap Map
 
-## What We Still Need
-
-### Must Decide
-
-1. **First product track**
-   - Recommended: **App-facing chain data layer + wallet SDK foundation**, not a duplicate explorer UI.
-   - Reason: Pearl already has a public explorer at `https://explorer.pearlresearch.ai/?network=mainnet`. We only need our own chain-data service if existing public endpoints are not stable/app-friendly enough for payments, wallets, alerts, or KaspaCom dashboards.
-
-2. **Runtime stack**
-   - Recommended: TypeScript monorepo with packages/services:
-     - `packages/pearl-sdk`
-     - `packages/pearl-rpc`
-     - `services/chain-data-api`
-     - `services/market-data`
-     - later app UIs only where Pearl does not already cover the use case
-
-3. **Data source strategy**
-   - Phase 1 for OTC: run our own Pearl node/indexer and keep Pearl's public Blockbook as fallback/cross-check.
-   - Phase 1 for non-money apps: public explorer/Blockbook surfaces are acceptable while the node-backed adapter matures.
-   - Phase 2: harden self-hosting into production deployment with monitoring, regional redundancy, and runbooks.
-
-4. **Product order**
-   - Chain data adapter/API, reusing existing explorer/Blockbook where possible
-   - Wallet SDK + payment request schema
-   - Pearl Pay
-   - OTC market tools
-   - AI compute marketplace
-   - Browser extension only after web apps require wallet signing
-
-## Recommended Implementation Phase 1
-
-Build the **read-only app data foundation** first. This is not an explorer clone; it is the reusable backend/SDK layer that other apps need.
-
-Deliverables:
-
-1. TypeScript workspace scaffold.
-2. `packages/pearl-rpc`:
-   - network config
-   - typed `pearld` RPC client
-   - typed Blockbook client
-   - mocked fixtures/tests
-3. `services/chain-data-api`:
-   - `/health`
-   - `/chain/stats`
-   - `/blocks/recent`
-   - `/tx/:txid` contract stub
-   - `/address/:address` contract stub
-   - source adapters for self-hosted `pearld` first, Pearl explorer/Blockbook fallback second
-4. CI:
-   - install
-   - typecheck
-   - test
-
-Success criteria:
-
-- `npm install` works.
-- `npm run typecheck` passes.
-- `npm test` passes.
-- README explains how to run the skeleton.
-- No secrets or mainnet wallet material.
-
-## Recommended Implementation Phase 2
-
-Build wallet/app primitives:
-
-1. `packages/pearl-sdk` address validation wrapper.
-2. Pearl payment request schema.
-3. Transaction lifecycle interfaces.
-4. Future connector interface without implementing browser extension yet.
-
-## Recommended Implementation Phase 3
-
-Pick first app:
-
-- **Pearl Pay** if we want transaction usage.
-- **Wallet-connect style SDK / browser extension** once web apps need signing.
-- **Explorer extension/widgets**, not a full explorer clone, if Pearl's existing explorer lacks embeddable analytics or app APIs.
-- **OTC market tool** if we want immediate PRL market relevance.
-- **AI compute marketplace** if we can line up GPU operators and user demand.
-
-## Recommendation
-
-Implement Phase 1 now: **chain data adapter/API + RPC SDK scaffold**. Do not build a competing explorer UI unless a clear gap appears. The use case is app infrastructure: payments, confirmations, wallet activity, alerts, OTC/market widgets, and later compute-marketplace settlement UX.
+Use `docs/operations/bridge-otc-gap-review-20260519.md` for the current
+bridge/OTC blocker list and recommended PR order.

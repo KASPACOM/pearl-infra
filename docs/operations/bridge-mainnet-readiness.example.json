@@ -1,0 +1,23 @@
+{
+  "network": "igra-mainnet",
+  "chainId": "38833",
+  "mainnetApproved": false,
+  "readinessChecklistComplete": false,
+  "approvedBy": "",
+  "approvedAt": "",
+  "finalOwner": "0x0000000000000000000000000000000000000000",
+  "finalOwnerKind": "approved_multisig",
+  "relayer": "0x0000000000000000000000000000000000000000",
+  "operator": "0x0000000000000000000000000000000000000000",
+  "adminPolicyApproved": false,
+  "signerSeparationApproved": false,
+  "reservePolicyApproved": false,
+  "lowCapPilotApproved": false,
+  "poolSeedingApproved": false,
+  "evidence": {
+    "simnetBridgeProof": "",
+    "reservePolicy": "",
+    "ownershipPlan": "",
+    "deploymentApproval": ""
+  }
+}
