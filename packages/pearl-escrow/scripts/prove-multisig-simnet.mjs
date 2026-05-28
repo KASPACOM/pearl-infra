@@ -4,11 +4,15 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { address as bitcoinAddress, initEccLib, Psbt, Transaction } from 'bitcoinjs-lib';
-import * as bip341 from 'bitcoinjs-lib/src/payments/bip341.js';
 import * as ecc from 'tiny-secp256k1';
 
 import { createPearlP2trPayment, getPearlScriptNetwork } from '@kaspacom/pearl-script';
-import { createPearlMultisigEscrowPackage } from '../dist/index.js';
+import {
+  createKeyPathSigner,
+  createPearlEscrowScriptPathSpendTx,
+  createPearlMultisigEscrowPackage,
+  createScriptPathSigner,
+} from '../dist/index.js';
 
 initEccLib(ecc);
 
@@ -94,7 +98,7 @@ const releaseFunding = await waitForObservation(otcReleaseEscrow.tradeId, `${fun
 const refundFunding = await waitForObservation(otcRefundEscrow.tradeId, `${fundingTxid}:1`);
 const reserveFunding = await waitForObservation(bridgeReserveEscrow.tradeId, `${fundingTxid}:2`);
 
-const releaseTxHex = createScriptPathSpendTx({
+const releaseTxHex = createPearlEscrowScriptPathSpendTx({
   escrow: otcReleaseEscrow,
   fundingTxid,
   vout: 0,
@@ -102,7 +106,7 @@ const releaseTxHex = createScriptPathSpendTx({
   destinationAddress: releaseAddress,
   destinationAmountGrains: OTC_RELEASE_AMOUNT - SPEND_FEE_GRAINS,
   leafKind: 'buyer_seller_release',
-  signers: [releaseKeys.buyer, releaseKeys.seller],
+  signers: [createScriptPathSigner(releaseKeys.buyer.privateKey), createScriptPathSigner(releaseKeys.seller.privateKey)],
 });
 const releaseTxid = await rpc('sendrawtransaction', [releaseTxHex]);
 await rpc('generate', [1]);
@@ -111,7 +115,7 @@ while ((await rpc('getblockcount')) < refundLockTime) {
   await rpc('generate', [1]);
 }
 
-const refundTxHex = createScriptPathSpendTx({
+const refundTxHex = createPearlEscrowScriptPathSpendTx({
   escrow: otcRefundEscrow,
   fundingTxid,
   vout: 1,
@@ -119,13 +123,13 @@ const refundTxHex = createScriptPathSpendTx({
   destinationAddress: refundAddress,
   destinationAmountGrains: OTC_REFUND_AMOUNT - SPEND_FEE_GRAINS,
   leafKind: 'seller_timeout_refund',
-  signers: [refundKeys.seller],
+  signers: [createScriptPathSigner(refundKeys.seller.privateKey)],
   lockTime: refundLockTime,
   sequence: Transaction.DEFAULT_SEQUENCE - 1,
 });
 const refundTxid = await rpc('sendrawtransaction', [refundTxHex]);
 
-const reserveReleaseTxHex = createScriptPathSpendTx({
+const reserveReleaseTxHex = createPearlEscrowScriptPathSpendTx({
   escrow: bridgeReserveEscrow,
   fundingTxid,
   vout: 2,
@@ -133,7 +137,7 @@ const reserveReleaseTxHex = createScriptPathSpendTx({
   destinationAddress: bridgeRecipientAddress,
   destinationAmountGrains: BRIDGE_RESERVE_AMOUNT - SPEND_FEE_GRAINS,
   leafKind: 'buyer_seller_release',
-  signers: [reserveKeys.buyer, reserveKeys.seller],
+  signers: [createScriptPathSigner(reserveKeys.buyer.privateKey), createScriptPathSigner(reserveKeys.seller.privateKey)],
 });
 const reserveReleaseTxid = await rpc('sendrawtransaction', [reserveReleaseTxHex]);
 await rpc('generate', [1]);
@@ -356,65 +360,6 @@ function createFundingTx(sourceUtxo, outputs) {
   psbt.signTaprootInput(0, createKeyPathSigner(SOURCE_PRIVATE_KEY));
   psbt.finalizeAllInputs();
   return psbt.extractTransaction(true).toHex();
-}
-
-function createScriptPathSpendTx(input) {
-  const leaf = input.escrow.keys.taprootScriptLeaves?.find((candidate) => candidate.kind === input.leafKind);
-  if (!leaf?.scriptHex || !leaf.controlBlockHex || leaf.leafVersion === undefined) {
-    throw new Error(`missing Taproot leaf metadata for ${input.leafKind}`);
-  }
-  const psbt = new Psbt({ network: NETWORK });
-  psbt.setVersion(2);
-  if (input.lockTime !== undefined) psbt.setLocktime(input.lockTime);
-  psbt.addInput({
-    hash: input.fundingTxid,
-    index: input.vout,
-    sequence: input.sequence,
-    witnessUtxo: {
-      script: Buffer.from(input.escrow.keys.taprootOutputScriptHex, 'hex'),
-      value: input.amountGrains,
-    },
-    tapInternalKey: Buffer.from(input.escrow.keys.internalPubkeyHex, 'hex'),
-    tapLeafScript: [{
-      leafVersion: leaf.leafVersion,
-      script: Buffer.from(leaf.scriptHex, 'hex'),
-      controlBlock: Buffer.from(leaf.controlBlockHex, 'hex'),
-    }],
-  });
-  psbt.addOutput({
-    address: input.destinationAddress,
-    value: input.destinationAmountGrains,
-  });
-  for (const signer of input.signers) {
-    psbt.signTaprootInput(0, createScriptSigner(signer.privateKey));
-  }
-  psbt.finalizeTaprootInput(0);
-  return psbt.extractTransaction(true).toHex();
-}
-
-function createKeyPathSigner(privateKey) {
-  const pubkey = Buffer.from(ecc.pointFromScalar(privateKey, true));
-  const xOnly = pubkey.subarray(1);
-  const evenPrivateKey = pubkey[0] === 0x03 ? Buffer.from(ecc.privateNegate(privateKey)) : privateKey;
-  const tweakedPrivateKey = Buffer.from(ecc.privateAdd(evenPrivateKey, bip341.tapTweakHash(xOnly)));
-  const tweakedPublicKey = Buffer.from(ecc.pointFromScalar(tweakedPrivateKey, true));
-  return createSigner(tweakedPrivateKey, tweakedPublicKey);
-}
-
-function createScriptSigner(privateKey) {
-  return createSigner(privateKey, Buffer.from(ecc.pointFromScalar(privateKey, true)));
-}
-
-function createSigner(privateKey, publicKey) {
-  return {
-    publicKey,
-    sign(hash) {
-      return Buffer.from(ecc.sign(hash, privateKey));
-    },
-    signSchnorr(hash) {
-      return Buffer.from(ecc.signSchnorr(hash, privateKey));
-    },
-  };
 }
 
 function createRoleKeys() {

@@ -1,3 +1,4 @@
+import type { PearlEscrowPackage } from '@kaspacom/pearl-escrow';
 import type {
   PearlEscrowMode,
   PearlReleaseSigningMode,
@@ -148,6 +149,27 @@ export interface PearlReleaseSigningIntent {
   destinationAddress?: string;
   signerSets: string[][];
   workerCanFinishWithArbiter: boolean;
+}
+
+export interface PearlReleasePresignTemplate {
+  tradeId: string;
+  psbtBase64: string;
+  buyerPubkey: string;
+  leafKind: 'buyer_arbiter_release';
+  destinationAddress: string;
+  fundingOutpoint: string;
+  expectedAmountGrains: string;
+  outputAmountGrains: string;
+  feeGrains: string;
+}
+
+export interface PreauthorizedReleaseContext {
+  escrow: PearlEscrowPackage;
+  fundingOutpoint: string;
+  fundingTxid: string;
+  fundingVout: number;
+  buyerPubkey: string;
+  outputAmountGrains: bigint;
 }
 
 export interface SubmitPearlSignedTransactionRequest {

@@ -79,6 +79,19 @@ export interface PearlEscrowLeg {
     lockTime?: number;
   }>;
   simnetVerified?: boolean;
+  buyerReleasePresignature?: PearlBuyerReleasePresignature;
+}
+
+export interface PearlBuyerReleasePresignature {
+  psbtBase64: string;
+  buyerPubkey: string;
+  leafKind: 'buyer_arbiter_release';
+  destinationAddress: string;
+  outputAmountGrains: string;
+  feeGrains: string;
+  fundingOutpoint: string;
+  signedAt: string;
+  revokedAt?: string;
 }
 
 export interface UsdcEscrowLeg {
