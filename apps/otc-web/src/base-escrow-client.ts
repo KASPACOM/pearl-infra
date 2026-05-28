@@ -72,15 +72,23 @@ export function prepareUsdcApprovalCall(
 }
 
 export function prepareEscrowDepositCall(
-  tradeKey: string,
-  input: FrontendEscrowCallConfigInput = 'base_sepolia',
+  input: {
+    tradeKey: string;
+    expectedSeller: string;
+    expectedAmountMicros: bigint | string;
+    expectedFeeMicros: bigint | string;
+  },
+  configInput: FrontendEscrowCallConfigInput = 'base_sepolia',
 ): PreparedContractCall {
-  assertBytes32(tradeKey, 'tradeKey');
-  const config = resolveEscrowCallConfig(input);
+  assertBytes32(input.tradeKey, 'tradeKey');
+  assertEvmAddress(input.expectedSeller, 'expectedSeller');
+  const config = resolveEscrowCallConfig(configInput);
+  const amount = typeof input.expectedAmountMicros === 'bigint' ? input.expectedAmountMicros : BigInt(input.expectedAmountMicros);
+  const fee = typeof input.expectedFeeMicros === 'bigint' ? input.expectedFeeMicros : BigInt(input.expectedFeeMicros);
   return {
     chainId: config.chainId,
     to: config.escrowContract,
-    data: createEscrowInterface().encodeFunctionData('deposit', [tradeKey]),
+    data: createEscrowInterface().encodeFunctionData('deposit', [input.tradeKey, input.expectedSeller, amount, fee]),
   };
 }
 

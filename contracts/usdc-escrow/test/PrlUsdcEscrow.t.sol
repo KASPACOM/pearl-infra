@@ -71,7 +71,7 @@ contract PrlUsdcEscrowTest {
         _fundAndApproveBuyer(AMOUNT + FEE);
 
         VM.prank(BUYER);
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
 
         _assertEq(usdc.balanceOf(address(escrow)), AMOUNT + FEE);
         _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Deposited);
@@ -84,7 +84,7 @@ contract PrlUsdcEscrowTest {
         VM.warp(expiry);
 
         VM.prank(BUYER);
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
 
         _assertEq(usdc.balanceOf(address(escrow)), AMOUNT + FEE);
         _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Deposited);
@@ -98,7 +98,7 @@ contract PrlUsdcEscrowTest {
 
         VM.prank(BUYER);
         VM.expectRevert(bytes("expired"));
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
 
         _assertEq(usdc.balanceOf(address(escrow)), 0);
         _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Created);
@@ -132,7 +132,7 @@ contract PrlUsdcEscrowTest {
         _fundAndApproveBuyer(AMOUNT + FEE);
 
         VM.prank(BUYER);
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
 
         VM.warp(expiry);
         VM.prank(BUYER);
@@ -196,7 +196,7 @@ contract PrlUsdcEscrowTest {
 
         VM.prank(BUYER);
         VM.expectRevert();
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
 
         VM.expectRevert();
         escrow.release(TRADE_ID);
@@ -254,10 +254,10 @@ contract PrlUsdcEscrowTest {
 
         VM.prank(STRANGER);
         VM.expectRevert(bytes("not buyer"));
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
 
         VM.prank(BUYER);
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
 
         VM.prank(STRANGER);
         VM.expectRevert();
@@ -349,11 +349,14 @@ contract PrlUsdcEscrowTest {
     }
 
     function _fundApproveAndDeposit(bytes32 tradeId, address buyer, uint256 amount) private {
+        // Read the on-chain trade FIRST so the prank below is still active when
+        // escrow.deposit is called. Foundry's VM.prank only persists for the next call.
+        (, address seller, uint256 expectedAmount, uint256 expectedFee,,) = escrow.trades(tradeId);
         usdc.mint(buyer, amount);
         VM.prank(buyer);
         usdc.approve(address(escrow), amount);
         VM.prank(buyer);
-        escrow.deposit(tradeId);
+        escrow.deposit(tradeId, seller, expectedAmount, expectedFee);
     }
 
     function _expectTradeExists(bytes32 tradeId) private {
@@ -420,15 +423,17 @@ contract PrlUsdcEscrowTest {
         _assertEq(usdc.balanceOf(FEE_RECIPIENT), FEE);
     }
 
-    function testOperatorCanForceRefundBeforeExpiry() external {
+    function testOperatorCannotRefundEarly() external {
+        // Operator deliberately cannot refund (closes the post-Pearl-release grief
+        // vector where a compromised operator could rug the seller). Only owner or
+        // buyer-after-expiry may refund. See PrlUsdcEscrow.refund authorization
+        // comment for rationale.
         escrow.setOperator(NEW_OWNER);
         _depositTrade();
 
         VM.prank(NEW_OWNER);
+        VM.expectRevert(bytes("not authorized"));
         escrow.refund(TRADE_ID);
-
-        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Refunded);
-        _assertEq(usdc.balanceOf(BUYER), AMOUNT + FEE);
     }
 
     function testOwnerStillRetainsOperatorPowersWhenOperatorUnset() external {
@@ -487,6 +492,63 @@ contract PrlUsdcEscrowTest {
         VM.prank(NEW_OWNER);
         VM.expectRevert();
         escrow.setOperator(STRANGER);
+    }
+
+    // ---------- Deposit guard (anti-frontrun) ----------
+
+    function testDepositRejectsSellerMismatch() external {
+        _createTrade();
+        _fundAndApproveBuyer(AMOUNT + FEE);
+
+        VM.prank(BUYER);
+        VM.expectRevert(bytes("seller mismatch"));
+        escrow.deposit(TRADE_ID, STRANGER, AMOUNT, FEE);
+
+        // Real seller still works.
+        VM.prank(BUYER);
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
+        _assertStatus(_status(), PrlUsdcEscrow.TradeStatus.Deposited);
+    }
+
+    function testDepositRejectsAmountOrFeeMismatch() external {
+        _createTrade();
+        _fundAndApproveBuyer(AMOUNT + FEE);
+
+        VM.prank(BUYER);
+        VM.expectRevert(bytes("amount mismatch"));
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT - 1, FEE);
+
+        VM.prank(BUYER);
+        VM.expectRevert(bytes("fee mismatch"));
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE + 1);
+    }
+
+    function testCompromisedOperatorCannotRedirectViaCreateTradeFrontrun() external {
+        // Attack scenario: operator key is compromised. Attacker frontruns the OTC API
+        // by createTrade'ing with the same tradeId but their own address as seller,
+        // hoping the buyer's wallet will deposit anyway. The deposit guard forces the
+        // buyer to commit to the expected seller on chain, so the attacker's trade is
+        // rejected at deposit time.
+        escrow.setOperator(NEW_OWNER);
+
+        // Attacker creates the malicious trade with their address as seller.
+        address attacker = STRANGER;
+        VM.prank(NEW_OWNER);  // simulating compromised operator key
+        escrow.createTrade(TRADE_ID, BUYER, attacker, AMOUNT, FEE, _futureExpiry());
+
+        // Real OTC API cannot create the legitimate trade — same tradeId already taken.
+        VM.expectRevert(bytes("trade exists"));
+        escrow.createTrade(TRADE_ID, BUYER, SELLER, AMOUNT, FEE, _futureExpiry());
+
+        // Buyer tries to deposit expecting the LEGITIMATE seller. Reverts.
+        _fundAndApproveBuyer(AMOUNT + FEE);
+        VM.prank(BUYER);
+        VM.expectRevert(bytes("seller mismatch"));
+        escrow.deposit(TRADE_ID, SELLER, AMOUNT, FEE);
+
+        // No USDC moved.
+        _assertEq(usdc.balanceOf(address(escrow)), 0);
+        _assertEq(usdc.balanceOf(attacker), 0);
     }
 
     // ---------- setFeeRecipient ----------

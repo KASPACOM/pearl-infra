@@ -85,8 +85,20 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
         emit TradeCreated(tradeId, buyer, seller, amount, fee, expiry);
     }
 
-    function deposit(bytes32 tradeId) external whenNotPaused {
+    function deposit(bytes32 tradeId, address expectedSeller, uint256 expectedAmount, uint256 expectedFee)
+        external
+        whenNotPaused
+    {
         Trade storage trade = trades[tradeId];
+        // Buyer-side guard against operator-key frontrun: if a compromised operator
+        // calls createTrade with the same tradeId but a malicious seller address before
+        // the real createTrade lands, the buyer's deposit would otherwise fund the
+        // attacker's trade. Requiring the buyer to commit to the expected on-chain
+        // shape closes that hole — frontrun trades have a different seller/amount/fee
+        // and the deposit reverts.
+        require(trade.seller == expectedSeller, "seller mismatch");
+        require(trade.amount == expectedAmount, "amount mismatch");
+        require(trade.fee == expectedFee, "fee mismatch");
         require(trade.status == TradeStatus.Created, "not depositable");
         require(block.timestamp <= trade.expiry, "expired");
         require(msg.sender == trade.buyer, "not buyer");
@@ -114,9 +126,12 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
     function refund(bytes32 tradeId) external {
         Trade storage trade = trades[tradeId];
         require(trade.status == TradeStatus.Deposited, "not refundable");
+        // Operator deliberately excluded: if the operator key leaks, an attacker could
+        // refund a trade where Pearl release has already fired, stranding the seller's
+        // PRL while sending USDC back to the buyer. Only the cold owner key or the
+        // buyer (after expiry) can refund. Stuck takers wait for expiry and self-refund.
         require(
-            msg.sender == operator || msg.sender == owner()
-                || (msg.sender == trade.buyer && block.timestamp > trade.expiry),
+            msg.sender == owner() || (msg.sender == trade.buyer && block.timestamp > trade.expiry),
             "not authorized"
         );
 
