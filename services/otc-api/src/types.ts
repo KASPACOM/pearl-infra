@@ -604,6 +604,57 @@ export interface ReferralCodeLookup {
 }
 
 export type OtcOrderStatus = 'open' | 'partially_filled' | 'filled' | 'cancelled' | 'expired';
+
+// Sweep status — see migration 010 for the SQL constraint.
+//
+//   pending                    : sweep PSBT not yet built (Mode A — auto), or
+//                                still constructing.
+//   awaiting_maker_signature   : Mode B — PSBT presented to maker, waiting for
+//                                their signature.
+//   broadcast                  : sweep tx submitted to the Pearl network.
+//   confirmed                  : sweep tx confirmed on-chain at the required
+//                                depth; trade escrow is funded.
+//   failed                     : signing or broadcast failed permanently.
+//   expired                    : Mode B — maker never signed before the match
+//                                window closed; taker is refunded.
+export type OtcOrderSweepStatus =
+  | 'pending'
+  | 'awaiting_maker_signature'
+  | 'broadcast'
+  | 'confirmed'
+  | 'failed'
+  | 'expired';
+
+// One row per match: the sweep tx that moves PRL from the order's live prefund
+// UTXO into a per-trade 2-of-3 multisig escrow. May leave change back to a new
+// prefund UTXO if the order is partially filled.
+export interface OtcOrderSweep {
+  sweepId: string;
+  orderId: string;
+  tradeId: string;
+  inputOutpoint: string;
+  sweptGrains: string;
+  changeOutpoint?: string;
+  changeGrains?: string;
+  sweepPsbtBase64?: string;
+  sweepTxid?: string;
+  status: OtcOrderSweepStatus;
+  failureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveOrderSweepInput {
+  sweepId: string;
+  orderId: string;
+  tradeId: string;
+  inputOutpoint: string;
+  sweptGrains: string;
+  changeOutpoint?: string;
+  changeGrains?: string;
+  sweepPsbtBase64?: string;
+  status: OtcOrderSweepStatus;
+}
 export type OtcFundingAsset = 'PRL' | 'USDC';
 export type OtcPointSource =
   | 'signup'

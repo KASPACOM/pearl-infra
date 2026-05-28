@@ -11,7 +11,10 @@ import type {
   OtcNotificationTarget,
   OtcOrder,
   OtcOrderQuoteLink,
+  OtcOrderSweep,
+  OtcOrderSweepStatus,
   OtcPointEvent,
+  SaveOrderSweepInput,
   OtcSideEffect,
   OtcUser,
   OtcUserProfile,
@@ -163,6 +166,26 @@ export interface OtcRepository {
     updatedAt: string;
   }): Promise<OtcOrder>;
   applyPrefundExpired(orderId: string, updatedAt: string): Promise<OtcOrder>;
+  saveOrderSweep(input: SaveOrderSweepInput): Promise<OtcOrderSweep>;
+  findOrderSweepByTradeId(tradeId: string): Promise<OtcOrderSweep | undefined>;
+  listOrderSweepsByOrderId(orderId: string): Promise<OtcOrderSweep[]>;
+  updateOrderSweep(input: {
+    sweepId: string;
+    status?: OtcOrderSweepStatus;
+    sweepPsbtBase64?: string;
+    sweepTxid?: string;
+    changeOutpoint?: string;
+    changeGrains?: string;
+    failureReason?: string;
+    updatedAt: string;
+  }): Promise<OtcOrderSweep>;
+  applyOrderPrefundSweepProgress(input: {
+    orderId: string;
+    sweptGrains: string;
+    newRemainingGrains: string;
+    newState: 'partially_swept' | 'fully_swept';
+    updatedAt: string;
+  }): Promise<OtcOrder>;
   saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void>;
   findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined>;
   savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }>;
@@ -223,6 +246,8 @@ export class InMemoryOtcRepository implements OtcRepository {
   private readonly pearlEscrowAllocationByDerivation = new Map<string, string>();
   private readonly orderPrefundAllocations = new Map<string, OrderPrefundAllocation>();
   private readonly orderPrefundAllocationByDerivation = new Map<string, string>();
+  private readonly orderSweeps = new Map<string, OtcOrderSweep>();
+  private readonly orderSweepByTradeId = new Map<string, string>();
   private readonly events = new Map<string, TradeEvent[]>();
   private readonly sideEffects = new Map<string, OtcSideEffect>();
   private readonly walletChallenges = new Map<string, OtcUserWalletChallenge>();
@@ -779,6 +804,88 @@ export class InMemoryOtcRepository implements OtcRepository {
     return updated;
   }
 
+  async saveOrderSweep(input: SaveOrderSweepInput): Promise<OtcOrderSweep> {
+    if (this.orderSweepByTradeId.has(input.tradeId)) {
+      throw new Error(`sweep already exists for trade: ${input.tradeId}`);
+    }
+    const now = new Date().toISOString();
+    const sweep: OtcOrderSweep = {
+      sweepId: input.sweepId,
+      orderId: input.orderId,
+      tradeId: input.tradeId,
+      inputOutpoint: input.inputOutpoint,
+      sweptGrains: input.sweptGrains,
+      ...(input.changeOutpoint ? { changeOutpoint: input.changeOutpoint } : {}),
+      ...(input.changeGrains ? { changeGrains: input.changeGrains } : {}),
+      ...(input.sweepPsbtBase64 ? { sweepPsbtBase64: input.sweepPsbtBase64 } : {}),
+      status: input.status,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.orderSweeps.set(input.sweepId, sweep);
+    this.orderSweepByTradeId.set(input.tradeId, input.sweepId);
+    return sweep;
+  }
+
+  async findOrderSweepByTradeId(tradeId: string): Promise<OtcOrderSweep | undefined> {
+    const sweepId = this.orderSweepByTradeId.get(tradeId);
+    return sweepId ? this.orderSweeps.get(sweepId) : undefined;
+  }
+
+  async listOrderSweepsByOrderId(orderId: string): Promise<OtcOrderSweep[]> {
+    return Array.from(this.orderSweeps.values())
+      .filter((sweep) => sweep.orderId === orderId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  async updateOrderSweep(input: {
+    sweepId: string;
+    status?: OtcOrderSweepStatus;
+    sweepPsbtBase64?: string;
+    sweepTxid?: string;
+    changeOutpoint?: string;
+    changeGrains?: string;
+    failureReason?: string;
+    updatedAt: string;
+  }): Promise<OtcOrderSweep> {
+    const existing = this.orderSweeps.get(input.sweepId);
+    if (!existing) throw new Error(`sweep not found: ${input.sweepId}`);
+    const updated: OtcOrderSweep = {
+      ...existing,
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.sweepPsbtBase64 ? { sweepPsbtBase64: input.sweepPsbtBase64 } : {}),
+      ...(input.sweepTxid ? { sweepTxid: input.sweepTxid } : {}),
+      ...(input.changeOutpoint ? { changeOutpoint: input.changeOutpoint } : {}),
+      ...(input.changeGrains ? { changeGrains: input.changeGrains } : {}),
+      ...(input.failureReason ? { failureReason: input.failureReason } : {}),
+      updatedAt: input.updatedAt,
+    };
+    this.orderSweeps.set(input.sweepId, updated);
+    return updated;
+  }
+
+  async applyOrderPrefundSweepProgress(input: {
+    orderId: string;
+    sweptGrains: string;
+    newRemainingGrains: string;
+    newState: 'partially_swept' | 'fully_swept';
+    updatedAt: string;
+  }): Promise<OtcOrder> {
+    const order = this.orders.get(input.orderId);
+    if (!order) throw new Error(`order not found: ${input.orderId}`);
+    if (!['funded', 'partially_swept'].includes(order.prefundState ?? '')) {
+      throw new Error(`order ${input.orderId} not eligible for sweep progress (state=${order.prefundState})`);
+    }
+    const updated: OtcOrder = {
+      ...order,
+      prefundRemainingGrains: input.newRemainingGrains,
+      prefundState: input.newState,
+      updatedAt: input.updatedAt,
+    };
+    this.orders.set(input.orderId, updated);
+    return updated;
+  }
+
   async reserveOrderPrefundAllocation(
     allocation: OrderPrefundAllocationInput,
   ): Promise<{ allocation: OrderPrefundAllocation; created: boolean }> {
@@ -885,6 +992,22 @@ type OrderPrefundAllocationRow = Record<string, unknown> & {
   script_leaves: OrderPrefundAllocation['scriptLeaves'] | string;
   signer_pubkeys: OrderPrefundAllocation['signerPubkeys'] | string;
   created_at: Date | string;
+}
+
+type OrderSweepRow = Record<string, unknown> & {
+  sweep_id: string;
+  order_id: string;
+  trade_id: string;
+  input_outpoint: string;
+  swept_grains: string | number;
+  change_outpoint: string | null;
+  change_grains: string | number | null;
+  sweep_psbt_base64: string | null;
+  sweep_txid: string | null;
+  status: OtcOrderSweepStatus;
+  failure_reason: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
 }
 
 type WalletChallengeRow = Record<string, unknown> & {
@@ -1324,6 +1447,118 @@ export class PgOtcRepository implements OtcRepository {
     );
     if (!result.rows[0]) {
       throw new Error(`order ${orderId} not pending funding (concurrent transition or unknown order)`);
+    }
+    return rowToOrder(result.rows[0]);
+  }
+
+  async saveOrderSweep(input: SaveOrderSweepInput): Promise<OtcOrderSweep> {
+    const result = await this.client.query<OrderSweepRow>(
+      `INSERT INTO otc_order_sweeps (
+         sweep_id, order_id, trade_id, input_outpoint, swept_grains,
+         change_outpoint, change_grains, sweep_psbt_base64, status
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING sweep_id, order_id, trade_id, input_outpoint, swept_grains,
+                 change_outpoint, change_grains, sweep_psbt_base64, sweep_txid,
+                 status, failure_reason, created_at, updated_at`,
+      [
+        input.sweepId,
+        input.orderId,
+        input.tradeId,
+        input.inputOutpoint,
+        input.sweptGrains,
+        input.changeOutpoint ?? null,
+        input.changeGrains ?? null,
+        input.sweepPsbtBase64 ?? null,
+        input.status,
+      ],
+    );
+    return rowToOrderSweep(result.rows[0]);
+  }
+
+  async findOrderSweepByTradeId(tradeId: string): Promise<OtcOrderSweep | undefined> {
+    const result = await this.client.query<OrderSweepRow>(
+      `SELECT sweep_id, order_id, trade_id, input_outpoint, swept_grains,
+              change_outpoint, change_grains, sweep_psbt_base64, sweep_txid,
+              status, failure_reason, created_at, updated_at
+         FROM otc_order_sweeps
+        WHERE trade_id = $1`,
+      [tradeId],
+    );
+    return result.rows[0] ? rowToOrderSweep(result.rows[0]) : undefined;
+  }
+
+  async listOrderSweepsByOrderId(orderId: string): Promise<OtcOrderSweep[]> {
+    const result = await this.client.query<OrderSweepRow>(
+      `SELECT sweep_id, order_id, trade_id, input_outpoint, swept_grains,
+              change_outpoint, change_grains, sweep_psbt_base64, sweep_txid,
+              status, failure_reason, created_at, updated_at
+         FROM otc_order_sweeps
+        WHERE order_id = $1
+        ORDER BY created_at ASC`,
+      [orderId],
+    );
+    return result.rows.map(rowToOrderSweep);
+  }
+
+  async updateOrderSweep(input: {
+    sweepId: string;
+    status?: OtcOrderSweepStatus;
+    sweepPsbtBase64?: string;
+    sweepTxid?: string;
+    changeOutpoint?: string;
+    changeGrains?: string;
+    failureReason?: string;
+    updatedAt: string;
+  }): Promise<OtcOrderSweep> {
+    const result = await this.client.query<OrderSweepRow>(
+      `UPDATE otc_order_sweeps
+          SET status = COALESCE($2, status),
+              sweep_psbt_base64 = COALESCE($3, sweep_psbt_base64),
+              sweep_txid = COALESCE($4, sweep_txid),
+              change_outpoint = COALESCE($5, change_outpoint),
+              change_grains = COALESCE($6::numeric, change_grains),
+              failure_reason = COALESCE($7, failure_reason),
+              updated_at = $8
+        WHERE sweep_id = $1
+        RETURNING sweep_id, order_id, trade_id, input_outpoint, swept_grains,
+                  change_outpoint, change_grains, sweep_psbt_base64, sweep_txid,
+                  status, failure_reason, created_at, updated_at`,
+      [
+        input.sweepId,
+        input.status ?? null,
+        input.sweepPsbtBase64 ?? null,
+        input.sweepTxid ?? null,
+        input.changeOutpoint ?? null,
+        input.changeGrains ?? null,
+        input.failureReason ?? null,
+        input.updatedAt,
+      ],
+    );
+    if (!result.rows[0]) {
+      throw new Error(`sweep not found: ${input.sweepId}`);
+    }
+    return rowToOrderSweep(result.rows[0]);
+  }
+
+  async applyOrderPrefundSweepProgress(input: {
+    orderId: string;
+    sweptGrains: string;
+    newRemainingGrains: string;
+    newState: 'partially_swept' | 'fully_swept';
+    updatedAt: string;
+  }): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `UPDATE otc_orders
+          SET prefund_remaining_grains = $2::numeric,
+              prefund_state = $3,
+              updated_at = $4
+        WHERE order_id = $1
+          AND prefund_state IN ('funded', 'partially_swept')
+        RETURNING ${ORDER_SELECT_COLUMNS}`,
+      [input.orderId, input.newRemainingGrains, input.newState, input.updatedAt],
+    );
+    if (!result.rows[0]) {
+      throw new Error(`order ${input.orderId} not eligible for sweep progress (concurrent transition or unknown order)`);
     }
     return rowToOrder(result.rows[0]);
   }
@@ -2569,6 +2804,24 @@ function rowToPearlEscrowAllocation(row: PearlEscrowAllocationRow): PearlEscrowA
     internalPubkeyHex: row.internal_pubkey_hex,
     taprootOutputScriptHex: row.taproot_output_script_hex,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
+}
+
+function rowToOrderSweep(row: OrderSweepRow): OtcOrderSweep {
+  return {
+    sweepId: row.sweep_id,
+    orderId: row.order_id,
+    tradeId: row.trade_id,
+    inputOutpoint: row.input_outpoint,
+    sweptGrains: String(row.swept_grains),
+    ...(row.change_outpoint ? { changeOutpoint: row.change_outpoint } : {}),
+    ...(row.change_grains == null ? {} : { changeGrains: String(row.change_grains) }),
+    ...(row.sweep_psbt_base64 ? { sweepPsbtBase64: row.sweep_psbt_base64 } : {}),
+    ...(row.sweep_txid ? { sweepTxid: row.sweep_txid } : {}),
+    status: row.status,
+    ...(row.failure_reason ? { failureReason: row.failure_reason } : {}),
+    createdAt: formatPgDate(row.created_at),
+    updatedAt: formatPgDate(row.updated_at),
   };
 }
 
