@@ -205,14 +205,29 @@ function getManualReviewReason(snapshot: SettlementSnapshot): string | undefined
 }
 
 function isPrlReleaseAllowed(snapshot: SettlementSnapshot): boolean {
-  return (
+  const baseConditionsMet =
     snapshot.trade.state === 'usdc_escrow_confirmed' &&
     snapshot.pearl.status === 'confirmed' &&
     snapshot.base.status === 'deposited' &&
     snapshot.pearl.confirmations >= snapshot.trade.pearlEscrow.requiredConfirmations &&
     snapshot.base.confirmations >= snapshot.trade.usdcEscrow.requiredConfirmations &&
-    new Date(snapshot.pearl.observedAt).getTime() <= new Date(snapshot.trade.deadlines.pearlFundingDeadline).getTime()
-  );
+    new Date(snapshot.pearl.observedAt).getTime() <= new Date(snapshot.trade.deadlines.pearlFundingDeadline).getTime();
+  if (!baseConditionsMet) return false;
+  return isWorkerAutoReleaseAuthorized(snapshot);
+}
+
+function isWorkerAutoReleaseAuthorized(snapshot: SettlementSnapshot): boolean {
+  // Multisig escrows require an explicit buyer opt-in via preauthorize_release AND a
+  // buyer-presigned PSBT before the worker can co-sign with the arbiter. Manual-mode
+  // multisig trades wait for the user's paste-broadcast flow. Coordinator (xpub) and
+  // legacy/undefined escrow modes auto-release through the desk signer client.
+  if (snapshot.trade.pearlEscrowMode === 'multisig') {
+    if (snapshot.trade.pearlReleaseSigningMode !== 'preauthorize_release') return false;
+    const presig = snapshot.trade.pearlEscrow.buyerReleasePresignature;
+    if (!presig) return false;
+    if (presig.revokedAt) return false;
+  }
+  return true;
 }
 
 function sha256Json(value: unknown): string {

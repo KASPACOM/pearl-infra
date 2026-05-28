@@ -20,7 +20,15 @@ import {
   type TradeState,
   tradeStateIsTerminal,
 } from '@kaspacom/pearl-sdk';
-import { createPearlEscrowTxTemplateHash, createPearlEscrowUnsignedTx, type PearlEscrowPackage, type PearlEscrowTxTemplate } from '@kaspacom/pearl-escrow';
+import {
+  buildPartialPearlEscrowScriptPathPsbt,
+  createPearlEscrowTxTemplateHash,
+  createPearlEscrowUnsignedTx,
+  validateBuyerPreauthorizedReleasePsbt,
+  type PearlEscrowPackage,
+  type PearlEscrowTxTemplate,
+  type ValidatedBuyerPreauthorizedReleasePsbt,
+} from '@kaspacom/pearl-escrow';
 import { createPearlP2trPayment, normalizeXOnlyPubkey, type PearlScriptNetworkName } from '@kaspacom/pearl-script';
 import { getUsdcEscrowNetworkConfig } from '@kaspacom/usdc-escrow-client';
 import * as ecc from 'tiny-secp256k1';
@@ -68,7 +76,9 @@ import type {
   OrderBookQuery,
   OrderQuoteAcceptContext,
   OrderQuoteResponse,
+  PearlReleasePresignTemplate,
   PearlReleaseSigningIntent,
+  PreauthorizedReleaseContext,
   PrepareUsdcCreateTradeRequest,
   PublicTradeProof,
   RecentTradeSummary,
@@ -1337,6 +1347,172 @@ export class OtcTradeService {
       broadcastTxid,
       txTemplateHash: intent.txTemplateHash,
       sideEffect,
+    };
+  }
+
+  async getPearlReleasePresignTemplate(tradeId: string): Promise<PearlReleasePresignTemplate> {
+    const trade = await this.getTrade(tradeId);
+    const context = await this.assertPreauthorizedReleaseContext(trade);
+    const psbt = buildPartialPearlEscrowScriptPathPsbt({
+      escrow: context.escrow,
+      leafKind: 'buyer_arbiter_release',
+      fundingTxid: context.fundingTxid,
+      vout: context.fundingVout,
+      amountGrains: Number(BigInt(trade.pearlEscrow.expectedAmountGrains)),
+      destinationAddress: trade.buyerPearlAddress,
+      destinationAmountGrains: Number(context.outputAmountGrains),
+    });
+    return {
+      tradeId,
+      psbtBase64: psbt.psbtBase64,
+      buyerPubkey: context.buyerPubkey,
+      leafKind: 'buyer_arbiter_release',
+      destinationAddress: trade.buyerPearlAddress,
+      fundingOutpoint: context.fundingOutpoint,
+      expectedAmountGrains: trade.pearlEscrow.expectedAmountGrains,
+      outputAmountGrains: context.outputAmountGrains.toString(),
+      feeGrains: this.config.pearlReleaseFeeGrains ?? '0',
+    };
+  }
+
+  async submitPearlReleasePresignature(
+    tradeId: string,
+    request: { psbtBase64: string },
+  ): Promise<OtcTrade> {
+    assertNonEmptyBounded(request.psbtBase64, 'psbtBase64', 200_000);
+    const trade = await this.getTrade(tradeId);
+    const context = await this.assertPreauthorizedReleaseContext(trade);
+    if (trade.pearlEscrow.buyerReleasePresignature && !trade.pearlEscrow.buyerReleasePresignature.revokedAt) {
+      throw new Error('preauthorized release presignature is already recorded for this trade');
+    }
+
+    let validated: ValidatedBuyerPreauthorizedReleasePsbt;
+    try {
+      validated = validateBuyerPreauthorizedReleasePsbt({
+        psbtBase64: request.psbtBase64,
+        escrow: context.escrow,
+        destinationAddress: trade.buyerPearlAddress,
+        outputAmountGrains: context.outputAmountGrains.toString(),
+        fundingOutpoint: context.fundingOutpoint,
+        buyerPubkey: context.buyerPubkey,
+      });
+    } catch (error) {
+      throw new Error(
+        `preauthorized release PSBT validation failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const updated: OtcTrade = {
+      ...trade,
+      updatedAt: this.now().toISOString(),
+      pearlEscrow: {
+        ...trade.pearlEscrow,
+        buyerReleasePresignature: {
+          psbtBase64: validated.psbtBase64,
+          buyerPubkey: validated.buyerPubkey,
+          leafKind: 'buyer_arbiter_release',
+          destinationAddress: validated.destinationAddress,
+          outputAmountGrains: validated.outputAmountGrains,
+          feeGrains: validated.feeGrains,
+          fundingOutpoint: validated.fundingOutpoint,
+          signedAt: this.now().toISOString(),
+        },
+      },
+    };
+    await this.repository.updateTrade(updated);
+    await this.repository.appendEvent({
+      tradeId,
+      fromState: trade.state,
+      toState: trade.state,
+      source: 'system',
+      sourceEventId: createStableId('event', [tradeId, 'pearl-release-presignature', 'submit']),
+      observedAt: updated.updatedAt,
+      metadata: { action: 'pearl_release_presignature_submitted' },
+    });
+    return updated;
+  }
+
+  async revokePearlReleasePresignature(tradeId: string): Promise<OtcTrade> {
+    const trade = await this.getTrade(tradeId);
+    if (!trade.pearlEscrow.buyerReleasePresignature || trade.pearlEscrow.buyerReleasePresignature.revokedAt) {
+      throw new Error('no active preauthorized release presignature to revoke');
+    }
+    const broadcastReserved = (await this.repository.listSideEffects(tradeId)).filter(
+      (effect) => effect.effectType === 'pearl_release',
+    );
+    if (broadcastReserved.some((effect) => effect.status === 'submitted' || effect.status === 'confirmed' || effect.status === 'prepared')) {
+      throw new Error('cannot revoke preauthorized release after a Pearl release side effect has been reserved');
+    }
+    const now = this.now().toISOString();
+    const updated: OtcTrade = {
+      ...trade,
+      updatedAt: now,
+      pearlEscrow: {
+        ...trade.pearlEscrow,
+        buyerReleasePresignature: {
+          ...trade.pearlEscrow.buyerReleasePresignature,
+          revokedAt: now,
+        },
+      },
+    };
+    await this.repository.updateTrade(updated);
+    await this.repository.appendEvent({
+      tradeId,
+      fromState: trade.state,
+      toState: trade.state,
+      source: 'system',
+      sourceEventId: createStableId('event', [tradeId, 'pearl-release-presignature', 'revoke']),
+      observedAt: now,
+      metadata: { action: 'pearl_release_presignature_revoked' },
+    });
+    return updated;
+  }
+
+  private async assertPreauthorizedReleaseContext(trade: OtcTrade): Promise<PreauthorizedReleaseContext> {
+    if (trade.pearlReleaseSigningMode !== 'preauthorize_release') {
+      throw new Error('trade did not opt in to preauthorized release signing');
+    }
+    if (trade.pearlEscrowMode !== 'multisig') {
+      throw new Error('preauthorized release requires a multisig Pearl escrow');
+    }
+    const presigAllowedStates: TradeState[] = ['pearl_escrow_confirmed', 'usdc_escrow_pending', 'usdc_escrow_confirmed'];
+    if (!presigAllowedStates.includes(trade.state)) {
+      throw new Error(`trade state ${trade.state} does not allow pearl release presignature submission`);
+    }
+    const pearlIndexedProof = await this.getPearlIndexedProof(trade);
+    const fundingOutpoint = trade.pearlEscrow.fundingOutpoint ?? pearlIndexedProof?.escrowOutpoint;
+    if (!fundingOutpoint) {
+      throw new Error('Pearl funding outpoint is not yet observed');
+    }
+    const buyerPubkey = trade.buyerPearlPubkey;
+    if (!buyerPubkey) {
+      throw new Error('trade is missing buyer Pearl pubkey');
+    }
+    const outpointParts = fundingOutpoint.split(':');
+    if (outpointParts.length !== 2) {
+      throw new Error('Pearl funding outpoint must be formatted as txid:vout');
+    }
+    const fundingTxid = outpointParts[0]!.toLowerCase();
+    const fundingVout = Number(outpointParts[1]);
+    if (!Number.isInteger(fundingVout) || fundingVout < 0) {
+      throw new Error('Pearl funding outpoint vout must be a non-negative integer');
+    }
+    const fundedTrade: OtcTrade = trade.pearlEscrow.fundingOutpoint === fundingOutpoint
+      ? trade
+      : { ...trade, pearlEscrow: { ...trade.pearlEscrow, fundingOutpoint } };
+    const escrow = pearlEscrowPackageFromTrade(fundedTrade);
+    const inputAmount = BigInt(trade.pearlEscrow.expectedAmountGrains);
+    const feeGrains = BigInt(this.config.pearlReleaseFeeGrains ?? '0');
+    if (feeGrains < 0n || feeGrains >= inputAmount) {
+      throw new Error('configured pearlReleaseFeeGrains must be in [0, inputAmount)');
+    }
+    return {
+      escrow,
+      fundingOutpoint,
+      fundingTxid,
+      fundingVout,
+      buyerPubkey,
+      outputAmountGrains: inputAmount - feeGrains,
     };
   }
 

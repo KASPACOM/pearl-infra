@@ -31,18 +31,22 @@ jobs:
             echo "AWS_REGION=us-east-1" >> "$GITHUB_ENV"
             echo "OTC_API_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-api-prod" >> "$GITHUB_ENV"
             echo "OTC_WEB_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-web-prod" >> "$GITHUB_ENV"
+            echo "OTC_WORKER_ECR_REPO=009160070963.dkr.ecr.us-east-1.amazonaws.com/kaspacom/oyster-otc-settlement-worker-prod" >> "$GITHUB_ENV"
             echo "OTC_WEB_API_BASE_URL=https://api-oyster.kaspa.com" >> "$GITHUB_ENV"
             echo "OTC_WEB_PEARL_ESCROW_MODE=coordinator" >> "$GITHUB_ENV"
             echo "ARGO_API_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-api/deployment.yaml" >> "$GITHUB_ENV"
             echo "ARGO_WEB_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-web/deployment.yaml" >> "$GITHUB_ENV"
+            echo "ARGO_WORKER_DEPLOYMENT=prod/prod-a-ue1-cluster/oyster-otc-settlement-worker/deployment.yaml" >> "$GITHUB_ENV"
           else
             echo "AWS_REGION=eu-central-1" >> "$GITHUB_ENV"
             echo "OTC_API_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-api-dev" >> "$GITHUB_ENV"
             echo "OTC_WEB_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-web-dev" >> "$GITHUB_ENV"
+            echo "OTC_WORKER_ECR_REPO=009160070963.dkr.ecr.eu-central-1.amazonaws.com/kaspacom/oyster-otc-settlement-worker-dev" >> "$GITHUB_ENV"
             echo "OTC_WEB_API_BASE_URL=https://dev-api-oyster.kaspa.com" >> "$GITHUB_ENV"
             echo "OTC_WEB_PEARL_ESCROW_MODE=multisig" >> "$GITHUB_ENV"
             echo "ARGO_API_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-api/deployment.yaml" >> "$GITHUB_ENV"
             echo "ARGO_WEB_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-web/deployment.yaml" >> "$GITHUB_ENV"
+            echo "ARGO_WORKER_DEPLOYMENT=dev/dev-a-eu1-cluster/oyster-otc-settlement-worker/deployment.yaml" >> "$GITHUB_ENV"
           fi
 
       - name: Configure AWS credentials
@@ -101,6 +105,16 @@ jobs:
           docker push "$OTC_WEB_ECR_REPO:${GITHUB_SHA}"
           docker push "$OTC_WEB_ECR_REPO:latest"
 
+      - name: Build and push OTC settlement worker image
+        run: |
+          docker build \
+            -f services/settlement-worker/Dockerfile \
+            -t "$OTC_WORKER_ECR_REPO:${GITHUB_SHA}" \
+            -t "$OTC_WORKER_ECR_REPO:latest" \
+            .
+          docker push "$OTC_WORKER_ECR_REPO:${GITHUB_SHA}"
+          docker push "$OTC_WORKER_ECR_REPO:latest"
+
       - name: Generate ArgoCD token
         id: generate-token
         uses: actions/create-github-app-token@v1
@@ -122,9 +136,16 @@ jobs:
         run: |
           sed -i "s|image: .*oyster-otc-api-.*|image: $OTC_API_ECR_REPO:${GITHUB_SHA}|" "$ARGO_API_DEPLOYMENT"
           sed -i "s|image: .*oyster-otc-web-.*|image: $OTC_WEB_ECR_REPO:${GITHUB_SHA}|" "$ARGO_WEB_DEPLOYMENT"
+          tracked_files=("$ARGO_API_DEPLOYMENT" "$ARGO_WEB_DEPLOYMENT")
+          if [ -f "$ARGO_WORKER_DEPLOYMENT" ]; then
+            sed -i "s|image: .*oyster-otc-settlement-worker-.*|image: $OTC_WORKER_ECR_REPO:${GITHUB_SHA}|" "$ARGO_WORKER_DEPLOYMENT"
+            tracked_files+=("$ARGO_WORKER_DEPLOYMENT")
+          else
+            echo "settlement-worker Argo manifest not yet registered at $ARGO_WORKER_DEPLOYMENT — skipping image-tag bump"
+          fi
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add "$ARGO_API_DEPLOYMENT" "$ARGO_WEB_DEPLOYMENT"
+          git add "${tracked_files[@]}"
           if git diff --cached --quiet; then
             echo "ArgoCD image tags already current"
           else

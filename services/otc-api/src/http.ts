@@ -209,6 +209,42 @@ export async function handleOtcHttpRequest(
   }
 
   if (
+    method === 'GET' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'pearl-release' &&
+    parts[4] === 'presign-template'
+  ) {
+    return { statusCode: 200, body: await service.getPearlReleasePresignTemplate(parts[2]) };
+  }
+
+  if (
+    method === 'POST' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'pearl-release' &&
+    parts[4] === 'preauthorize'
+  ) {
+    return {
+      statusCode: 200,
+      body: await service.submitPearlReleasePresignature(parts[2], await readJsonBody(request)),
+    };
+  }
+
+  if (
+    method === 'DELETE' &&
+    parts.length === 5 &&
+    parts[0] === 'otc' &&
+    parts[1] === 'trades' &&
+    parts[3] === 'pearl-release' &&
+    parts[4] === 'preauthorize'
+  ) {
+    return { statusCode: 200, body: await service.revokePearlReleasePresignature(parts[2]) };
+  }
+
+  if (
     method === 'POST' &&
     parts.length === 5 &&
     parts[0] === 'otc' &&
