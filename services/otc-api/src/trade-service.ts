@@ -149,6 +149,37 @@ export interface PearlPrefundEscrowAllocator {
   }>;
 }
 
+/** Signs the sweep tx that moves PRL out of the maker's prefund UTXO into a
+ * per-trade escrow + (optional) change back to a new prefund UTXO.
+ *   - Mode A (auto_sweep): both signatures come from the desk (operator +
+ *     arbiter keys). Maker stays passive.
+ *   - Mode B (manual_confirm): the maker signs in the UI, the desk co-signs
+ *     with the operator key, and the resulting fully-signed PSBT is broadcast.
+ */
+export interface OrderSweepSigner {
+  prepareSweepPsbt(input: {
+    sweep: OtcOrderSweep;
+    order: OtcOrder;
+    tradeEscrowAddress: string;
+    changeAddress?: string;
+  }): Promise<{
+    psbtBase64: string;
+    inputAmountGrains: string;
+    outputAmountGrains: string;
+    changeAmountGrains?: string;
+    feeGrains: string;
+  }>;
+  cosignSweepPsbt(input: {
+    sweep: OtcOrderSweep;
+    order: OtcOrder;
+    pendingPsbtBase64: string;
+  }): Promise<{ signedPsbtBase64: string; signedTxHex: string; signedTxid: string }>;
+}
+
+export interface OrderSweepBroadcaster {
+  broadcastSweep(input: { sweep: OtcOrderSweep; signedTxHex: string }): Promise<{ txid: string }>;
+}
+
 /** Indexer-backed observation of a prefund escrow address. Used by the
  * order-prefund observer worker to drive prefund_state transitions.
  */
@@ -600,6 +631,107 @@ export class OtcTradeService {
    * NOTE: PSBT construction is deferred to C5. This method records intent +
    * accounting; the signer/broadcaster wakes up on rows with status='pending'.
    */
+  /**
+   * Mode B path: the maker uploads their signed PSBT. Server co-signs with the
+   * operator key, then transitions the sweep to 'broadcast' and stores the txid.
+   * Idempotent on (sweepId, status).
+   */
+  async applyMakerSweepSignature(input: {
+    sweepId: string;
+    makerSignedPsbtBase64: string;
+    signer: OrderSweepSigner;
+    broadcaster: OrderSweepBroadcaster;
+  }): Promise<OtcOrderSweep> {
+    const sweep = await this.findOrderSweepById(input.sweepId);
+    if (!sweep) throw new Error(`sweep not found: ${input.sweepId}`);
+    if (sweep.status !== 'awaiting_maker_signature') {
+      throw new Error(`sweep ${input.sweepId} not awaiting maker signature (status=${sweep.status})`);
+    }
+    const order = await this.repository.findOrderById(sweep.orderId);
+    if (!order) throw new Error(`order not found: ${sweep.orderId}`);
+    const cosigned = await input.signer.cosignSweepPsbt({
+      sweep,
+      order,
+      pendingPsbtBase64: input.makerSignedPsbtBase64,
+    });
+    const broadcastResult = await input.broadcaster.broadcastSweep({
+      sweep,
+      signedTxHex: cosigned.signedTxHex,
+    });
+    return this.repository.updateOrderSweep({
+      sweepId: input.sweepId,
+      status: 'broadcast',
+      sweepPsbtBase64: cosigned.signedPsbtBase64,
+      sweepTxid: broadcastResult.txid,
+      updatedAt: this.now().toISOString(),
+    });
+  }
+
+  /**
+   * Mode A path: the desk signs both legs (operator + arbiter) and broadcasts
+   * directly. Called by a worker tick that picks up sweeps with status='pending'.
+   * No maker interaction required.
+   */
+  async autoSignAndBroadcastSweep(input: {
+    sweepId: string;
+    signer: OrderSweepSigner;
+    broadcaster: OrderSweepBroadcaster;
+    tradeEscrowAddress: string;
+    changeAddress?: string;
+  }): Promise<OtcOrderSweep> {
+    const sweep = await this.findOrderSweepById(input.sweepId);
+    if (!sweep) throw new Error(`sweep not found: ${input.sweepId}`);
+    if (sweep.status !== 'pending') {
+      throw new Error(`sweep ${input.sweepId} not pending (status=${sweep.status})`);
+    }
+    const order = await this.repository.findOrderById(sweep.orderId);
+    if (!order) throw new Error(`order not found: ${sweep.orderId}`);
+    if (order.prefundMode !== 'auto_sweep') {
+      throw new Error(`order ${order.orderId} is not in auto_sweep mode`);
+    }
+    const prepared = await input.signer.prepareSweepPsbt({
+      sweep,
+      order,
+      tradeEscrowAddress: input.tradeEscrowAddress,
+      ...(input.changeAddress ? { changeAddress: input.changeAddress } : {}),
+    });
+    const cosigned = await input.signer.cosignSweepPsbt({
+      sweep,
+      order,
+      pendingPsbtBase64: prepared.psbtBase64,
+    });
+    const broadcastResult = await input.broadcaster.broadcastSweep({
+      sweep,
+      signedTxHex: cosigned.signedTxHex,
+    });
+    return this.repository.updateOrderSweep({
+      sweepId: input.sweepId,
+      status: 'broadcast',
+      sweepPsbtBase64: cosigned.signedPsbtBase64,
+      sweepTxid: broadcastResult.txid,
+      updatedAt: this.now().toISOString(),
+    });
+  }
+
+  /** Used by the Pearl indexer observer to mark a sweep tx as on-chain. */
+  async recordSweepConfirmed(input: { sweepId: string; sweepTxid?: string }): Promise<OtcOrderSweep> {
+    const sweep = await this.findOrderSweepById(input.sweepId);
+    if (!sweep) throw new Error(`sweep not found: ${input.sweepId}`);
+    if (sweep.status !== 'broadcast') {
+      throw new Error(`sweep ${input.sweepId} not in broadcast (status=${sweep.status})`);
+    }
+    return this.repository.updateOrderSweep({
+      sweepId: input.sweepId,
+      status: 'confirmed',
+      ...(input.sweepTxid ? { sweepTxid: input.sweepTxid } : {}),
+      updatedAt: this.now().toISOString(),
+    });
+  }
+
+  private async findOrderSweepById(sweepId: string): Promise<OtcOrderSweep | undefined> {
+    return this.repository.findOrderSweepById(sweepId);
+  }
+
   async initiateOrderSweep(input: {
     sweepId: string;
     order: OtcOrder;
