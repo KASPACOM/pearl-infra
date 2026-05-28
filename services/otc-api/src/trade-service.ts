@@ -147,6 +147,32 @@ export interface PearlPrefundEscrowAllocator {
   }>;
 }
 
+/** Indexer-backed observation of a prefund escrow address. Used by the
+ * order-prefund observer worker to drive prefund_state transitions.
+ */
+export interface OrderPrefundFundingProof {
+  /** The funding outpoint (txid:vout) if observed, else undefined. */
+  fundingOutpoint?: string;
+  /** Total grains deposited at the funding outpoint. */
+  observedAmountGrains?: string;
+  /** Confirmations on the funding observation. 0 = not yet observed. */
+  confirmations: number;
+  /** True if the indexer has marked the funding outpoint as already spent
+   * (i.e. swept into a per-trade escrow or refunded). */
+  spent: boolean;
+}
+
+export interface OrderPrefundObserver {
+  observeOrderPrefund(order: OtcOrder): Promise<OrderPrefundFundingProof>;
+}
+
+export interface PrefundObserverIterationResult {
+  scanned: number;
+  funded: string[];
+  expired: string[];
+  errored: Array<{ orderId: string; error: string }>;
+}
+
 export interface PearlSignedTransactionBroadcaster {
   sendRawTransaction(signedTxHex: string): Promise<string>;
 }
@@ -550,6 +576,78 @@ export class OtcTradeService {
     });
     await this.tryEnqueueNotifications('new_good_order', () => this.enqueueNewOrderNotifications(saved));
     return saved;
+  }
+
+  /**
+   * Polls the Pearl indexer for orders sitting in prefund_state='pending_funding' and
+   * transitions each one based on the observation:
+   *   - funding observed with enough confirmations AND amount matches: → 'funded'
+   *   - past CLTV expiry without funding: → 'expired' (also expires the order itself)
+   *   - everything else: leave alone, retry next iteration
+   *
+   * Idempotent — repeated calls with the same observation state are no-ops once the
+   * order has already transitioned out of pending_funding (Pg UPDATE WHERE clause).
+   */
+  async runPrefundFundingObserverIteration(
+    observer: OrderPrefundObserver,
+    limit = 100,
+  ): Promise<PrefundObserverIterationResult> {
+    const orders = await this.repository.listOrdersByPrefundState('pending_funding', limit);
+    const funded: string[] = [];
+    const expired: string[] = [];
+    const errored: PrefundObserverIterationResult['errored'] = [];
+    const nowMs = this.now().getTime();
+    for (const order of orders) {
+      try {
+        const expiredByCltv =
+          order.prefundRefundEligibleAfterUnixTime != null &&
+          nowMs >= order.prefundRefundEligibleAfterUnixTime * 1000;
+        let proof: OrderPrefundFundingProof | undefined;
+        try {
+          proof = await observer.observeOrderPrefund(order);
+        } catch (probeError) {
+          // If we can't reach the indexer but the order has clearly expired,
+          // still mark it expired so we don't keep retrying forever.
+          if (!expiredByCltv) {
+            throw probeError;
+          }
+        }
+        if (proof && proof.confirmations > 0 && proof.fundingOutpoint && !proof.spent) {
+          const allocation = await this.repository.findOrderPrefundAllocationByOrderId(order.orderId);
+          const expectedGrains = parsePrlToGrains(order.amountPrl).toString();
+          if (proof.observedAmountGrains && BigInt(proof.observedAmountGrains) < BigInt(expectedGrains)) {
+            // Under-funded — wait for top-up or expiry, don't transition.
+            continue;
+          }
+          // Verify allocation exists (defense-in-depth — should always exist for
+          // pending_funding orders).
+          if (!allocation) {
+            errored.push({ orderId: order.orderId, error: 'prefund allocation missing' });
+            continue;
+          }
+          const fundedAt = this.now().toISOString();
+          await this.repository.applyPrefundFundedObservation({
+            orderId: order.orderId,
+            fundingOutpoint: proof.fundingOutpoint,
+            fundedGrains: proof.observedAmountGrains ?? expectedGrains,
+            fundedAt,
+            updatedAt: fundedAt,
+          });
+          funded.push(order.orderId);
+          continue;
+        }
+        if (expiredByCltv) {
+          await this.repository.applyPrefundExpired(order.orderId, this.now().toISOString());
+          expired.push(order.orderId);
+        }
+      } catch (error) {
+        errored.push({
+          orderId: order.orderId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return { scanned: orders.length, funded, expired, errored };
   }
 
   async createOrderQuote(orderId: string, request: CreateOrderQuoteRequest): Promise<OrderQuoteResponse> {

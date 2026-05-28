@@ -151,6 +151,18 @@ export interface OtcRepository {
   reserveOrderPrefundAllocation(
     allocation: OrderPrefundAllocationInput,
   ): Promise<{ allocation: OrderPrefundAllocation; created: boolean }>;
+  listOrdersByPrefundState(
+    state: import('@kaspacom/pearl-sdk').OtcOrderPrefundState,
+    limit?: number,
+  ): Promise<OtcOrder[]>;
+  applyPrefundFundedObservation(input: {
+    orderId: string;
+    fundingOutpoint: string;
+    fundedGrains: string;
+    fundedAt: string;
+    updatedAt: string;
+  }): Promise<OtcOrder>;
+  applyPrefundExpired(orderId: string, updatedAt: string): Promise<OtcOrder>;
   saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void>;
   findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined>;
   savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }>;
@@ -716,6 +728,57 @@ export class InMemoryOtcRepository implements OtcRepository {
     return this.orderPrefundAllocations.get(orderId);
   }
 
+  async listOrdersByPrefundState(
+    state: import('@kaspacom/pearl-sdk').OtcOrderPrefundState,
+    limit = 100,
+  ): Promise<OtcOrder[]> {
+    return Array.from(this.orders.values())
+      .filter((order) => order.prefundState === state)
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, Math.max(1, Math.min(500, Math.floor(limit))));
+  }
+
+  async applyPrefundFundedObservation(input: {
+    orderId: string;
+    fundingOutpoint: string;
+    fundedGrains: string;
+    fundedAt: string;
+    updatedAt: string;
+  }): Promise<OtcOrder> {
+    const order = this.orders.get(input.orderId);
+    if (!order) throw new Error(`order not found: ${input.orderId}`);
+    if (order.prefundState !== 'pending_funding') {
+      throw new Error(`order ${input.orderId} not pending funding (state=${order.prefundState})`);
+    }
+    const updated: OtcOrder = {
+      ...order,
+      prefundState: 'funded',
+      prefundFundedOutpoint: input.fundingOutpoint,
+      prefundFundedGrains: input.fundedGrains,
+      prefundRemainingGrains: input.fundedGrains,
+      prefundFundedAt: input.fundedAt,
+      updatedAt: input.updatedAt,
+    };
+    this.orders.set(input.orderId, updated);
+    return updated;
+  }
+
+  async applyPrefundExpired(orderId: string, updatedAt: string): Promise<OtcOrder> {
+    const order = this.orders.get(orderId);
+    if (!order) throw new Error(`order not found: ${orderId}`);
+    if (order.prefundState !== 'pending_funding') {
+      throw new Error(`order ${orderId} not pending funding (state=${order.prefundState})`);
+    }
+    const updated: OtcOrder = {
+      ...order,
+      prefundState: 'expired',
+      status: 'expired',
+      updatedAt,
+    };
+    this.orders.set(orderId, updated);
+    return updated;
+  }
+
   async reserveOrderPrefundAllocation(
     allocation: OrderPrefundAllocationInput,
   ): Promise<{ allocation: OrderPrefundAllocation; created: boolean }> {
@@ -1204,6 +1267,65 @@ export class PgOtcRepository implements OtcRepository {
       [allocation.allocatorKey, allocation.derivationPrefix, allocation.derivationIndex],
     );
     return result.rows[0] ? rowToPearlEscrowAllocation(result.rows[0]) : undefined;
+  }
+
+  async listOrdersByPrefundState(
+    state: import('@kaspacom/pearl-sdk').OtcOrderPrefundState,
+    limit = 100,
+  ): Promise<OtcOrder[]> {
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+    const result = await this.client.query<OrderRow>(
+      `SELECT ${ORDER_SELECT_COLUMNS}
+         FROM otc_orders
+        WHERE prefund_state = $1
+        ORDER BY updated_at ASC
+        LIMIT $2`,
+      [state, safeLimit],
+    );
+    return result.rows.map(rowToOrder);
+  }
+
+  async applyPrefundFundedObservation(input: {
+    orderId: string;
+    fundingOutpoint: string;
+    fundedGrains: string;
+    fundedAt: string;
+    updatedAt: string;
+  }): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `UPDATE otc_orders
+          SET prefund_state = 'funded',
+              prefund_funded_outpoint = $2,
+              prefund_funded_grains = $3::numeric,
+              prefund_remaining_grains = $3::numeric,
+              prefund_funded_at = $4,
+              updated_at = $5
+        WHERE order_id = $1
+          AND prefund_state = 'pending_funding'
+        RETURNING ${ORDER_SELECT_COLUMNS}`,
+      [input.orderId, input.fundingOutpoint, input.fundedGrains, input.fundedAt, input.updatedAt],
+    );
+    if (!result.rows[0]) {
+      throw new Error(`order ${input.orderId} not pending funding (concurrent transition or unknown order)`);
+    }
+    return rowToOrder(result.rows[0]);
+  }
+
+  async applyPrefundExpired(orderId: string, updatedAt: string): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `UPDATE otc_orders
+          SET prefund_state = 'expired',
+              status = 'expired',
+              updated_at = $2
+        WHERE order_id = $1
+          AND prefund_state = 'pending_funding'
+        RETURNING ${ORDER_SELECT_COLUMNS}`,
+      [orderId, updatedAt],
+    );
+    if (!result.rows[0]) {
+      throw new Error(`order ${orderId} not pending funding (concurrent transition or unknown order)`);
+    }
+    return rowToOrder(result.rows[0]);
   }
 
   async findOrderPrefundAllocationByOrderId(orderId: string): Promise<OrderPrefundAllocation | undefined> {
