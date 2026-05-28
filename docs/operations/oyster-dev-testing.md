@@ -3,15 +3,16 @@
 This document walks through a complete dev settlement on `dev-oyster.kaspa.com` /
 `dev-api-oyster.kaspa.com` using the multisig + preauthorized-release path.
 
-## Network choice: simnet, not testnet2
+## Network: testnet2
 
-Dev runs against the Hetzner simnet pearld (`65.21.206.46:18556`) and simnet
-indexer (`65.21.206.46:18088`). Testnet2 is currently impractical for dev tests
-because there is no public faucet, no externally exposed RPC, and the dev
-cluster has no funded testnet2 wallet. Simnet has all of those (funded
-wallet on the Hetzner box, exposed RPC with basic auth, exposed indexer,
-proven multisig rehearsal evidence). The code paths exercised are identical;
-only the chain endpoint differs.
+Dev runs against the Hetzner testnet2 pearld via a docker-socat proxy at
+`65.21.206.46:44110 → 127.0.0.1:44111` (UFW-whitelisted port that was free).
+Indexer is the existing public-facing one at `65.21.206.46:8088` (restricted
+to dev cluster egress IP). pearld RPC requires basic auth (`pearl_indexer_rpc`
+creds shared with the indexer).
+
+The proxy container is `pearl-testnet2-rpc-proxy` (`alpine/socat`,
+`--restart=unless-stopped`) on the Hetzner host. It survives reboots.
 
 ## One-Time Setup (operator hands)
 
@@ -62,7 +63,7 @@ curl -sX POST "https://dev-api-oyster.kaspa.com/otc/quotes" \
     "amountPrl": "1.00000000",
     "settlementAsset": "USDC",
     "settlementNetwork": "base",
-    "buyerPearlAddress": "<buyer simnet pearl address (rprl1p...)>",
+    "buyerPearlAddress": "<buyer testnet2 pearl address (tprl1p...)>",
     "usdcRefundAddress": "<buyer base sepolia address>",
     "clientRequestId": "test-quote-1"
   }'
@@ -95,10 +96,9 @@ curl -sX POST "https://dev-api-oyster.kaspa.com/otc/trades" \
 
 ### 4. Fund the Pearl escrow
 
-Send simnet PRL to `pearlEscrow.address` from the response. The Hetzner host
-holds a funded simnet wallet (`kaspacom-pearld-simnet-wallet-e2e`); operators
-SSH to `pearl@65.21.206.46` and use the wallet RPC to fund + mine a confirming
-block. Wait for the watch
+Send testnet2 PRL to `pearlEscrow.address` from your funded testnet2 wallet
+(Sione holds the test buyer privkey). Testnet2 mines on its own schedule
+(~194s blocks) — wait for the watch
 to observe + confirm. The trade state moves through
 `pearl_escrow_pending → pearl_escrow_seen → pearl_escrow_confirmed`.
 
@@ -130,7 +130,7 @@ kubectl logs -n kaspa -l app=oyster-otc-settlement-worker --tail=200
 Expect:
 - `settlement worker iteration complete` log lines
 - a `pearl release broadcast submitted` line with `broadcastTxid`
-- a Pearl release tx observable on the simnet indexer (`http://65.21.206.46:18088`)
+- a Pearl release tx observable on the testnet2 indexer (`http://65.21.206.46:8088`)
 - trade transitions to `release_pending` then `released`
 
 ### 8. Settle the Base leg
