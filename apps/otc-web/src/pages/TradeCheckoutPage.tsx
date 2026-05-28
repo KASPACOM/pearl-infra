@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { OtcTrade, PublicTradeProof } from '@kaspacom/pearl-sdk';
+import { parseUsdcToMicros, type OtcTrade, type PublicTradeProof } from '@kaspacom/pearl-sdk';
 
 import { createOtcClient } from '../api.js';
 import { prepareEscrowDepositCall, prepareUsdcApprovalCall, toTransactionRequest } from '../base-escrow-client.js';
@@ -152,7 +152,15 @@ export function TradeCheckoutPage() {
     try {
       const callConfig = getTradeEscrowCallConfig(loadedTrade);
       approvalCall = prepareUsdcApprovalCall(loadedTrade.usdcEscrow.expectedAmountMicros, callConfig);
-      depositCall = prepareEscrowDepositCall(loadedTrade.usdcEscrow.tradeKey, callConfig);
+      depositCall = prepareEscrowDepositCall(
+        {
+          tradeKey: loadedTrade.usdcEscrow.tradeKey,
+          expectedSeller: loadedTrade.sellerUsdcReceiveAddress,
+          expectedAmountMicros: loadedTrade.usdcEscrow.expectedAmountMicros,
+          expectedFeeMicros: parseUsdcToMicros(loadedTrade.feeUsdc),
+        },
+        callConfig,
+      );
     } catch {
       depositCall = undefined;
       approvalCall = undefined;
@@ -210,14 +218,27 @@ export function TradeCheckoutPage() {
       setActionStatus('validating');
       const readyBeforeApproval = await refreshAndAssertDepositReady(loadedTrade.tradeId, loadedProof);
       const approvalCall = prepareUsdcApprovalCall(readyBeforeApproval.trade.usdcEscrow.expectedAmountMicros, getTradeEscrowCallConfig(readyBeforeApproval.trade));
-      const depositCall = prepareEscrowDepositCall(readyBeforeApproval.trade.usdcEscrow.tradeKey, getTradeEscrowCallConfig(readyBeforeApproval.trade));
+      const depositCall = prepareEscrowDepositCall(
+        {
+          tradeKey: readyBeforeApproval.trade.usdcEscrow.tradeKey,
+          expectedSeller: readyBeforeApproval.trade.sellerUsdcReceiveAddress,
+          expectedAmountMicros: readyBeforeApproval.trade.usdcEscrow.expectedAmountMicros,
+          expectedFeeMicros: parseUsdcToMicros(readyBeforeApproval.trade.feeUsdc),
+        },
+        getTradeEscrowCallConfig(readyBeforeApproval.trade),
+      );
       setActionStatus('approving');
       const approvalHash = await sendAndWaitInjectedEvmTransaction(toTransactionRequest(approvalCall), readyBeforeApproval.wallet.address);
       setApprovalTxHash(approvalHash);
       setActionStatus('validating');
       const readyBeforeDeposit = await refreshAndAssertDepositReady(readyBeforeApproval.trade.tradeId, loadedProof);
       const refreshedDepositCall = prepareEscrowDepositCall(
-        readyBeforeDeposit.trade.usdcEscrow.tradeKey,
+        {
+          tradeKey: readyBeforeDeposit.trade.usdcEscrow.tradeKey,
+          expectedSeller: readyBeforeDeposit.trade.sellerUsdcReceiveAddress,
+          expectedAmountMicros: readyBeforeDeposit.trade.usdcEscrow.expectedAmountMicros,
+          expectedFeeMicros: parseUsdcToMicros(readyBeforeDeposit.trade.feeUsdc),
+        },
         getTradeEscrowCallConfig(readyBeforeDeposit.trade),
       );
       setActionStatus('depositing');

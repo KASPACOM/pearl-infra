@@ -37,7 +37,7 @@ contract RunBaseSepoliaNativeEscrow {
         VM.startBroadcast(deployerPrivateKey);
         ESCROW.createTrade(TRADE_ID, deployer, seller, SELLER_AMOUNT, FEE_AMOUNT, uint64(block.timestamp + 7 days));
         require(BASE_SEPOLIA_USDC.approve(address(ESCROW), SELLER_AMOUNT + FEE_AMOUNT), "approve failed");
-        ESCROW.deposit(TRADE_ID);
+        ESCROW.deposit(TRADE_ID, seller, SELLER_AMOUNT, FEE_AMOUNT);
         ESCROW.release(TRADE_ID);
         ESCROW.transferOwnership(newOwner);
         VM.stopBroadcast();

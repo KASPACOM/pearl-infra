@@ -47,7 +47,7 @@ contract RunBaseSepoliaMockEscrow {
         token.mint(deployer, SELLER_AMOUNT + FEE_AMOUNT);
         escrow.createTrade(TRADE_ID, deployer, seller, SELLER_AMOUNT, FEE_AMOUNT, uint64(block.timestamp + 7 days));
         token.approve(address(escrow), SELLER_AMOUNT + FEE_AMOUNT);
-        escrow.deposit(TRADE_ID);
+        escrow.deposit(TRADE_ID, seller, SELLER_AMOUNT, FEE_AMOUNT);
         escrow.release(TRADE_ID);
         escrow.transferOwnership(newOwner);
         VM.stopBroadcast();
