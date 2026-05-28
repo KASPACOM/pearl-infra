@@ -187,6 +187,8 @@ export interface OtcRepository {
     newState: 'partially_swept' | 'fully_swept';
     updatedAt: string;
   }): Promise<OtcOrder>;
+  applyPrefundRefundPending(input: { orderId: string; updatedAt: string }): Promise<OtcOrder>;
+  applyPrefundRefunded(input: { orderId: string; refundTxid: string; updatedAt: string }): Promise<OtcOrder>;
   saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void>;
   findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined>;
   savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }>;
@@ -891,6 +893,40 @@ export class InMemoryOtcRepository implements OtcRepository {
     return updated;
   }
 
+  async applyPrefundRefundPending(input: { orderId: string; updatedAt: string }): Promise<OtcOrder> {
+    const order = this.orders.get(input.orderId);
+    if (!order) throw new Error(`order not found: ${input.orderId}`);
+    if (!['funded', 'partially_swept'].includes(order.prefundState ?? '')) {
+      throw new Error(
+        `order ${input.orderId} not eligible for refund_pending (state=${order.prefundState})`,
+      );
+    }
+    const updated: OtcOrder = {
+      ...order,
+      prefundState: 'refund_pending',
+      updatedAt: input.updatedAt,
+    };
+    this.orders.set(input.orderId, updated);
+    return updated;
+  }
+
+  async applyPrefundRefunded(input: { orderId: string; refundTxid: string; updatedAt: string }): Promise<OtcOrder> {
+    const order = this.orders.get(input.orderId);
+    if (!order) throw new Error(`order not found: ${input.orderId}`);
+    if (order.prefundState !== 'refund_pending') {
+      throw new Error(`order ${input.orderId} not in refund_pending (state=${order.prefundState})`);
+    }
+    const updated: OtcOrder = {
+      ...order,
+      prefundState: 'refunded',
+      prefundRefundTxid: input.refundTxid,
+      status: 'cancelled',
+      updatedAt: input.updatedAt,
+    };
+    this.orders.set(input.orderId, updated);
+    return updated;
+  }
+
   async reserveOrderPrefundAllocation(
     allocation: OrderPrefundAllocationInput,
   ): Promise<{ allocation: OrderPrefundAllocation; created: boolean }> {
@@ -1576,6 +1612,40 @@ export class PgOtcRepository implements OtcRepository {
     );
     if (!result.rows[0]) {
       throw new Error(`order ${input.orderId} not eligible for sweep progress (concurrent transition or unknown order)`);
+    }
+    return rowToOrder(result.rows[0]);
+  }
+
+  async applyPrefundRefundPending(input: { orderId: string; updatedAt: string }): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `UPDATE otc_orders
+          SET prefund_state = 'refund_pending',
+              updated_at = $2
+        WHERE order_id = $1
+          AND prefund_state IN ('funded', 'partially_swept')
+        RETURNING ${ORDER_SELECT_COLUMNS}`,
+      [input.orderId, input.updatedAt],
+    );
+    if (!result.rows[0]) {
+      throw new Error(`order ${input.orderId} not eligible for refund_pending (concurrent transition or unknown order)`);
+    }
+    return rowToOrder(result.rows[0]);
+  }
+
+  async applyPrefundRefunded(input: { orderId: string; refundTxid: string; updatedAt: string }): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `UPDATE otc_orders
+          SET prefund_state = 'refunded',
+              prefund_refund_txid = $2,
+              status = 'cancelled',
+              updated_at = $3
+        WHERE order_id = $1
+          AND prefund_state = 'refund_pending'
+        RETURNING ${ORDER_SELECT_COLUMNS}`,
+      [input.orderId, input.refundTxid, input.updatedAt],
+    );
+    if (!result.rows[0]) {
+      throw new Error(`order ${input.orderId} not in refund_pending (concurrent transition or unknown order)`);
     }
     return rowToOrder(result.rows[0]);
   }

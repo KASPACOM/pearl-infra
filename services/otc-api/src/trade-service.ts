@@ -180,6 +180,16 @@ export interface OrderSweepBroadcaster {
   broadcastSweep(input: { sweep: OtcOrderSweep; signedTxHex: string }): Promise<{ txid: string }>;
 }
 
+/** Builds the unsigned PSBT for the maker_timeout_refund leaf — a CLTV-gated
+ * 1-of-1 spend by the maker recovering the remaining prefund grains.
+ */
+export interface PrefundRefundPsbtBuilder {
+  buildRefundPsbt(input: {
+    order: OtcOrder;
+    remainingGrains: string;
+  }): Promise<{ psbtBase64: string; feeGrains: string }>;
+}
+
 /** Indexer-backed observation of a prefund escrow address. Used by the
  * order-prefund observer worker to drive prefund_state transitions.
  */
@@ -710,6 +720,70 @@ export class OtcTradeService {
       sweepPsbtBase64: cosigned.signedPsbtBase64,
       sweepTxid: broadcastResult.txid,
       updatedAt: this.now().toISOString(),
+    });
+  }
+
+  /**
+   * Maker timeout refund (C6).
+   *
+   * After the prefund escrow's CLTV unlocks, the maker can solo-spend their
+   * remaining grains back to themselves. This method transitions the order
+   * from 'funded'/'partially_swept' → 'refund_pending' and returns the
+   * unsigned refund PSBT for the maker to sign.
+   *
+   * Eligibility:
+   *   - order.prefundState ∈ {funded, partially_swept}
+   *   - now ≥ prefundRefundEligibleAfterUnixTime (CLTV satisfied)
+   *   - prefundRemainingGrains > 0
+   */
+  async requestPrefundRefund(input: {
+    orderId: string;
+    refundPsbtBuilder: PrefundRefundPsbtBuilder;
+  }): Promise<{ order: OtcOrder; refundPsbtBase64: string; remainingGrains: string }> {
+    const order = await this.repository.findOrderById(input.orderId);
+    if (!order) throw new Error(`order not found: ${input.orderId}`);
+    if (!['funded', 'partially_swept'].includes(order.prefundState ?? '')) {
+      throw new Error(`order ${input.orderId} not eligible for refund (state=${order.prefundState})`);
+    }
+    if (order.prefundRefundEligibleAfterUnixTime == null) {
+      throw new Error(`order ${input.orderId} missing prefundRefundEligibleAfterUnixTime`);
+    }
+    const nowSec = Math.floor(this.now().getTime() / 1000);
+    if (nowSec < order.prefundRefundEligibleAfterUnixTime) {
+      throw new Error(
+        `prefund refund not yet eligible: ${order.prefundRefundEligibleAfterUnixTime - nowSec}s remaining`,
+      );
+    }
+    const remaining = BigInt(order.prefundRemainingGrains ?? '0');
+    if (remaining <= 0n) {
+      throw new Error(`order ${input.orderId} has no remaining prefund grains to refund`);
+    }
+    const prepared = await input.refundPsbtBuilder.buildRefundPsbt({
+      order,
+      remainingGrains: remaining.toString(),
+    });
+    const updatedAt = this.now().toISOString();
+    const updated = await this.repository.applyPrefundRefundPending({
+      orderId: input.orderId,
+      updatedAt,
+    });
+    return {
+      order: updated,
+      refundPsbtBase64: prepared.psbtBase64,
+      remainingGrains: remaining.toString(),
+    };
+  }
+
+  /** Called by the Pearl indexer observer once the maker's refund tx confirms. */
+  async recordPrefundRefunded(input: {
+    orderId: string;
+    refundTxid: string;
+  }): Promise<OtcOrder> {
+    const updatedAt = this.now().toISOString();
+    return this.repository.applyPrefundRefunded({
+      orderId: input.orderId,
+      refundTxid: input.refundTxid,
+      updatedAt,
     });
   }
 
