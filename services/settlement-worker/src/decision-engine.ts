@@ -226,8 +226,15 @@ function isBaseCreateTradeNeeded(snapshot: SettlementSnapshot, now: Date): boole
 }
 
 function isPrlReleaseAllowed(snapshot: SettlementSnapshot): boolean {
+  // Trade state check is intentionally NOT included: production has no path to write
+  // the intermediate states (pearl_escrow_seen/confirmed, usdc_escrow_pending/confirmed)
+  // because there's no event indexer for Base events and the OTC API never auto-
+  // transitions on Pearl indexer updates. The authoritative signal is the snapshot
+  // (pearl/base confirmation counts), and the prepare_prl_release action transitions
+  // trade.state to release_pending via its toState field, so forward progress is
+  // preserved. Terminal-state guard is enforced at the top of evaluateSettlementSnapshot.
   const baseConditionsMet =
-    snapshot.trade.state === 'usdc_escrow_confirmed' &&
+    !['release_pending', 'released', 'refund_pending', 'refunded'].includes(snapshot.trade.state) &&
     snapshot.pearl.status === 'confirmed' &&
     snapshot.base.status === 'deposited' &&
     snapshot.pearl.confirmations >= snapshot.trade.pearlEscrow.requiredConfirmations &&

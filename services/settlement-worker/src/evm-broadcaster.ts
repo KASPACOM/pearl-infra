@@ -63,16 +63,26 @@ export class EthersEvmBroadcaster implements SettlementBroadcasterAdapter {
     if (onChain.status !== STATUS_NONE) {
       return { alreadyExisted: true };
     }
-    const tx = await this.contract.createTrade(
-      trade.usdcEscrow.tradeKey,
-      trade.buyerUsdcAddress,
-      trade.sellerUsdcReceiveAddress,
-      parseUsdcToMicros(trade.amountUsdc),
-      parseUsdcToMicros(trade.feeUsdc),
-      BigInt(Math.floor(new Date(trade.deadlines.usdcDepositDeadline).getTime() / 1000)),
-    );
-    const receipt = await this.waitForReceipt(tx);
-    return { txHash: receipt.hash, alreadyExisted: false };
+    try {
+      const tx = await this.contract.createTrade(
+        trade.usdcEscrow.tradeKey,
+        trade.buyerUsdcAddress,
+        trade.sellerUsdcReceiveAddress,
+        parseUsdcToMicros(trade.amountUsdc),
+        parseUsdcToMicros(trade.feeUsdc),
+        BigInt(Math.floor(new Date(trade.deadlines.usdcDepositDeadline).getTime() / 1000)),
+      );
+      const receipt = await this.waitForReceipt(tx);
+      return { txHash: receipt.hash, alreadyExisted: false };
+    } catch (error) {
+      // Race: another iteration or external caller landed createTrade between our
+      // status read and broadcast. Contract reverts with "trade exists" — treat as
+      // success-no-op since the on-chain state we want is now in place.
+      if (isTradeExistsRevert(error)) {
+        return { alreadyExisted: true };
+      }
+      throw error;
+    }
   }
 
   /** Idempotent release: skips if on-chain trade is already Released or terminal. */
@@ -177,4 +187,14 @@ function onChainStatusName(status: number): string {
   return (
     ['None', 'Created', 'Deposited', 'Released', 'Refunded', 'Cancelled'][status] ?? `Unknown(${status})`
   );
+}
+
+function isTradeExistsRevert(error: unknown): boolean {
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  if (msg.includes('trade exists')) return true;
+  // ethers v6 surfaces revert reasons via `reason` and `revert.args[0]`.
+  const reason = (error as { reason?: string; shortMessage?: string })?.reason
+    ?? (error as { shortMessage?: string })?.shortMessage;
+  if (typeof reason === 'string' && reason.toLowerCase().includes('trade exists')) return true;
+  return false;
 }
