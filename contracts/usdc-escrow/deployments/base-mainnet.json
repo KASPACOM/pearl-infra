@@ -5,14 +5,14 @@
   "contractAddress": "0x5E3cca8Fc360C9dC28AE28CF65fd073e940Ec375",
   "deployTransactionHash": "0x9e7633a1c973cb16d9b7349d96d7832d0fdc413a6ff781c8e630a163a50ef9f4",
   "deployBlock": 46587792,
-  "ownerAddress": "0xb9AF83cB54D36bcCC61DbF4896A50EC799D1248a",
+  "ownerAddress": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
   "deployerEoa": "0xb9AF83cB54D36bcCC61DbF4896A50EC799D1248a",
   "feeRecipientAddress": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
   "usdcTokenAddress": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   "postDeployChecks": {
     "usdcToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    "owner": "0xb9AF83cB54D36bcCC61DbF4896A50EC799D1248a",
-    "pendingOwner": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+    "owner": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
+    "pendingOwner": "0x0000000000000000000000000000000000000000",
     "feeRecipient": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
     "paused": false
   },
@@ -21,7 +21,8 @@
     "targetOwner": "0x35C76bF5A701A30629d9706F4c8f77a4a0cA5978",
     "transferOwnershipTransactionHash": "0x196f138a7632faadca382f0c795480a2a36138b0ca5ab0cebf9d8d670c738f8c",
     "transferOwnershipBlock": 46587894,
-    "acceptOwnershipTransactionHash": null,
-    "status": "pending_acceptance_by_target_owner"
+    "acceptOwnershipTransactionHash": "0x5cd8dc70b915cbf761aac6b6e8f83286e2be7edab70b9a947a5aa3944f582b66",
+    "acceptOwnershipBlock": 46588575,
+    "status": "accepted"
   }
 }
