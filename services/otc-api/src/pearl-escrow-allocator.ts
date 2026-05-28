@@ -1,13 +1,19 @@
 import { createHash } from 'node:crypto';
 
 import { createPearlEscrowPackage, createPearlMultisigEscrowPackage } from '@kaspacom/pearl-escrow';
-import { getPearlScriptNetwork } from '@kaspacom/pearl-script';
-import { parsePrlToGrains } from '@kaspacom/pearl-sdk';
+import { createPearlP2trPrefundEscrowPayment, getPearlScriptNetwork } from '@kaspacom/pearl-script';
+import { parsePrlToGrains, type OtcOrderPrefundMode } from '@kaspacom/pearl-sdk';
 import { BIP32Factory, type BIP32Interface } from 'bip32';
 import * as ecc from 'tiny-secp256k1';
 
-import type { OtcRepository, PearlEscrowAllocation, PearlEscrowAllocationInput } from './repository.js';
-import type { PearlEscrowAllocator } from './trade-service.js';
+import type {
+  OrderPrefundAllocation,
+  OrderPrefundAllocationInput,
+  OtcRepository,
+  PearlEscrowAllocation,
+  PearlEscrowAllocationInput,
+} from './repository.js';
+import type { PearlEscrowAllocator, PearlPrefundEscrowAllocator } from './trade-service.js';
 import type { OtcApiConfig } from './types.js';
 
 const bip32 = BIP32Factory(ecc);
@@ -263,4 +269,149 @@ function parseDerivationPrefix(prefix: string): readonly number[] {
 
 function formatDerivationPath(path: readonly number[]): string {
   return path.length > 0 ? `m/${path.join('/')}` : 'm';
+}
+
+// ---------- Prefund (order-book) escrow allocator ----------
+
+export interface PrefundAllocateInput {
+  orderId: string;
+  mode: OtcOrderPrefundMode;
+  makerPearlPubkey: string;
+  amountPrl: string;
+}
+
+export interface PrefundAllocateOutput {
+  network: OtcApiConfig['pearlNetwork'];
+  mode: OtcOrderPrefundMode;
+  escrowAddress: string;
+  expectedAmountGrains: string;
+  requiredConfirmations: number;
+  refundEligibleAfterUnixTime: number;
+  internalPubkeyHex: string;
+  taprootOutputScriptHex: string;
+}
+
+export function createConfiguredPearlPrefundEscrowAllocator(
+  config: OtcApiConfig,
+  repository: OtcRepository,
+  now: () => Date = () => new Date(),
+): PearlPrefundEscrowAllocator | undefined {
+  if (!config.pearlPrefundEnabled) return undefined;
+  if (!config.pearlPrefundOperatorPubkey) {
+    throw new Error('PEARL_PREFUND_OPERATOR_PUBKEY is required when PEARL_PREFUND_ENABLED=true');
+  }
+  if (!config.pearlEscrowArbiterPubkey) {
+    throw new Error('PEARL_ESCROW_ARBITER_PUBKEY is required when PEARL_PREFUND_ENABLED=true (shared arbiter)');
+  }
+  return new MultisigPearlPrefundEscrowAllocator(config, repository, now);
+}
+
+export class MultisigPearlPrefundEscrowAllocator implements PearlPrefundEscrowAllocator {
+  private readonly config: OtcApiConfig;
+  private readonly repository: OtcRepository;
+  private readonly now: () => Date;
+  private readonly allocatorKey: string;
+  private readonly derivationPrefix: string;
+
+  constructor(config: OtcApiConfig, repository: OtcRepository, now: () => Date = () => new Date()) {
+    this.config = config;
+    this.repository = repository;
+    this.now = now;
+    if (!config.pearlPrefundOperatorPubkey) {
+      throw new Error('pearlPrefundOperatorPubkey is required');
+    }
+    if (!config.pearlEscrowArbiterPubkey) {
+      throw new Error('pearlEscrowArbiterPubkey is required');
+    }
+    this.derivationPrefix = config.pearlPrefundDerivationPrefix ?? '1';
+    this.allocatorKey = `p2tr_multisig_prefund:${config.pearlNetwork}:${this.derivationPrefix}`;
+  }
+
+  async allocatePrefundEscrow(input: PrefundAllocateInput): Promise<PrefundAllocateOutput> {
+    assertPubkey(input.makerPearlPubkey, 'makerPearlPubkey');
+    const refundDelayHours = this.config.pearlPrefundRefundDelayHours ?? 24;
+    const refundEligibleAfterUnixTime = Math.floor(this.now().getTime() / 1000) + refundDelayHours * 3600;
+    const expectedAmountGrains = parsePrlToGrains(input.amountPrl).toString();
+
+    const payment = createPearlP2trPrefundEscrowPayment({
+      network: getPearlScriptNetworkName(this.config.pearlNetwork),
+      mode: input.mode,
+      makerPubkey: input.makerPearlPubkey,
+      operatorPubkey: this.config.pearlPrefundOperatorPubkey as string,
+      ...(input.mode === 'auto_sweep'
+        ? { arbiterPubkey: this.config.pearlEscrowArbiterPubkey as string }
+        : {}),
+      refundLockTime: refundEligibleAfterUnixTime,
+      scriptNonceHex: createHash('sha256').update(`pearl-otc-prefund:${input.orderId}`).digest('hex'),
+    });
+
+    // Derivation index: deterministic SHA-256 of orderId to allow idempotent
+    // reallocation on retries; the (allocator_key, derivation_prefix,
+    // derivation_index) tuple is uniquely indexed in the DB.
+    const derivationIndex = createHash('sha256').update(input.orderId).digest().readUInt32BE(0) & 0x7fffffff;
+    const derivationPath = `m/${this.derivationPrefix}/${derivationIndex}`;
+
+    const allocation: OrderPrefundAllocationInput = {
+      orderId: input.orderId,
+      allocatorKey: this.allocatorKey,
+      derivationPrefix: this.derivationPrefix,
+      derivationIndex,
+      derivationPath,
+      escrowAddress: payment.address,
+      internalPubkeyHex: payment.internalPubkeyHex,
+      taprootOutputScriptHex: payment.outputScriptHex,
+      scriptLeaves: payment.leaves.map((leaf) => ({
+        kind: leaf.kind,
+        requiredSigners: [...leaf.requiredSigners],
+        scriptHex: leaf.scriptHex,
+        leafVersion: leaf.leafVersion,
+        controlBlockHex: leaf.controlBlockHex,
+        ...(leaf.lockTime == null ? {} : { lockTime: leaf.lockTime }),
+      })),
+      signerPubkeys: {
+        maker: normalizeXOnlyHex(input.makerPearlPubkey),
+        operator: normalizeXOnlyHex(this.config.pearlPrefundOperatorPubkey as string),
+        ...(input.mode === 'auto_sweep'
+          ? { arbiter: normalizeXOnlyHex(this.config.pearlEscrowArbiterPubkey as string) }
+          : {}),
+      },
+    };
+    const reserved = await this.repository.reserveOrderPrefundAllocation(allocation);
+    this.assertReservedMatchesPayment(reserved.allocation, payment.address);
+
+    return {
+      network: this.config.pearlNetwork,
+      mode: input.mode,
+      escrowAddress: payment.address,
+      expectedAmountGrains,
+      requiredConfirmations: this.config.pearlEscrowConfirmations,
+      refundEligibleAfterUnixTime,
+      internalPubkeyHex: payment.internalPubkeyHex,
+      taprootOutputScriptHex: payment.outputScriptHex,
+    };
+  }
+
+  private assertReservedMatchesPayment(allocation: OrderPrefundAllocation, expectedAddress: string): void {
+    if (allocation.escrowAddress !== expectedAddress) {
+      throw new Error(
+        `persisted Pearl prefund allocation mismatch for ${allocation.orderId}: address differs from rebuild`,
+      );
+    }
+  }
+}
+
+function getPearlScriptNetworkName(network: OtcApiConfig['pearlNetwork']): Parameters<typeof createPearlP2trPrefundEscrowPayment>[0]['network'] {
+  if (network === 'mainnet' || network === 'testnet' || network === 'testnet2' || network === 'simnet' || network === 'regtest') {
+    return network;
+  }
+  throw new Error(`unsupported pearl network: ${network}`);
+}
+
+function normalizeXOnlyHex(value: string): string {
+  const trimmed = value.trim().toLowerCase().replace(/^0x/, '');
+  if (trimmed.length === 64) return trimmed;
+  if (trimmed.length === 66 && (trimmed.startsWith('02') || trimmed.startsWith('03'))) {
+    return trimmed.slice(2);
+  }
+  throw new Error(`expected x-only or compressed secp256k1 pubkey, got ${value.length} chars`);
 }

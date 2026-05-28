@@ -129,6 +129,24 @@ export interface PearlEscrowAllocator {
   }): Promise<OtcTrade['pearlEscrow']>;
 }
 
+export interface PearlPrefundEscrowAllocator {
+  allocatePrefundEscrow(input: {
+    orderId: string;
+    mode: import('@kaspacom/pearl-sdk').OtcOrderPrefundMode;
+    makerPearlPubkey: string;
+    amountPrl: string;
+  }): Promise<{
+    network: OtcApiConfig['pearlNetwork'];
+    mode: import('@kaspacom/pearl-sdk').OtcOrderPrefundMode;
+    escrowAddress: string;
+    expectedAmountGrains: string;
+    requiredConfirmations: number;
+    refundEligibleAfterUnixTime: number;
+    internalPubkeyHex: string;
+    taprootOutputScriptHex: string;
+  }>;
+}
+
 export interface PearlSignedTransactionBroadcaster {
   sendRawTransaction(signedTxHex: string): Promise<string>;
 }
@@ -176,6 +194,7 @@ export class OtcTradeService {
   private readonly repository: OtcRepository;
   private readonly config: OtcApiConfig;
   private readonly pearlEscrowAllocator: PearlEscrowAllocator;
+  private readonly pearlPrefundEscrowAllocator?: PearlPrefundEscrowAllocator;
   private readonly usdcEscrowReader?: UsdcEscrowReader;
   private readonly pearlEscrowWatchRegistrar?: PearlEscrowWatchRegistrar;
   private readonly pearlProofReader?: PearlProofReader;
@@ -194,10 +213,12 @@ export class OtcTradeService {
     pearlProofReader?: PearlProofReader,
     supportAlertNotifier?: SupportAlertNotifier,
     pearlSignedTransactionBroadcaster?: PearlSignedTransactionBroadcaster,
+    pearlPrefundEscrowAllocator?: PearlPrefundEscrowAllocator,
   ) {
     this.repository = repository;
     this.config = config;
     this.pearlEscrowAllocator = pearlEscrowAllocator;
+    this.pearlPrefundEscrowAllocator = pearlPrefundEscrowAllocator;
     if (typeof usdcEscrowReaderOrNow === 'function') {
       this.now = usdcEscrowReaderOrNow;
     } else {
@@ -473,8 +494,30 @@ export class OtcTradeService {
       signatureHex: request.makerPearlPubkeyProof,
     });
     const now = this.now().toISOString();
+    const orderId = createRandomId('order');
+
+    // Prefund allocation (C0 design). Only sell_prl orders prefund in v1 — buy_prl
+    // would require a separate USDC-side prefund layer not yet implemented.
+    let prefundAllocation:
+      | Awaited<ReturnType<PearlPrefundEscrowAllocator['allocatePrefundEscrow']>>
+      | undefined;
+    if (request.prefundMode) {
+      if (request.side !== 'sell_prl') {
+        throw new Error('prefund is only supported for sell_prl orders in v1');
+      }
+      if (!this.pearlPrefundEscrowAllocator) {
+        throw new Error('prefund is not enabled on this OTC API instance');
+      }
+      prefundAllocation = await this.pearlPrefundEscrowAllocator.allocatePrefundEscrow({
+        orderId,
+        mode: request.prefundMode,
+        makerPearlPubkey: normalizeProofPubkeyForUser(request.makerPearlPubkey),
+        amountPrl: normalizeAmountString(request.amountPrl),
+      });
+    }
+
     const order: OtcOrder = {
-      orderId: createRandomId('order'),
+      orderId,
       makerUserId: user.userId,
       side: request.side,
       fundingAsset: request.side === 'sell_prl' ? 'PRL' : 'USDC',
@@ -491,6 +534,14 @@ export class OtcTradeService {
       ...(request.expiresAt ? { expiresAt: new Date(request.expiresAt).toISOString() } : {}),
       createdAt: now,
       updatedAt: now,
+      ...(prefundAllocation
+        ? {
+            prefundMode: prefundAllocation.mode,
+            prefundState: 'pending_funding',
+            prefundEscrowAddress: prefundAllocation.escrowAddress,
+            prefundRefundEligibleAfterUnixTime: prefundAllocation.refundEligibleAfterUnixTime,
+          }
+        : {}),
     };
     const saved = await this.repository.saveOrder(order);
     await this.awardUserPoints(user, ORDER_CREATED_POINTS, 'order_created', {
@@ -2396,6 +2447,9 @@ function validateCreateOrderRequest(request: CreateOrderRequest, pearlNetwork: O
     !['preauthorize_release', 'manual_after_base_deposit'].includes(request.pearlReleaseSigningMode)
   ) {
     throw new Error('pearlReleaseSigningMode must be preauthorize_release or manual_after_base_deposit');
+  }
+  if (request.prefundMode && !['auto_sweep', 'manual_confirm'].includes(request.prefundMode)) {
+    throw new Error('prefundMode must be auto_sweep or manual_confirm');
   }
   assertPositiveAmount(request.amountPrl, 'amountPrl', parsePrlToGrains);
   assertPositiveDecimal(request.priceUsdcPerPrl, 'priceUsdcPerPrl', 6);

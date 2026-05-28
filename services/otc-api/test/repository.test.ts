@@ -254,6 +254,52 @@ test('PgOtcRepository rejects wallet link races that resolve to another user', a
   );
 });
 
+const orderPrefundAllocation = {
+  orderId: 'order-prefund-1',
+  allocatorKey: 'p2tr_multisig_prefund:testnet2',
+  derivationPrefix: 'm/0',
+  derivationIndex: 7,
+  derivationPath: 'm/0/7',
+  escrowAddress: 'tprl1pprefundescrow',
+  internalPubkeyHex: '33'.repeat(32),
+  taprootOutputScriptHex: `5120${'44'.repeat(32)}`,
+  scriptLeaves: [
+    {
+      kind: 'operator_arbiter_sweep',
+      requiredSigners: ['operator', 'arbiter'] as const,
+      scriptHex: '55'.repeat(32),
+      leafVersion: 0xc0,
+      controlBlockHex: '66'.repeat(32),
+    },
+    {
+      kind: 'maker_timeout_refund',
+      requiredSigners: ['maker'] as const,
+      scriptHex: '77'.repeat(32),
+      leafVersion: 0xc0,
+      controlBlockHex: '88'.repeat(32),
+      lockTime: 1_800_000_000,
+    },
+  ],
+  signerPubkeys: {
+    maker: '99'.repeat(32),
+    operator: 'aa'.repeat(32),
+    arbiter: 'bb'.repeat(32),
+  },
+};
+
+test('InMemoryOtcRepository reserves order prefund allocations idempotently and rejects derivation collisions', async () => {
+  const repo = new InMemoryOtcRepository();
+  const first = await repo.reserveOrderPrefundAllocation(orderPrefundAllocation);
+  const second = await repo.reserveOrderPrefundAllocation(orderPrefundAllocation);
+  assert.equal(first.created, true);
+  assert.equal(second.created, false);
+  assert.equal(second.allocation.escrowAddress, orderPrefundAllocation.escrowAddress);
+  await assert.rejects(
+    () => repo.reserveOrderPrefundAllocation({ ...orderPrefundAllocation, orderId: 'order-prefund-2' }),
+    PearlEscrowDerivationCollisionError,
+  );
+});
+
 test('InMemoryOtcRepository reserves Pearl escrow allocations idempotently and rejects derivation collisions', async () => {
   const repo = new InMemoryOtcRepository();
 

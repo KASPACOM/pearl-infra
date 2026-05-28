@@ -6,7 +6,10 @@ import { InMemoryOtcRepository, PgOtcRepository } from './repository.js';
 import { OtcTradeService } from './trade-service.js';
 import { assertOtcApiStartupConfig, readOtcApiConfig, readOtcApiRuntimeConfig } from './config.js';
 import { createOtcHttpServer, parseAdminApiTokens } from './http.js';
-import { createConfiguredPearlEscrowAllocator } from './pearl-escrow-allocator.js';
+import {
+  createConfiguredPearlEscrowAllocator,
+  createConfiguredPearlPrefundEscrowAllocator,
+} from './pearl-escrow-allocator.js';
 import { HttpPearlProofReader } from './pearl-proof-reader.js';
 import { HttpPearlEscrowWatchRegistrar } from './pearl-watch-registrar.js';
 import { pgPoolAdapter } from './postgres.js';
@@ -24,6 +27,7 @@ const usdcEscrowReader = config.baseRpcUrl
   ? new EthersUsdcEscrowReader(config.baseRpcUrl, config.baseEscrowContract)
   : undefined;
 const pearlEscrowAllocator = createConfiguredPearlEscrowAllocator(config, repository);
+const pearlPrefundEscrowAllocator = createConfiguredPearlPrefundEscrowAllocator(config, repository);
 const pearlEscrowWatchRegistrar = config.pearlIndexerWatchUrl
   ? new HttpPearlEscrowWatchRegistrar(config.pearlIndexerWatchUrl, config.pearlIndexerWatchTimeoutMs)
   : undefined;
@@ -48,6 +52,7 @@ const service = new OtcTradeService(
   pearlProofReader,
   supportAlertNotifier,
   pearlSignedTransactionBroadcaster,
+  pearlPrefundEscrowAllocator,
 );
 const server = createOtcHttpServer(service, {
   adminToken: config.adminApiToken,
@@ -61,6 +66,7 @@ server.listen(port, () => {
       port,
       persistence: config.databaseUrl ? 'postgres' : 'memory',
       pearlEscrowAllocator: config.pearlEscrowAllocator,
+      pearlPrefundEscrowAllocator: pearlPrefundEscrowAllocator ? 'p2tr_multisig' : 'disabled',
       pearlEscrowWatchRegistrar: config.pearlIndexerWatchUrl ? 'http' : 'disabled',
       pearlSignedTransactionBroadcaster: pearlSignedTransactionBroadcaster ? 'rpc' : 'disabled',
       usdcEscrowReader: config.baseRpcUrl ? 'ethers' : 'disabled',
