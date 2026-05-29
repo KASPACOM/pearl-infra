@@ -9,6 +9,7 @@ export interface SettlementWorkerRuntimeConfig {
   baseEscrowContract: string;
   arbiterPrivkeyHex: string;
   arbiterSignerKeyId: string;
+  baseOperatorPrivkeyHex?: string;
   broadcastAttemptsPath: string;
   loopIntervalMs: number;
   requireProductionConfig: boolean;
@@ -26,6 +27,9 @@ export function readSettlementWorkerRuntimeConfig(env: NodeJS.ProcessEnv = proce
     baseEscrowContract: required(env.BASE_USDC_ESCROW_CONTRACT, 'BASE_USDC_ESCROW_CONTRACT'),
     arbiterPrivkeyHex: required(env.OYSTER_WORKER_ARBITER_PRIVKEY_HEX, 'OYSTER_WORKER_ARBITER_PRIVKEY_HEX'),
     arbiterSignerKeyId: env.OYSTER_WORKER_SIGNER_KEY_ID ?? 'oyster-dev-arbiter',
+    // Optional: when set, the worker drives Base createTrade + release via this hot key.
+    // When unset, the worker emits deferred actions and an operator drives Base manually.
+    baseOperatorPrivkeyHex: env.OYSTER_WORKER_BASE_OPERATOR_PRIVKEY_HEX,
     broadcastAttemptsPath: env.SETTLEMENT_WORKER_BROADCAST_ATTEMPTS_PATH ?? '/data/pearl-broadcast-attempts.json',
     loopIntervalMs: env.SETTLEMENT_WORKER_INTERVAL_MS ? Number(env.SETTLEMENT_WORKER_INTERVAL_MS) : 30_000,
     requireProductionConfig: env.SETTLEMENT_WORKER_REQUIRE_PRODUCTION_CONFIG === 'true',

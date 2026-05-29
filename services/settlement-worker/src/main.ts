@@ -13,6 +13,8 @@ import { PearlRpcClient, PearlRpcTransactionBroadcaster } from '@kaspacom/pearl-
 
 import { readSettlementWorkerRuntimeConfig } from './config.js';
 import { InMemorySettlementDecisionRepository } from './decision-engine.js';
+import { EthersEvmBroadcaster } from './evm-broadcaster.js';
+import type { SettlementBroadcasterAdapter } from './types.js';
 import {
   JsonFilePearlEscrowBroadcastAttemptRepository,
   submitPearlEscrowBroadcastAttempt,
@@ -58,6 +60,29 @@ const broadcaster = new PearlRpcTransactionBroadcaster(
 
 const decisions = new InMemorySettlementDecisionRepository();
 
+const evmBroadcaster: SettlementBroadcasterAdapter = runtime.baseOperatorPrivkeyHex
+  ? new EthersEvmBroadcaster({
+      rpcUrl: runtime.baseRpcUrl,
+      escrowContract: runtime.baseEscrowContract,
+      operatorPrivateKeyHex: runtime.baseOperatorPrivkeyHex,
+    })
+  : {
+      async prepareUsdcRelease(trade, decision) {
+        // No operator key configured — emit a deferred action so a human operator can
+        // call release() on Base manually. This is the dev/legacy fallback.
+        return {
+          actionId: `usdc_release_deferred_${decision.decisionId}`,
+          decisionId: decision.decisionId,
+          tradeId: trade.tradeId,
+          action: decision.action,
+          status: 'prepared',
+          idempotencyKey: `usdc:release:${trade.tradeId}:${decision.decisionId}`,
+          createdAt: new Date().toISOString(),
+          metadata: { adapter: 'deferred_usdc_release', liveBroadcast: false },
+        };
+      },
+    };
+
 async function loop(): Promise<void> {
   try {
     const iteration = await runSettlementWorkerIteration({
@@ -66,23 +91,7 @@ async function loop(): Promise<void> {
       base,
       decisions,
       signer,
-      broadcaster: {
-        async prepareUsdcRelease(trade, decision) {
-          // USDC release is the on-chain Base call, executed by an EVM broadcaster that
-          // doesn't ship in this dev iteration — we surface the decision but defer the
-          // actual Base release to a follow-up worker (or manual operator action).
-          return {
-            actionId: `usdc_release_deferred_${decision.decisionId}`,
-            decisionId: decision.decisionId,
-            tradeId: trade.tradeId,
-            action: decision.action,
-            status: 'prepared',
-            idempotencyKey: `usdc:release:${trade.tradeId}:${decision.decisionId}`,
-            createdAt: new Date().toISOString(),
-            metadata: { adapter: 'deferred_usdc_release', liveBroadcast: false },
-          };
-        },
-      },
+      broadcaster: evmBroadcaster,
     });
     console.log(JSON.stringify({
       msg: 'settlement worker iteration complete',

@@ -29,6 +29,7 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
     }
 
     address public feeRecipient;
+    address public operator;
     IERC20 private immutable USDC_TOKEN;
 
     mapping(bytes32 => Trade) public trades;
@@ -45,6 +46,15 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
     event Released(bytes32 indexed tradeId, address indexed seller, uint256 sellerAmount, uint256 feeAmount);
     event Refunded(bytes32 indexed tradeId, address indexed buyer, uint256 amount);
     event Cancelled(bytes32 indexed tradeId);
+    event OperatorChanged(address indexed previousOperator, address indexed newOperator);
+    event FeeRecipientChanged(address indexed previousRecipient, address indexed newRecipient);
+
+    /// @dev Owner can act anywhere operator can; reduces blast radius if operator key leaks
+    /// without forcing the owner key into per-trade hot rotation.
+    modifier onlyOperatorOrOwner() {
+        require(msg.sender == operator || msg.sender == owner(), "not operator");
+        _;
+    }
 
     constructor(address feeRecipient_, address usdcToken_) Ownable(msg.sender) {
         require(feeRecipient_ != address(0), "fee recipient required");
@@ -59,7 +69,7 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
 
     function createTrade(bytes32 tradeId, address buyer, address seller, uint256 amount, uint256 fee, uint64 expiry)
         external
-        onlyOwner
+        onlyOperatorOrOwner
         whenNotPaused
     {
         require(tradeId != bytes32(0), "trade id required");
@@ -75,8 +85,20 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
         emit TradeCreated(tradeId, buyer, seller, amount, fee, expiry);
     }
 
-    function deposit(bytes32 tradeId) external whenNotPaused {
+    function deposit(bytes32 tradeId, address expectedSeller, uint256 expectedAmount, uint256 expectedFee)
+        external
+        whenNotPaused
+    {
         Trade storage trade = trades[tradeId];
+        // Buyer-side guard against operator-key frontrun: if a compromised operator
+        // calls createTrade with the same tradeId but a malicious seller address before
+        // the real createTrade lands, the buyer's deposit would otherwise fund the
+        // attacker's trade. Requiring the buyer to commit to the expected on-chain
+        // shape closes that hole — frontrun trades have a different seller/amount/fee
+        // and the deposit reverts.
+        require(trade.seller == expectedSeller, "seller mismatch");
+        require(trade.amount == expectedAmount, "amount mismatch");
+        require(trade.fee == expectedFee, "fee mismatch");
         require(trade.status == TradeStatus.Created, "not depositable");
         require(block.timestamp <= trade.expiry, "expired");
         require(msg.sender == trade.buyer, "not buyer");
@@ -88,7 +110,7 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
         emit Deposited(tradeId, msg.sender, total);
     }
 
-    function release(bytes32 tradeId) external onlyOwner whenNotPaused {
+    function release(bytes32 tradeId) external onlyOperatorOrOwner whenNotPaused {
         Trade storage trade = trades[tradeId];
         require(trade.status == TradeStatus.Deposited, "not releasable");
 
@@ -104,8 +126,13 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
     function refund(bytes32 tradeId) external {
         Trade storage trade = trades[tradeId];
         require(trade.status == TradeStatus.Deposited, "not refundable");
+        // Operator deliberately excluded: if the operator key leaks, an attacker could
+        // refund a trade where Pearl release has already fired, stranding the seller's
+        // PRL while sending USDC back to the buyer. Only the cold owner key or the
+        // buyer (after expiry) can refund. Stuck takers wait for expiry and self-refund.
         require(
-            msg.sender == owner() || (msg.sender == trade.buyer && block.timestamp > trade.expiry), "not authorized"
+            msg.sender == owner() || (msg.sender == trade.buyer && block.timestamp > trade.expiry),
+            "not authorized"
         );
 
         uint256 total = trade.amount + trade.fee;
@@ -130,6 +157,19 @@ contract PrlUsdcEscrow is Ownable2Step, Pausable {
 
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    function setOperator(address newOperator) external onlyOwner {
+        address previous = operator;
+        operator = newOperator;
+        emit OperatorChanged(previous, newOperator);
+    }
+
+    function setFeeRecipient(address newRecipient) external onlyOwner {
+        require(newRecipient != address(0), "fee recipient required");
+        address previous = feeRecipient;
+        feeRecipient = newRecipient;
+        emit FeeRecipientChanged(previous, newRecipient);
     }
 
     function renounceOwnership() public view override onlyOwner {

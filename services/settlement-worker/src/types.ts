@@ -50,6 +50,7 @@ export interface SettlementSnapshot {
 export type SettlementDecisionAction =
   | 'wait'
   | 'manual_review'
+  | 'prepare_base_create_trade'
   | 'prepare_prl_release'
   | 'prepare_prl_refund'
   | 'prepare_usdc_release'
@@ -103,6 +104,7 @@ export interface SettlementSignerAdapter {
 }
 
 export interface SettlementBroadcasterAdapter {
+  prepareBaseCreateTrade?(trade: OtcTrade, decision: SettlementDecisionRecord): Promise<SettlementPreparedAction>;
   prepareUsdcRelease(trade: OtcTrade, decision: SettlementDecisionRecord): Promise<SettlementPreparedAction>;
 }
 

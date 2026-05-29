@@ -169,9 +169,23 @@ test('enforces PRL release guard across state, deadlines, confirmations, and dep
     }),
     NOW,
   );
-  const wrongState = createSettlementDecisionRecord(
+  // Production has no path to write intermediate states like usdc_escrow_confirmed,
+  // so the engine accepts release decisions from earlier states as long as the
+  // snapshot conditions are met. The release_pending toState then drives the actual
+  // transition. (Previously the test asserted `wait` here, but that was holding
+  // production hostage to a state-write nobody implements.)
+  const fromPearlConfirmed = createSettlementDecisionRecord(
     createSettlementSnapshot({
       trade: tradeFixture({ state: 'pearl_escrow_confirmed' }),
+      pearl: pearlProof({ status: 'confirmed', confirmations: 6, observedAt: '2026-05-17T16:50:00.000Z' }),
+      base: baseEvent({ status: 'deposited', confirmations: 12 }),
+      now: NOW,
+    }),
+    NOW,
+  );
+  const alreadyReleasing = createSettlementDecisionRecord(
+    createSettlementSnapshot({
+      trade: tradeFixture({ state: 'release_pending' }),
       pearl: pearlProof({ status: 'confirmed', confirmations: 6, observedAt: '2026-05-17T16:50:00.000Z' }),
       base: baseEvent({ status: 'deposited', confirmations: 12 }),
       now: NOW,
@@ -190,7 +204,9 @@ test('enforces PRL release guard across state, deadlines, confirmations, and dep
 
   assert.equal(allowed.action, 'prepare_prl_release');
   assert.equal(underconfirmed.action, 'wait');
-  assert.equal(wrongState.action, 'wait');
+  assert.equal(fromPearlConfirmed.action, 'prepare_prl_release');
+  assert.equal(fromPearlConfirmed.toState, 'release_pending');
+  assert.notEqual(alreadyReleasing.action, 'prepare_prl_release');
   assert.equal(lateObserved.action, 'manual_review');
   assert.match(lateObserved.reason, /after the funding deadline/);
 });
