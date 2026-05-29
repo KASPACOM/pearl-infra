@@ -167,6 +167,7 @@ export interface OtcRepository {
   }): Promise<OtcOrder>;
   applyPrefundExpired(orderId: string, updatedAt: string): Promise<OtcOrder>;
   saveOrderSweep(input: SaveOrderSweepInput): Promise<OtcOrderSweep>;
+  findOrderSweepById(sweepId: string): Promise<OtcOrderSweep | undefined>;
   findOrderSweepByTradeId(tradeId: string): Promise<OtcOrderSweep | undefined>;
   listOrderSweepsByOrderId(orderId: string): Promise<OtcOrderSweep[]>;
   updateOrderSweep(input: {
@@ -827,6 +828,10 @@ export class InMemoryOtcRepository implements OtcRepository {
     return sweep;
   }
 
+  async findOrderSweepById(sweepId: string): Promise<OtcOrderSweep | undefined> {
+    return this.orderSweeps.get(sweepId);
+  }
+
   async findOrderSweepByTradeId(tradeId: string): Promise<OtcOrderSweep | undefined> {
     const sweepId = this.orderSweepByTradeId.get(tradeId);
     return sweepId ? this.orderSweeps.get(sweepId) : undefined;
@@ -1473,6 +1478,18 @@ export class PgOtcRepository implements OtcRepository {
       ],
     );
     return rowToOrderSweep(result.rows[0]);
+  }
+
+  async findOrderSweepById(sweepId: string): Promise<OtcOrderSweep | undefined> {
+    const result = await this.client.query<OrderSweepRow>(
+      `SELECT sweep_id, order_id, trade_id, input_outpoint, swept_grains,
+              change_outpoint, change_grains, sweep_psbt_base64, sweep_txid,
+              status, failure_reason, created_at, updated_at
+         FROM otc_order_sweeps
+        WHERE sweep_id = $1`,
+      [sweepId],
+    );
+    return result.rows[0] ? rowToOrderSweep(result.rows[0]) : undefined;
   }
 
   async findOrderSweepByTradeId(tradeId: string): Promise<OtcOrderSweep | undefined> {
