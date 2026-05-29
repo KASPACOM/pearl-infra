@@ -44,3 +44,10 @@ export {
   type LockedVaultControllerOptions,
   type LockedVaultState,
 } from './auto-lock.js';
+
+export {
+  validateAndSignPearlPrefundPsbt,
+  type PearlPrefundSigningInput,
+  type PearlPrefundSigningResult,
+  type PearlPrefundSpendContract,
+} from './psbt-signing.js';
