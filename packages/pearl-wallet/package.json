@@ -1,0 +1,19 @@
+{
+  "name": "@kaspacom/pearl-wallet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@kaspacom/pearl-script": "0.0.0",
+    "@kaspacom/pearl-sdk": "0.0.0",
+    "@noble/hashes": "^1.5.0",
+    "@scure/bip32": "^1.5.0",
+    "@scure/bip39": "^1.4.0",
+    "tiny-secp256k1": "^2.2.4"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

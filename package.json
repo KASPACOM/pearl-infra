@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "prove:simnet-multisig": "npm run typecheck && node packages/pearl-escrow/scripts/prove-multisig-simnet.mjs",
-    "typecheck": "tsc -b packages/pearl-rpc packages/pearl-sdk packages/pearl-script packages/pearl-escrow packages/pearl-indexer packages/usdc-escrow-client services/pearl-indexer services/otc-api services/settlement-worker services/bridge-service apps/otc-web",
+    "typecheck": "tsc -b packages/pearl-rpc packages/pearl-sdk packages/pearl-script packages/pearl-escrow packages/pearl-indexer packages/pearl-wallet packages/usdc-escrow-client services/pearl-indexer services/otc-api services/settlement-worker services/bridge-service apps/otc-web",
     "test": "npm run typecheck && node --test packages/*/test/*.test.ts contracts/usdc-escrow/test/*.test.mjs services/pearl-indexer/test/*.test.ts services/otc-api/test/*.test.ts services/settlement-worker/test/*.test.ts services/bridge-service/test/*.test.ts apps/otc-web/test/*.test.ts"
   },
   "dependencies": {
