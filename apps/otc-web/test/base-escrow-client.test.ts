@@ -4,6 +4,7 @@ import test from 'node:test';
 import { getAddress } from 'ethers';
 
 import {
+  buildEscrowDepositCallFromTrade,
   createEscrowContract,
   createEscrowInterface,
   createUsdcInterface,
@@ -13,6 +14,7 @@ import {
   prepareUsdcApprovalCall,
   toTransactionRequest,
 } from '../src/base-escrow-client.ts';
+import type { OtcTrade } from '@kaspacom/pearl-sdk';
 
 const TRADE_KEY = '0x1111111111111111111111111111111111111111111111111111111111111111';
 
@@ -83,6 +85,69 @@ test('prepares an operator createTrade call using server-authoritative terms', (
   assert.equal(parsed?.args[3], 170000000n);
   assert.equal(parsed?.args[4], 1700000n);
   assert.equal(parsed?.args[5], 1_779_120_900n);
+});
+
+// Regression for the 2026-05-29 audit finding: TradeCheckoutPage was passing
+// `trade.usdcEscrow.expectedAmountMicros` (which is amountUsdc + feeUsdc, the
+// TOTAL) into `deposit(...expectedAmount, expectedFee)`. The on-chain guard
+// is `require(trade.amount == expectedAmount && trade.fee == expectedFee)`
+// where `trade.amount` is PRINCIPAL ONLY, so every nonzero-fee deposit
+// reverted with "amount mismatch". `buildEscrowDepositCallFromTrade` is the
+// single point that maps OtcTrade fields onto deposit args correctly — this
+// test pins arg2/arg3 so the bug can't silently come back via either source
+// flip or accidental refactor.
+test('buildEscrowDepositCallFromTrade encodes principal in arg2 and fee in arg3 (not principal+fee)', () => {
+  const trade: OtcTrade = {
+    tradeId: 'trade-fee-regression',
+    quoteId: 'quote-fee-regression',
+    state: 'usdc_escrow_pending',
+    side: 'buy_prl',
+    amountPrl: '1000.00000000',
+    amountUsdc: '170.000000',
+    feePrl: '0.00000000',
+    feeUsdc: '1.700000',
+    buyerPearlAddress: 'tprl1pbuyer',
+    buyerUsdcAddress: '0x3333333333333333333333333333333333333333',
+    sellerPearlRefundAddress: 'tprl1pseller',
+    sellerUsdcReceiveAddress: '0x4444444444444444444444444444444444444444',
+    pearlEscrow: {
+      network: 'testnet2',
+      address: 'tprl1pescrow',
+      expectedAmountGrains: '100000000000',
+      requiredConfirmations: 1,
+    },
+    usdcEscrow: {
+      network: 'base',
+      chainId: 8453,
+      contract: '0x10a49C0D27c46AA41627Bf40ed6275f8998046eF',
+      usdcToken: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      tradeKey: TRADE_KEY,
+      // This is the TOTAL — what approve() uses. We must NOT pass it to deposit().
+      expectedAmountMicros: '171700000',
+      requiredConfirmations: 1,
+      expiresAt: '2026-05-29T20:30:00.000Z',
+    },
+    deadlines: {
+      quoteExpiresAt: '2026-05-29T20:05:00.000Z',
+      pearlFundingDeadline: '2026-05-29T20:10:00.000Z',
+      usdcDepositDeadline: '2026-05-29T20:30:00.000Z',
+      settlementDeadline: '2026-05-29T20:30:00.000Z',
+      refundAvailableAt: '2026-05-29T20:30:00.000Z',
+    },
+    createdAt: '2026-05-29T20:00:00.000Z',
+    updatedAt: '2026-05-29T20:00:00.000Z',
+  };
+  const call = buildEscrowDepositCallFromTrade(trade, 'base_sepolia');
+  const parsed = createEscrowInterface().parseTransaction({ data: call.data });
+  assert.equal(parsed?.name, 'deposit');
+  assert.equal(parsed?.args[0], TRADE_KEY);
+  assert.equal(getAddress(parsed?.args[1]), getAddress(trade.sellerUsdcReceiveAddress));
+  // PRINCIPAL: 170.000000 USDC = 170000000 micros. NOT 171700000 (the total).
+  assert.equal(parsed?.args[2], 170000000n);
+  // FEE: 1.700000 USDC = 1700000 micros.
+  assert.equal(parsed?.args[3], 1700000n);
+  // Defensive: assert we didn't pass the total into either arg.
+  assert.notEqual(parsed?.args[2], 171700000n);
 });
 
 test('prepares approval and deposit calls from trade-specific API config', () => {
