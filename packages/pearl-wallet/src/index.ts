@@ -51,3 +51,14 @@ export {
   type PearlPrefundSigningResult,
   type PearlPrefundSpendContract,
 } from './psbt-signing.js';
+
+export {
+  PEARL_WALLET_TOTP_DEFAULTS,
+  buildTotpProvisioningUri,
+  consumeBackupCode,
+  generateTotpBackupCodes,
+  generateTotpCode,
+  generateTotpSecret,
+  verifyTotpCode,
+  type PearlTotpParams,
+} from './totp.js';
