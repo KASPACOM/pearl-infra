@@ -30,6 +30,7 @@ export function ProfilePage() {
   const [orderMakerPearlAddress, setOrderMakerPearlAddress] = useState('');
   const [orderMakerPearlPubkey, setOrderMakerPearlPubkey] = useState('');
   const [orderMakerPearlPubkeyProof, setOrderMakerPearlPubkeyProof] = useState('');
+  const [orderPrefundMode, setOrderPrefundMode] = useState<'none' | 'auto_sweep' | 'manual_confirm'>('none');
   const [linkAuthChallengeId, setLinkAuthChallengeId] = useState('');
   const [linkAuthSignature, setLinkAuthSignature] = useState('');
   const [linkAuthPublicKeyHex, setLinkAuthPublicKeyHex] = useState('');
@@ -178,6 +179,7 @@ export function ProfilePage() {
         amountPrl: orderAmountPrl,
         priceUsdcPerPrl: orderPrice,
         ...(orderMinFillPrl ? { minFillPrl: orderMinFillPrl } : {}),
+        ...(orderPrefundMode !== 'none' ? { prefundMode: orderPrefundMode } : {}),
       });
       setOrderAmountPrl('');
       setOrderPrice('');
@@ -454,8 +456,39 @@ export function ProfilePage() {
               spellCheck={false}
             />
           </Field>
+          {orderSide === 'sell_prl' ? (
+            <Field label="Prefund mode (sell_prl only)">
+              <div className="om-tabs">
+                <button
+                  type="button"
+                  className={orderPrefundMode === 'none' ? 'is-active' : ''}
+                  onClick={() => setOrderPrefundMode('none')}
+                >
+                  None (legacy live-coordination)
+                </button>
+                <button
+                  type="button"
+                  className={orderPrefundMode === 'auto_sweep' ? 'is-active' : ''}
+                  onClick={() => setOrderPrefundMode('auto_sweep')}
+                >
+                  Auto-sweep (Mode A)
+                </button>
+                <button
+                  type="button"
+                  className={orderPrefundMode === 'manual_confirm' ? 'is-active' : ''}
+                  onClick={() => setOrderPrefundMode('manual_confirm')}
+                >
+                  Manual confirm (Mode B)
+                </button>
+              </div>
+            </Field>
+          ) : null}
           <p className="profile-note">
-            {orderSide === 'sell_prl'
+            {orderSide === 'sell_prl' && orderPrefundMode === 'auto_sweep'
+              ? 'Auto-sweep: you deposit PRL upfront, the desk auto-signs sweep transactions when takers match. You stay offline; reclaim via CLTV refund after the timeout.'
+              : orderSide === 'sell_prl' && orderPrefundMode === 'manual_confirm'
+              ? 'Manual confirm: you deposit PRL upfront, but you must come online to co-sign each sweep when a taker matches. Safer than auto-sweep but requires availability.'
+              : orderSide === 'sell_prl'
               ? 'Sell offers advertise PRL liquidity; PRL locks when the taker accepts and the Pearl escrow is allocated.'
               : 'Buy offers advertise USDC liquidity; USDC locks when the accepted quote enters the Base escrow path.'}
           </p>
@@ -478,7 +511,30 @@ export function ProfilePage() {
                 <span>{order.side === 'buy_prl' ? 'Buy' : 'Sell'}</span>
                 <span>{order.remainingPrl}</span>
                 <span>{order.priceUsdcPerPrl}</span>
-                <span>{order.status}</span>
+                <span>
+                  {order.status}
+                  {order.prefundMode ? (
+                    <small className="profile-prefund-tag">
+                      {' '}— prefund {order.prefundState ?? 'unknown'}
+                      {order.prefundState === 'pending_funding' && order.prefundEscrowAddress ? (
+                        <>
+                          {' '}<br />
+                          <code title={order.prefundEscrowAddress}>
+                            Send {order.amountPrl} PRL → {order.prefundEscrowAddress.slice(0, 16)}…{order.prefundEscrowAddress.slice(-8)}
+                          </code>
+                        </>
+                      ) : null}
+                      {order.prefundRefundEligibleAfterUnixTime && order.prefundState !== 'refunded' ? (
+                        <>
+                          {' '}<br />
+                          <small>
+                            Refund unlocks {new Date(order.prefundRefundEligibleAfterUnixTime * 1000).toLocaleString()}
+                          </small>
+                        </>
+                      ) : null}
+                    </small>
+                  ) : null}
+                </span>
               </div>
             ))}
             {dashboard?.orders.length === 0 ? <div className="om-empty">No open offers from this wallet yet.</div> : null}

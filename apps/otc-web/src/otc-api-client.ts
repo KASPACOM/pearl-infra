@@ -405,6 +405,17 @@ export type OtcOrderStatus = 'open' | 'partially_filled' | 'filled' | 'cancelled
 export type OtcFundingAsset = 'PRL' | 'USDC';
 export type OtcPointSource = 'signup' | 'referral_signup' | 'trade_completed' | 'order_created' | 'referral_activity_bonus';
 
+export type OtcOrderPrefundMode = 'auto_sweep' | 'manual_confirm';
+export type OtcOrderPrefundState =
+  | 'pending_allocation'
+  | 'pending_funding'
+  | 'funded'
+  | 'partially_swept'
+  | 'fully_swept'
+  | 'refund_pending'
+  | 'refunded'
+  | 'expired';
+
 export interface OtcOrder {
   orderId: string;
   makerUserId: string;
@@ -423,6 +434,15 @@ export interface OtcOrder {
   expiresAt?: string;
   createdAt: string;
   updatedAt: string;
+  prefundMode?: OtcOrderPrefundMode;
+  prefundState?: OtcOrderPrefundState;
+  prefundEscrowAddress?: string;
+  prefundFundedOutpoint?: string;
+  prefundFundedGrains?: string;
+  prefundRemainingGrains?: string;
+  prefundFundedAt?: string;
+  prefundRefundEligibleAfterUnixTime?: number;
+  prefundRefundTxid?: string;
 }
 
 export interface CreateOrderRequest {
@@ -436,6 +456,7 @@ export interface CreateOrderRequest {
   makerPearlPubkey: string;
   makerPearlPubkeyProof: string;
   pearlReleaseSigningMode?: PearlReleaseSigningMode;
+  prefundMode?: OtcOrderPrefundMode;
   amountPrl: string;
   priceUsdcPerPrl: string;
   minFillPrl?: string;
