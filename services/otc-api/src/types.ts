@@ -44,6 +44,17 @@ export interface OtcApiConfig {
   pearlEscrowArbiterPubkey?: string;
   pearlEscrowDerivationPrefix: string;
   allowMainnetPearlEscrow: boolean;
+  // Prefund (order-book) escrow allocator config. Reuses pearlEscrowArbiterPubkey
+  // as the arbiter (same identity, same hot key). pearlPrefundOperatorPubkey is the
+  // x-only Pearl pubkey of the operator role that co-signs sweeps. Both modes need
+  // the operator; Mode A (auto_sweep) additionally uses the arbiter.
+  pearlPrefundEnabled?: boolean;
+  pearlPrefundOperatorPubkey?: string;
+  pearlPrefundDerivationPrefix?: string;
+  // How long after order creation the maker can solo-refund via CLTV. Defaults to
+  // 24h if not set. Tuned to give realistic time for takers to match without
+  // locking maker funds for too long.
+  pearlPrefundRefundDelayHours?: number;
   quoteTtlMs: number;
   pearlFundingTtlMs: number;
   usdcDepositTtlMs: number;
@@ -619,6 +630,17 @@ export interface OtcOrder {
   expiresAt?: string;
   createdAt: string;
   updatedAt: string;
+  // Prefund fields are NULL on legacy (non-prefund) orders. New orders that
+  // route through the prefund escrow allocator populate the full set.
+  prefundMode?: import('@kaspacom/pearl-sdk').OtcOrderPrefundMode;
+  prefundState?: import('@kaspacom/pearl-sdk').OtcOrderPrefundState;
+  prefundEscrowAddress?: string;
+  prefundFundedOutpoint?: string;
+  prefundFundedGrains?: string;
+  prefundRemainingGrains?: string;
+  prefundFundedAt?: string;
+  prefundRefundEligibleAfterUnixTime?: number;
+  prefundRefundTxid?: string;
 }
 
 export interface CreateOrderRequest {
@@ -632,6 +654,9 @@ export interface CreateOrderRequest {
   makerPearlPubkey: string;
   makerPearlPubkeyProof: string;
   pearlReleaseSigningMode?: PearlReleaseSigningMode;
+  // When provided, the order routes through a Pearl prefund escrow per the
+  // C0 design. Omitted = legacy live-coordination flow.
+  prefundMode?: import('@kaspacom/pearl-sdk').OtcOrderPrefundMode;
   amountPrl: string;
   priceUsdcPerPrl: string;
   minFillPrl?: string;

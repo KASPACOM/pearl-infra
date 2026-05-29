@@ -66,6 +66,30 @@ export interface PearlEscrowAllocation extends PearlEscrowAllocationInput {
   createdAt: string;
 }
 
+export interface OrderPrefundAllocationInput {
+  orderId: string;
+  allocatorKey: string;
+  derivationPrefix: string;
+  derivationIndex: number;
+  derivationPath: string;
+  escrowAddress: string;
+  internalPubkeyHex: string;
+  taprootOutputScriptHex: string;
+  scriptLeaves: Array<{
+    kind: string;
+    requiredSigners: readonly string[];
+    scriptHex: string;
+    leafVersion: number;
+    controlBlockHex: string;
+    lockTime?: number;
+  }>;
+  signerPubkeys: { maker: string; operator: string; arbiter?: string };
+}
+
+export interface OrderPrefundAllocation extends OrderPrefundAllocationInput {
+  createdAt: string;
+}
+
 export class PearlEscrowDerivationCollisionError extends Error {
   constructor(message: string) {
     super(message);
@@ -123,6 +147,10 @@ export interface OtcRepository {
   listOpenOrdersForStats(): Promise<OtcOrder[]>;
   listOrdersByUser(userId: string): Promise<OtcOrder[]>;
   reserveOrderFill(orderId: string, amountPrl: string, updatedAt: string): Promise<OtcOrder>;
+  findOrderPrefundAllocationByOrderId(orderId: string): Promise<OrderPrefundAllocation | undefined>;
+  reserveOrderPrefundAllocation(
+    allocation: OrderPrefundAllocationInput,
+  ): Promise<{ allocation: OrderPrefundAllocation; created: boolean }>;
   saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void>;
   findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined>;
   savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }>;
@@ -181,6 +209,8 @@ export class InMemoryOtcRepository implements OtcRepository {
   private readonly tradeByQuote = new Map<string, string>();
   private readonly pearlEscrowAllocations = new Map<string, PearlEscrowAllocation>();
   private readonly pearlEscrowAllocationByDerivation = new Map<string, string>();
+  private readonly orderPrefundAllocations = new Map<string, OrderPrefundAllocation>();
+  private readonly orderPrefundAllocationByDerivation = new Map<string, string>();
   private readonly events = new Map<string, TradeEvent[]>();
   private readonly sideEffects = new Map<string, OtcSideEffect>();
   private readonly walletChallenges = new Map<string, OtcUserWalletChallenge>();
@@ -682,6 +712,33 @@ export class InMemoryOtcRepository implements OtcRepository {
     return this.orderQuoteLinks.get(quoteId);
   }
 
+  async findOrderPrefundAllocationByOrderId(orderId: string): Promise<OrderPrefundAllocation | undefined> {
+    return this.orderPrefundAllocations.get(orderId);
+  }
+
+  async reserveOrderPrefundAllocation(
+    allocation: OrderPrefundAllocationInput,
+  ): Promise<{ allocation: OrderPrefundAllocation; created: boolean }> {
+    const existing = this.orderPrefundAllocations.get(allocation.orderId);
+    if (existing) {
+      return { allocation: existing, created: false };
+    }
+    const derivationKey = formatOrderPrefundDerivationKey(allocation);
+    const existingOrderId = this.orderPrefundAllocationByDerivation.get(derivationKey);
+    if (existingOrderId && existingOrderId !== allocation.orderId) {
+      throw new PearlEscrowDerivationCollisionError(
+        `Order prefund derivation already allocated: ${allocation.derivationPath}`,
+      );
+    }
+    const persisted: OrderPrefundAllocation = {
+      ...allocation,
+      createdAt: new Date().toISOString(),
+    };
+    this.orderPrefundAllocations.set(allocation.orderId, persisted);
+    this.orderPrefundAllocationByDerivation.set(derivationKey, allocation.orderId);
+    return { allocation: persisted, created: true };
+  }
+
   async savePointEvent(event: OtcPointEvent): Promise<{ event: OtcPointEvent; created: boolean }> {
     const existing = this.pointEvents.get(event.pointEventId);
     if (existing) return { event: existing, created: false };
@@ -750,6 +807,20 @@ type PearlEscrowAllocationRow = Record<string, unknown> & {
   escrow_address: string;
   internal_pubkey_hex: string;
   taproot_output_script_hex: string;
+  created_at: Date | string;
+}
+
+type OrderPrefundAllocationRow = Record<string, unknown> & {
+  order_id: string;
+  allocator_key: string;
+  derivation_prefix: string;
+  derivation_index: string | number;
+  derivation_path: string;
+  escrow_address: string;
+  internal_pubkey_hex: string;
+  taproot_output_script_hex: string;
+  script_leaves: OrderPrefundAllocation['scriptLeaves'] | string;
+  signer_pubkeys: OrderPrefundAllocation['signerPubkeys'] | string;
   created_at: Date | string;
 }
 
@@ -861,6 +932,15 @@ type OrderRow = Record<string, unknown> & {
   expires_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  prefund_mode: OtcOrder['prefundMode'] | null;
+  prefund_state: OtcOrder['prefundState'] | null;
+  prefund_escrow_address: string | null;
+  prefund_funded_outpoint: string | null;
+  prefund_funded_grains: string | number | null;
+  prefund_remaining_grains: string | number | null;
+  prefund_funded_at: Date | string | null;
+  prefund_refund_eligible_after_unixtime: string | number | null;
+  prefund_refund_txid: string | null;
   total_count?: string | number;
 }
 
@@ -1124,6 +1204,89 @@ export class PgOtcRepository implements OtcRepository {
       [allocation.allocatorKey, allocation.derivationPrefix, allocation.derivationIndex],
     );
     return result.rows[0] ? rowToPearlEscrowAllocation(result.rows[0]) : undefined;
+  }
+
+  async findOrderPrefundAllocationByOrderId(orderId: string): Promise<OrderPrefundAllocation | undefined> {
+    const result = await this.client.query<OrderPrefundAllocationRow>(
+      `SELECT order_id, allocator_key, derivation_prefix, derivation_index,
+              derivation_path, escrow_address, internal_pubkey_hex,
+              taproot_output_script_hex, script_leaves, signer_pubkeys, created_at
+         FROM otc_order_prefund_allocations
+        WHERE order_id = $1`,
+      [orderId],
+    );
+    return result.rows[0] ? rowToOrderPrefundAllocation(result.rows[0]) : undefined;
+  }
+
+  async reserveOrderPrefundAllocation(
+    allocation: OrderPrefundAllocationInput,
+  ): Promise<{ allocation: OrderPrefundAllocation; created: boolean }> {
+    const existingOrder = await this.findOrderPrefundAllocationByOrderId(allocation.orderId);
+    if (existingOrder) {
+      return { allocation: existingOrder, created: false };
+    }
+    const existingDerivation = await this.findOrderPrefundAllocationByDerivation(allocation);
+    if (existingDerivation && existingDerivation.orderId !== allocation.orderId) {
+      throw new PearlEscrowDerivationCollisionError(
+        `Order prefund derivation already allocated: ${allocation.derivationPath}`,
+      );
+    }
+    try {
+      const result = await this.client.query<OrderPrefundAllocationRow>(
+        `INSERT INTO otc_order_prefund_allocations (
+           order_id, allocator_key, derivation_prefix, derivation_index,
+           derivation_path, escrow_address, internal_pubkey_hex, taproot_output_script_hex,
+           script_leaves, signer_pubkeys
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
+         ON CONFLICT (order_id) DO NOTHING
+         RETURNING order_id, allocator_key, derivation_prefix, derivation_index,
+                   derivation_path, escrow_address, internal_pubkey_hex,
+                   taproot_output_script_hex, script_leaves, signer_pubkeys, created_at`,
+        [
+          allocation.orderId,
+          allocation.allocatorKey,
+          allocation.derivationPrefix,
+          allocation.derivationIndex,
+          allocation.derivationPath,
+          allocation.escrowAddress,
+          allocation.internalPubkeyHex,
+          allocation.taprootOutputScriptHex,
+          JSON.stringify(allocation.scriptLeaves),
+          JSON.stringify(allocation.signerPubkeys),
+        ],
+      );
+      if ((result.rowCount ?? 0) > 0) {
+        return { allocation: rowToOrderPrefundAllocation(result.rows[0]), created: true };
+      }
+      const createdConcurrently = await this.findOrderPrefundAllocationByOrderId(allocation.orderId);
+      if (createdConcurrently) {
+        return { allocation: createdConcurrently, created: false };
+      }
+      throw new Error(`Order prefund allocation insert failed: ${allocation.orderId}`);
+    } catch (error) {
+      if (isPgUniqueViolation(error, 'otc_order_prefund_allocations_derivation_unique')) {
+        throw new PearlEscrowDerivationCollisionError(
+          `Order prefund derivation already allocated: ${allocation.derivationPath}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async findOrderPrefundAllocationByDerivation(
+    allocation: OrderPrefundAllocationInput,
+  ): Promise<OrderPrefundAllocation | undefined> {
+    const result = await this.client.query<OrderPrefundAllocationRow>(
+      `SELECT order_id, allocator_key, derivation_prefix, derivation_index,
+              derivation_path, escrow_address, internal_pubkey_hex,
+              taproot_output_script_hex, script_leaves, signer_pubkeys, created_at
+         FROM otc_order_prefund_allocations
+        WHERE allocator_key = $1
+          AND derivation_prefix = $2
+          AND derivation_index = $3`,
+      [allocation.allocatorKey, allocation.derivationPrefix, allocation.derivationIndex],
+    );
+    return result.rows[0] ? rowToOrderPrefundAllocation(result.rows[0]) : undefined;
   }
 
   async appendEvent(event: TradeEvent): Promise<void> {
@@ -1748,17 +1911,23 @@ export class PgOtcRepository implements OtcRepository {
          order_id, maker_user_id, side, funding_asset, maker_pearl_address,
          maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
          pearl_release_signing_mode, amount_prl, remaining_prl,
-         price_usdc_per_prl, min_fill_prl, status, expires_at, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         price_usdc_per_prl, min_fill_prl, status, expires_at, created_at, updated_at,
+         prefund_mode, prefund_state, prefund_escrow_address,
+         prefund_funded_outpoint, prefund_funded_grains, prefund_remaining_grains,
+         prefund_funded_at, prefund_refund_eligible_after_unixtime, prefund_refund_txid
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                 $18, $19, $20, $21, $22, $23, $24, $25, $26)
        ON CONFLICT (order_id) DO UPDATE
           SET remaining_prl = EXCLUDED.remaining_prl,
               status = EXCLUDED.status,
-              updated_at = EXCLUDED.updated_at
-       RETURNING order_id, maker_user_id, side, funding_asset, maker_pearl_address,
-                 maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
-                 pearl_release_signing_mode, amount_prl,
-                 remaining_prl, price_usdc_per_prl, min_fill_prl, status,
-                 expires_at, created_at, updated_at`,
+              updated_at = EXCLUDED.updated_at,
+              prefund_state = COALESCE(EXCLUDED.prefund_state, otc_orders.prefund_state),
+              prefund_funded_outpoint = COALESCE(EXCLUDED.prefund_funded_outpoint, otc_orders.prefund_funded_outpoint),
+              prefund_funded_grains = COALESCE(EXCLUDED.prefund_funded_grains, otc_orders.prefund_funded_grains),
+              prefund_remaining_grains = COALESCE(EXCLUDED.prefund_remaining_grains, otc_orders.prefund_remaining_grains),
+              prefund_funded_at = COALESCE(EXCLUDED.prefund_funded_at, otc_orders.prefund_funded_at),
+              prefund_refund_txid = COALESCE(EXCLUDED.prefund_refund_txid, otc_orders.prefund_refund_txid)
+       RETURNING ${ORDER_SELECT_COLUMNS}`,
       [
         order.orderId,
         order.makerUserId,
@@ -1777,6 +1946,15 @@ export class PgOtcRepository implements OtcRepository {
         order.expiresAt ?? null,
         order.createdAt,
         order.updatedAt,
+        order.prefundMode ?? null,
+        order.prefundState ?? null,
+        order.prefundEscrowAddress ?? null,
+        order.prefundFundedOutpoint ?? null,
+        order.prefundFundedGrains ?? null,
+        order.prefundRemainingGrains ?? null,
+        order.prefundFundedAt ?? null,
+        order.prefundRefundEligibleAfterUnixTime ?? null,
+        order.prefundRefundTxid ?? null,
       ],
     );
     return rowToOrder(result.rows[0]);
@@ -1784,11 +1962,7 @@ export class PgOtcRepository implements OtcRepository {
 
   async findOrderById(orderId: string): Promise<OtcOrder | undefined> {
     const result = await this.client.query<OrderRow>(
-      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
-              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
-              pearl_release_signing_mode, amount_prl,
-              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
-              expires_at, created_at, updated_at
+      `SELECT ${ORDER_SELECT_COLUMNS}
          FROM otc_orders
         WHERE order_id = $1`,
       [orderId],
@@ -1811,11 +1985,7 @@ export class PgOtcRepository implements OtcRepository {
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
     const orderSql = getOrderBookSortSql(query.sort, query.side);
     const result = await this.client.query<OrderRow>(
-      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
-              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
-              pearl_release_signing_mode, amount_prl,
-              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
-              expires_at, created_at, updated_at,
+      `SELECT ${ORDER_SELECT_COLUMNS},
               count(*) OVER() AS total_count
          FROM otc_orders
          ${whereSql}
@@ -1833,11 +2003,7 @@ export class PgOtcRepository implements OtcRepository {
 
   async listOpenOrdersForStats(): Promise<OtcOrder[]> {
     const result = await this.client.query<OrderRow>(
-      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
-              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
-              pearl_release_signing_mode, amount_prl,
-              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
-              expires_at, created_at, updated_at
+      `SELECT ${ORDER_SELECT_COLUMNS}
          FROM otc_orders
         WHERE status IN ($1, $2)`,
       ['open', 'partially_filled'],
@@ -1847,11 +2013,7 @@ export class PgOtcRepository implements OtcRepository {
 
   async listOrdersByUser(userId: string): Promise<OtcOrder[]> {
     const result = await this.client.query<OrderRow>(
-      `SELECT order_id, maker_user_id, side, funding_asset, maker_pearl_address,
-              maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
-              pearl_release_signing_mode, amount_prl,
-              remaining_prl, price_usdc_per_prl, min_fill_prl, status,
-              expires_at, created_at, updated_at
+      `SELECT ${ORDER_SELECT_COLUMNS}
          FROM otc_orders
         WHERE maker_user_id = $1
         ORDER BY updated_at DESC, order_id ASC`,
@@ -1870,11 +2032,7 @@ export class PgOtcRepository implements OtcRepository {
           AND status IN ('open', 'partially_filled')
           AND remaining_prl >= $2::numeric
           AND (expires_at IS NULL OR expires_at > $3)
-        RETURNING order_id, maker_user_id, side, funding_asset, maker_pearl_address,
-                  maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
-                  pearl_release_signing_mode, amount_prl,
-                  remaining_prl, price_usdc_per_prl, min_fill_prl, status,
-                  expires_at, created_at, updated_at`,
+        RETURNING ${ORDER_SELECT_COLUMNS}`,
       [orderId, amountPrl, updatedAt],
     );
     if (!result.rows[0]) {
@@ -1972,6 +2130,15 @@ export class PgOtcRepository implements OtcRepository {
     return result.rows.map((row) => row.trade);
   }
 }
+
+const ORDER_SELECT_COLUMNS = `order_id, maker_user_id, side, funding_asset, maker_pearl_address,
+       maker_usdc_address, maker_pearl_pubkey, maker_pearl_pubkey_proof,
+       pearl_release_signing_mode, amount_prl,
+       remaining_prl, price_usdc_per_prl, min_fill_prl, status,
+       expires_at, created_at, updated_at,
+       prefund_mode, prefund_state, prefund_escrow_address,
+       prefund_funded_outpoint, prefund_funded_grains, prefund_remaining_grains,
+       prefund_funded_at, prefund_refund_eligible_after_unixtime, prefund_refund_txid`;
 
 const USER_SELECT_FIELDS = `
   SELECT u.user_id,
@@ -2216,6 +2383,17 @@ function rowToOrder(row: OrderRow): OtcOrder {
     ...(row.expires_at ? { expiresAt: formatPgDate(row.expires_at) } : {}),
     createdAt: formatPgDate(row.created_at),
     updatedAt: formatPgDate(row.updated_at),
+    ...(row.prefund_mode ? { prefundMode: row.prefund_mode } : {}),
+    ...(row.prefund_state ? { prefundState: row.prefund_state } : {}),
+    ...(row.prefund_escrow_address ? { prefundEscrowAddress: row.prefund_escrow_address } : {}),
+    ...(row.prefund_funded_outpoint ? { prefundFundedOutpoint: row.prefund_funded_outpoint } : {}),
+    ...(row.prefund_funded_grains == null ? {} : { prefundFundedGrains: String(row.prefund_funded_grains) }),
+    ...(row.prefund_remaining_grains == null ? {} : { prefundRemainingGrains: String(row.prefund_remaining_grains) }),
+    ...(row.prefund_funded_at ? { prefundFundedAt: formatPgDate(row.prefund_funded_at) } : {}),
+    ...(row.prefund_refund_eligible_after_unixtime == null
+      ? {}
+      : { prefundRefundEligibleAfterUnixTime: Number(row.prefund_refund_eligible_after_unixtime) }),
+    ...(row.prefund_refund_txid ? { prefundRefundTxid: row.prefund_refund_txid } : {}),
   };
 }
 
@@ -2270,6 +2448,30 @@ function rowToPearlEscrowAllocation(row: PearlEscrowAllocationRow): PearlEscrowA
     taprootOutputScriptHex: row.taproot_output_script_hex,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
   };
+}
+
+function rowToOrderPrefundAllocation(row: OrderPrefundAllocationRow): OrderPrefundAllocation {
+  return {
+    orderId: row.order_id,
+    allocatorKey: row.allocator_key,
+    derivationPrefix: row.derivation_prefix,
+    derivationIndex: Number(row.derivation_index),
+    derivationPath: row.derivation_path,
+    escrowAddress: row.escrow_address,
+    internalPubkeyHex: row.internal_pubkey_hex,
+    taprootOutputScriptHex: row.taproot_output_script_hex,
+    scriptLeaves: typeof row.script_leaves === 'string'
+      ? JSON.parse(row.script_leaves)
+      : row.script_leaves,
+    signerPubkeys: typeof row.signer_pubkeys === 'string'
+      ? JSON.parse(row.signer_pubkeys)
+      : row.signer_pubkeys,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
+}
+
+function formatOrderPrefundDerivationKey(allocation: Pick<OrderPrefundAllocationInput, 'allocatorKey' | 'derivationPrefix' | 'derivationIndex'>): string {
+  return `${allocation.allocatorKey}|${allocation.derivationPrefix}|${allocation.derivationIndex}`;
 }
 
 function formatPearlEscrowDerivationKey(allocation: Pick<PearlEscrowAllocationInput, 'allocatorKey' | 'derivationPrefix' | 'derivationIndex'>): string {

@@ -6,7 +6,12 @@ import { getPearlScriptNetwork } from '@kaspacom/pearl-script';
 import { BIP32Factory } from 'bip32';
 import * as ecc from 'tiny-secp256k1';
 
-import { createConfiguredPearlEscrowAllocator, deriveTradeIndex } from '../src/pearl-escrow-allocator.ts';
+import {
+  createConfiguredPearlEscrowAllocator,
+  createConfiguredPearlPrefundEscrowAllocator,
+  deriveTradeIndex,
+  MultisigPearlPrefundEscrowAllocator,
+} from '../src/pearl-escrow-allocator.ts';
 import { InMemoryOtcRepository } from '../src/repository.ts';
 import type { OtcApiConfig } from '../src/types.ts';
 import type { PearlEscrowAllocator } from '../src/trade-service.ts';
@@ -175,6 +180,132 @@ function createAllocationInput(tradeId: string): Parameters<PearlEscrowAllocator
     },
   };
 }
+
+// ---------- Prefund (order-book) allocator ----------
+
+const PREFUND_NOW = () => new Date('2026-05-28T20:00:00.000Z');
+const EXPECTED_REFUND_UNIX = Math.floor(PREFUND_NOW().getTime() / 1000) + 24 * 3600;
+
+function prefundConfig(overrides: Partial<OtcApiConfig> = {}): OtcApiConfig {
+  return {
+    ...config,
+    pearlPrefundEnabled: true,
+    pearlPrefundOperatorPubkey: xOnlyPublicKey('05'),
+    pearlEscrowArbiterPubkey: xOnlyPublicKey('04'),
+    pearlPrefundDerivationPrefix: '1',
+    pearlPrefundRefundDelayHours: 24,
+    ...overrides,
+  };
+}
+
+test('createConfiguredPearlPrefundEscrowAllocator returns undefined when prefund disabled', () => {
+  const repo = new InMemoryOtcRepository();
+  const allocator = createConfiguredPearlPrefundEscrowAllocator({ ...config, pearlPrefundEnabled: false }, repo, PREFUND_NOW);
+  assert.equal(allocator, undefined);
+});
+
+test('createConfiguredPearlPrefundEscrowAllocator throws if operator pubkey missing', () => {
+  const repo = new InMemoryOtcRepository();
+  assert.throws(
+    () =>
+      createConfiguredPearlPrefundEscrowAllocator(
+        { ...prefundConfig(), pearlPrefundOperatorPubkey: undefined },
+        repo,
+        PREFUND_NOW,
+      ),
+    /PEARL_PREFUND_OPERATOR_PUBKEY is required/,
+  );
+});
+
+test('createConfiguredPearlPrefundEscrowAllocator throws if arbiter pubkey missing', () => {
+  const repo = new InMemoryOtcRepository();
+  assert.throws(
+    () =>
+      createConfiguredPearlPrefundEscrowAllocator(
+        { ...prefundConfig(), pearlEscrowArbiterPubkey: undefined },
+        repo,
+        PREFUND_NOW,
+      ),
+    /PEARL_ESCROW_ARBITER_PUBKEY is required/,
+  );
+});
+
+test('Mode A prefund: allocates 2-leaf Taproot escrow with operator+arbiter sweep and CLTV refund', async () => {
+  const repo = new InMemoryOtcRepository();
+  const allocator = new MultisigPearlPrefundEscrowAllocator(prefundConfig(), repo, PREFUND_NOW);
+  const out = await allocator.allocatePrefundEscrow({
+    orderId: 'order-prefund-auto-1',
+    mode: 'auto_sweep',
+    makerPearlPubkey: xOnlyPublicKey('02'),
+    amountPrl: '1000.00000000',
+  });
+  assert.match(out.escrowAddress, /^tprl1p/);
+  assert.equal(out.mode, 'auto_sweep');
+  assert.equal(out.expectedAmountGrains, '100000000000');
+  assert.equal(out.requiredConfirmations, 3);
+  assert.equal(out.refundEligibleAfterUnixTime, EXPECTED_REFUND_UNIX);
+  const persisted = await repo.findOrderPrefundAllocationByOrderId('order-prefund-auto-1');
+  assert.equal(persisted?.escrowAddress, out.escrowAddress);
+  assert.equal(persisted?.scriptLeaves.length, 2);
+  assert.equal(persisted?.scriptLeaves[0].kind, 'operator_arbiter_sweep');
+  assert.equal(persisted?.scriptLeaves[1].kind, 'maker_timeout_refund');
+  assert.equal(persisted?.signerPubkeys.arbiter, xOnlyPublicKey('04'));
+});
+
+test('Mode B prefund: allocates 2-leaf Taproot escrow with maker+operator sweep and CLTV refund', async () => {
+  const repo = new InMemoryOtcRepository();
+  const allocator = new MultisigPearlPrefundEscrowAllocator(prefundConfig(), repo, PREFUND_NOW);
+  const out = await allocator.allocatePrefundEscrow({
+    orderId: 'order-prefund-manual-1',
+    mode: 'manual_confirm',
+    makerPearlPubkey: xOnlyPublicKey('02'),
+    amountPrl: '500.00000000',
+  });
+  assert.match(out.escrowAddress, /^tprl1p/);
+  assert.equal(out.mode, 'manual_confirm');
+  const persisted = await repo.findOrderPrefundAllocationByOrderId('order-prefund-manual-1');
+  assert.equal(persisted?.scriptLeaves[0].kind, 'maker_operator_sweep');
+  assert.equal(persisted?.scriptLeaves[1].kind, 'maker_timeout_refund');
+  // Mode B does NOT include arbiter — see C0 design.
+  assert.equal(persisted?.signerPubkeys.arbiter, undefined);
+});
+
+test('Mode A and Mode B prefund produce different addresses for the same maker', async () => {
+  const repo = new InMemoryOtcRepository();
+  const allocator = new MultisigPearlPrefundEscrowAllocator(prefundConfig(), repo, PREFUND_NOW);
+  const a = await allocator.allocatePrefundEscrow({
+    orderId: 'order-A',
+    mode: 'auto_sweep',
+    makerPearlPubkey: xOnlyPublicKey('02'),
+    amountPrl: '100.00000000',
+  });
+  const b = await allocator.allocatePrefundEscrow({
+    orderId: 'order-B',
+    mode: 'manual_confirm',
+    makerPearlPubkey: xOnlyPublicKey('02'),
+    amountPrl: '100.00000000',
+  });
+  assert.notEqual(a.escrowAddress, b.escrowAddress);
+});
+
+test('prefund allocator is idempotent on retry (same orderId returns same allocation)', async () => {
+  const repo = new InMemoryOtcRepository();
+  const allocator = new MultisigPearlPrefundEscrowAllocator(prefundConfig(), repo, PREFUND_NOW);
+  const first = await allocator.allocatePrefundEscrow({
+    orderId: 'order-idem',
+    mode: 'auto_sweep',
+    makerPearlPubkey: xOnlyPublicKey('02'),
+    amountPrl: '50.00000000',
+  });
+  const second = await allocator.allocatePrefundEscrow({
+    orderId: 'order-idem',
+    mode: 'auto_sweep',
+    makerPearlPubkey: xOnlyPublicKey('02'),
+    amountPrl: '50.00000000',
+  });
+  assert.equal(first.escrowAddress, second.escrowAddress);
+  assert.equal(first.refundEligibleAfterUnixTime, second.refundEligibleAfterUnixTime);
+});
 
 function createTestAllocatorKey(): string {
   const xpub = config.pearlEscrowXpub;

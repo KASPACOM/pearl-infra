@@ -5,6 +5,39 @@ export type SettlementChainId = 8453 | 84532;
 export type PearlEscrowMode = 'coordinator' | 'multisig';
 export type PearlReleaseSigningMode = 'preauthorize_release' | 'manual_after_base_deposit';
 
+// Prefund mode controls how the maker's prefund escrow is swept into a per-trade
+// escrow when a taker matches the order. Mirror of PearlReleaseSigningMode for the
+// order-book layer.
+//
+//   - auto_sweep: maker is passive. Operator + arbiter co-sign the sweep at match
+//     time (Mode A). Maker can still recover funds via CLTV refund after expiry.
+//   - manual_confirm: maker must come online to co-sign the sweep with operator
+//     (Mode B). Arbiter is NOT included on the sweep path — there is no
+//     maker-solo-without-CLTV path to prevent the maker from rugging a taker who
+//     already deposited USDC.
+export type OtcOrderPrefundMode = 'auto_sweep' | 'manual_confirm';
+
+// Lifecycle of the maker's prefund escrow.
+//
+//   pending_allocation: order row exists, escrow address not yet derived.
+//   pending_funding:    address derived, awaiting maker's PRL deposit.
+//   funded:             maker's deposit observed and confirmed; matchable.
+//   partially_swept:    at least one taker filled some of the order. Remaining
+//                       PRL still sits on a new prefund UTXO (sweep change).
+//   fully_swept:        order fully filled; nothing left in prefund.
+//   refund_pending:     CLTV expiry past, maker refund tx prepared/in-flight.
+//   refunded:           maker refund tx confirmed.
+//   expired:            funding deadline missed without any deposit ever arriving.
+export type OtcOrderPrefundState =
+  | 'pending_allocation'
+  | 'pending_funding'
+  | 'funded'
+  | 'partially_swept'
+  | 'fully_swept'
+  | 'refund_pending'
+  | 'refunded'
+  | 'expired';
+
 export type TradeState =
   | 'quoted'
   | 'quote_expired'
