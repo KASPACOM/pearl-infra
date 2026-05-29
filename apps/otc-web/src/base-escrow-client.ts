@@ -1,5 +1,6 @@
 import { Contract, Interface, isAddress, type ContractRunner, type TransactionRequest } from 'ethers';
 
+import { parseUsdcToMicros, type OtcTrade } from '@kaspacom/pearl-sdk';
 import {
   getUsdcEscrowNetworkConfig,
   PRL_USDC_ESCROW_ABI,
@@ -90,6 +91,37 @@ export function prepareEscrowDepositCall(
     to: config.escrowContract,
     data: createEscrowInterface().encodeFunctionData('deposit', [input.tradeKey, input.expectedSeller, amount, fee]),
   };
+}
+
+/**
+ * Builds a deposit() call from the canonical OtcTrade. Centralises the
+ * principal-vs-total accounting so the UI can't accidentally pass the wrong
+ * value:
+ *
+ *   - approve() must spend the TOTAL (amountUsdc + feeUsdc) — that's what
+ *     OtcTrade.usdcEscrow.expectedAmountMicros holds.
+ *   - deposit(...) takes PRINCIPAL and FEE separately. The on-chain guard is
+ *       require(trade.amount == expectedAmount && trade.fee == expectedFee)
+ *     where trade.amount on-chain is the PRINCIPAL ONLY (see PrlUsdcEscrow.sol).
+ *     Passing the total here reverts every nonzero-fee deposit with
+ *     "amount mismatch". This helper picks the right source values.
+ *
+ * Regression covered by `buildEscrowDepositCallFromTrade encodes principal,
+ * not principal+fee, into deposit args` in test/base-escrow-client.test.ts.
+ */
+export function buildEscrowDepositCallFromTrade(
+  trade: OtcTrade,
+  configInput: FrontendEscrowCallConfigInput = 'base_sepolia',
+): PreparedContractCall {
+  return prepareEscrowDepositCall(
+    {
+      tradeKey: trade.usdcEscrow.tradeKey,
+      expectedSeller: trade.sellerUsdcReceiveAddress,
+      expectedAmountMicros: parseUsdcToMicros(trade.amountUsdc),
+      expectedFeeMicros: parseUsdcToMicros(trade.feeUsdc),
+    },
+    configInput,
+  );
 }
 
 export function prepareEscrowCreateTradeCall(
