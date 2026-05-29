@@ -58,6 +58,8 @@ import type {
   MarkManualReviewOptions,
   OtcApiConfig,
   OtcOrder,
+  OtcOrderSweep,
+  OtcOrderSweepStatus,
   OtcPointEvent,
   OtcPointsSummary,
   OtcNotificationChannel,
@@ -588,6 +590,59 @@ export class OtcTradeService {
    * Idempotent — repeated calls with the same observation state are no-ops once the
    * order has already transitioned out of pending_funding (Pg UPDATE WHERE clause).
    */
+  /**
+   * Initiates a sweep of the maker's prefund UTXO into a per-trade escrow at
+   * taker-match time. Records the sweep with status='pending' (Mode A —
+   * operator+arbiter co-sign in C5) or 'awaiting_maker_signature' (Mode B —
+   * maker must sign before we can broadcast) and decrements the order's
+   * prefund_remaining_grains. Idempotent on tradeId via the UNIQUE constraint.
+   *
+   * NOTE: PSBT construction is deferred to C5. This method records intent +
+   * accounting; the signer/broadcaster wakes up on rows with status='pending'.
+   */
+  async initiateOrderSweep(input: {
+    sweepId: string;
+    order: OtcOrder;
+    tradeId: string;
+    sweptGrains: string;
+  }): Promise<{ sweep: OtcOrderSweep; order: OtcOrder }> {
+    if (input.order.prefundMode == null) {
+      throw new Error('order has no prefund mode');
+    }
+    if (!['funded', 'partially_swept'].includes(input.order.prefundState ?? '')) {
+      throw new Error(`order ${input.order.orderId} not eligible for sweep (state=${input.order.prefundState})`);
+    }
+    if (!input.order.prefundFundedOutpoint) {
+      throw new Error(`order ${input.order.orderId} missing prefund funded outpoint`);
+    }
+    const remaining = BigInt(input.order.prefundRemainingGrains ?? '0');
+    const swept = BigInt(input.sweptGrains);
+    if (swept <= 0n || swept > remaining) {
+      throw new Error(`sweep amount ${swept} exceeds remaining ${remaining}`);
+    }
+    const newRemaining = remaining - swept;
+    const newState: 'partially_swept' | 'fully_swept' = newRemaining === 0n ? 'fully_swept' : 'partially_swept';
+    const sweepStatus: OtcOrderSweepStatus =
+      input.order.prefundMode === 'auto_sweep' ? 'pending' : 'awaiting_maker_signature';
+    const sweep = await this.repository.saveOrderSweep({
+      sweepId: input.sweepId,
+      orderId: input.order.orderId,
+      tradeId: input.tradeId,
+      inputOutpoint: input.order.prefundFundedOutpoint,
+      sweptGrains: input.sweptGrains,
+      status: sweepStatus,
+    });
+    const updatedAt = this.now().toISOString();
+    const updatedOrder = await this.repository.applyOrderPrefundSweepProgress({
+      orderId: input.order.orderId,
+      sweptGrains: input.sweptGrains,
+      newRemainingGrains: newRemaining.toString(),
+      newState,
+      updatedAt,
+    });
+    return { sweep, order: updatedOrder };
+  }
+
   async runPrefundFundingObserverIteration(
     observer: OrderPrefundObserver,
     limit = 100,
