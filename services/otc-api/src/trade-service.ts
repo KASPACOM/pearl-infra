@@ -155,6 +155,28 @@ export interface PearlPrefundEscrowAllocator {
  *     arbiter keys). Maker stays passive.
  *   - Mode B (manual_confirm): the maker signs in the UI, the desk co-signs
  *     with the operator key, and the resulting fully-signed PSBT is broadcast.
+ *
+ * **SECURITY-CRITICAL (Fix L-PR-3)** — `cosignSweepPsbt` is called with a
+ * PSBT that may have been built by an untrusted maker (Mode B path). Before
+ * adding the desk's signature, the implementation MUST validate:
+ *
+ *   1. The PSBT has exactly one input, spending the outpoint named in
+ *      `sweep.inputOutpoint`.
+ *   2. Output 0 pays exactly `sweep.sweptGrains` to the trade-escrow address
+ *      derived from the linked OtcTrade. (Hard-fail if address mismatches.)
+ *   3. Output 1 (if present) pays the change back to the maker's prefund
+ *      escrow address with amount == `prefund_remaining_grains -
+ *      sweep.sweptGrains - fee`. (No third output; no maker-pubkey
+ *      spend-to-self.)
+ *   4. Fee is within the configured fee-cap.
+ *   5. nLockTime and nSequence allow Taproot script-path spend of the sweep
+ *      leaf (not the maker_timeout_refund leaf).
+ *
+ * Without these checks, a malicious maker can submit a PSBT that drains
+ * their own prefund grains to their own address, and the desk's co-sig
+ * would make it broadcastable. The interface contract is enforced by the
+ * implementation, not the orchestration layer — the orchestrator (this
+ * service) only routes PSBTs.
  */
 export interface OrderSweepSigner {
   prepareSweepPsbt(input: {
@@ -182,11 +204,18 @@ export interface OrderSweepBroadcaster {
 
 /** Builds the unsigned PSBT for the maker_timeout_refund leaf — a CLTV-gated
  * 1-of-1 spend by the maker recovering the remaining prefund grains.
+ *
+ * `liveOutpoint` is the CURRENT live prefund UTXO. After any sweeps, this is
+ * the change_outpoint of the most recent sweep — NOT the original funding
+ * outpoint, which is already spent. The service computes this and passes it
+ * in; the builder must NOT re-derive it from order.prefundFundedOutpoint
+ * (fix for L-PR-2: original outpoint is stale after first sweep).
  */
 export interface PrefundRefundPsbtBuilder {
   buildRefundPsbt(input: {
     order: OtcOrder;
     remainingGrains: string;
+    liveOutpoint: string;
   }): Promise<{ psbtBase64: string; feeGrains: string }>;
 }
 
@@ -758,9 +787,22 @@ export class OtcTradeService {
     if (remaining <= 0n) {
       throw new Error(`order ${input.orderId} has no remaining prefund grains to refund`);
     }
+    // Fix L-PR-2: compute the live prefund UTXO. After sweeps, the original
+    // funding outpoint is spent; the live UTXO sits at the latest sweep's
+    // change_outpoint. If no sweeps have occurred yet, fall back to the
+    // original funding outpoint.
+    const sweeps = await this.repository.listOrderSweepsByOrderId(input.orderId);
+    const lastSweepWithChange = [...sweeps]
+      .reverse()
+      .find((sweep) => sweep.changeOutpoint != null && sweep.status === 'confirmed');
+    const liveOutpoint = lastSweepWithChange?.changeOutpoint ?? order.prefundFundedOutpoint;
+    if (!liveOutpoint) {
+      throw new Error(`order ${input.orderId} missing live prefund outpoint`);
+    }
     const prepared = await input.refundPsbtBuilder.buildRefundPsbt({
       order,
       remainingGrains: remaining.toString(),
+      liveOutpoint,
     });
     const updatedAt = this.now().toISOString();
     const updated = await this.repository.applyPrefundRefundPending({
@@ -847,6 +889,42 @@ export class OtcTradeService {
       updatedAt,
     });
     return { sweep, order: updatedOrder };
+  }
+
+  /**
+   * Fix L-PR-1: marks funded / partially_swept orders as no-longer-matchable
+   * once their CLTV refund window passes. Without this, a funded order past
+   * CLTV stays in the order book and a taker match races against the maker's
+   * solo refund tx for the same UTXO. The loser leaves an orphan sweep row in
+   * 'pending' status forever.
+   *
+   * Sets order.status = 'cancelled' so it disappears from the order book but
+   * KEEPS prefund_state as funded / partially_swept so the maker can still
+   * call requestPrefundRefund. The prefund_state → refund_pending → refunded
+   * path stays open.
+   */
+  async runPrefundCltvCutoffIteration(limit = 100): Promise<{ scanned: number; cancelled: string[] }> {
+    const nowSec = Math.floor(this.now().getTime() / 1000);
+    const candidates = [
+      ...(await this.repository.listOrdersByPrefundState('funded', limit)),
+      ...(await this.repository.listOrdersByPrefundState('partially_swept', limit)),
+    ];
+    const cancelled: string[] = [];
+    for (const order of candidates) {
+      if (order.status === 'cancelled') continue;
+      if (order.prefundRefundEligibleAfterUnixTime == null) continue;
+      if (nowSec < order.prefundRefundEligibleAfterUnixTime) continue;
+      try {
+        await this.repository.cancelOrderForCltvCutoff({
+          orderId: order.orderId,
+          updatedAt: this.now().toISOString(),
+        });
+        cancelled.push(order.orderId);
+      } catch {
+        // race with another iteration or admin cancel — log and continue
+      }
+    }
+    return { scanned: candidates.length, cancelled };
   }
 
   async runPrefundFundingObserverIteration(

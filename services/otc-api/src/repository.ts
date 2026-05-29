@@ -188,6 +188,7 @@ export interface OtcRepository {
     updatedAt: string;
   }): Promise<OtcOrder>;
   applyPrefundRefundPending(input: { orderId: string; updatedAt: string }): Promise<OtcOrder>;
+  cancelOrderForCltvCutoff(input: { orderId: string; updatedAt: string }): Promise<OtcOrder>;
   applyPrefundRefunded(input: { orderId: string; refundTxid: string; updatedAt: string }): Promise<OtcOrder>;
   saveOrderQuoteLink(link: OtcOrderQuoteLink): Promise<void>;
   findOrderQuoteLinkByQuoteId(quoteId: string): Promise<OtcOrderQuoteLink | undefined>;
@@ -904,6 +905,24 @@ export class InMemoryOtcRepository implements OtcRepository {
     const updated: OtcOrder = {
       ...order,
       prefundState: 'refund_pending',
+      updatedAt: input.updatedAt,
+    };
+    this.orders.set(input.orderId, updated);
+    return updated;
+  }
+
+  async cancelOrderForCltvCutoff(input: { orderId: string; updatedAt: string }): Promise<OtcOrder> {
+    const order = this.orders.get(input.orderId);
+    if (!order) throw new Error(`order not found: ${input.orderId}`);
+    if (!['funded', 'partially_swept'].includes(order.prefundState ?? '')) {
+      throw new Error(`order ${input.orderId} not eligible for CLTV cutoff (state=${order.prefundState})`);
+    }
+    if (order.status === 'cancelled') {
+      throw new Error(`order ${input.orderId} already cancelled`);
+    }
+    const updated: OtcOrder = {
+      ...order,
+      status: 'cancelled',
       updatedAt: input.updatedAt,
     };
     this.orders.set(input.orderId, updated);
@@ -1628,6 +1647,23 @@ export class PgOtcRepository implements OtcRepository {
     );
     if (!result.rows[0]) {
       throw new Error(`order ${input.orderId} not eligible for refund_pending (concurrent transition or unknown order)`);
+    }
+    return rowToOrder(result.rows[0]);
+  }
+
+  async cancelOrderForCltvCutoff(input: { orderId: string; updatedAt: string }): Promise<OtcOrder> {
+    const result = await this.client.query<OrderRow>(
+      `UPDATE otc_orders
+          SET status = 'cancelled',
+              updated_at = $2
+        WHERE order_id = $1
+          AND prefund_state IN ('funded', 'partially_swept')
+          AND status != 'cancelled'
+        RETURNING ${ORDER_SELECT_COLUMNS}`,
+      [input.orderId, input.updatedAt],
+    );
+    if (!result.rows[0]) {
+      throw new Error(`order ${input.orderId} not eligible for CLTV cutoff (concurrent transition or unknown order)`);
     }
     return rowToOrder(result.rows[0]);
   }

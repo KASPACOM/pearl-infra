@@ -53,7 +53,9 @@ const order: OtcOrder = {
 };
 
 class FakeRefundBuilder implements PrefundRefundPsbtBuilder {
-  async buildRefundPsbt(): Promise<{ psbtBase64: string; feeGrains: string }> {
+  receivedLiveOutpoint: string | undefined;
+  async buildRefundPsbt(input: { liveOutpoint: string }): Promise<{ psbtBase64: string; feeGrains: string }> {
+    this.receivedLiveOutpoint = input.liveOutpoint;
     return { psbtBase64: 'refund-psbt-base64', feeGrains: '10000' };
   }
 }
@@ -150,4 +152,95 @@ test('recordPrefundRefunded rejects orders not in refund_pending', async () => {
     () => service.recordPrefundRefunded({ orderId: order.orderId, refundTxid: 'tx' }),
     /not in refund_pending/,
   );
+});
+
+// ---------- L-PR-2: liveOutpoint is the latest sweep's change_outpoint ----------
+
+test('requestPrefundRefund passes prefundFundedOutpoint when no sweeps have occurred', async () => {
+  const repo = new InMemoryOtcRepository();
+  await repo.saveOrder(order);
+  const service = new OtcTradeService(repo, config, undefined, () => NOW);
+  const builder = new FakeRefundBuilder();
+  await service.requestPrefundRefund({ orderId: order.orderId, refundPsbtBuilder: builder });
+  assert.equal(builder.receivedLiveOutpoint, 'fundingtx:0');
+});
+
+test('requestPrefundRefund passes the latest confirmed sweep change_outpoint as live UTXO', async () => {
+  const repo = new InMemoryOtcRepository();
+  await repo.saveOrder({ ...order, prefundState: 'partially_swept', prefundRemainingGrains: '3000000000' });
+  // Two sweeps: first confirmed with change, second still pending (should be ignored).
+  await repo.saveOrderSweep({
+    sweepId: 'sweep-1', orderId: order.orderId, tradeId: 'trade-1',
+    inputOutpoint: 'fundingtx:0', sweptGrains: '4000000000',
+    changeOutpoint: 'sweep1tx:1', changeGrains: '6000000000',
+    status: 'broadcast',
+  });
+  await repo.updateOrderSweep({ sweepId: 'sweep-1', status: 'confirmed', updatedAt: NOW.toISOString() });
+  await repo.saveOrderSweep({
+    sweepId: 'sweep-2', orderId: order.orderId, tradeId: 'trade-2',
+    inputOutpoint: 'sweep1tx:1', sweptGrains: '3000000000',
+    changeOutpoint: 'sweep2tx:1', changeGrains: '3000000000',
+    status: 'pending', // NOT confirmed; should NOT be picked as live
+  });
+  const service = new OtcTradeService(repo, config, undefined, () => NOW);
+  const builder = new FakeRefundBuilder();
+  await service.requestPrefundRefund({ orderId: order.orderId, refundPsbtBuilder: builder });
+  // Should use the confirmed sweep's change_outpoint, NOT the unconfirmed one and NOT the original funding.
+  assert.equal(builder.receivedLiveOutpoint, 'sweep1tx:1');
+});
+
+// ---------- L-PR-1: CLTV-cutoff for funded/partially_swept orders ----------
+
+test('runPrefundCltvCutoffIteration cancels funded orders past CLTV', async () => {
+  const repo = new InMemoryOtcRepository();
+  await repo.saveOrder({ ...order, prefundRefundEligibleAfterUnixTime: PAST_CLTV });
+  const service = new OtcTradeService(repo, config, undefined, () => NOW);
+  const result = await service.runPrefundCltvCutoffIteration();
+  assert.deepEqual(result.cancelled, [order.orderId]);
+  const updated = await repo.findOrderById(order.orderId);
+  assert.equal(updated?.status, 'cancelled');
+  // prefund_state stays funded so the maker can still requestPrefundRefund.
+  assert.equal(updated?.prefundState, 'funded');
+});
+
+test('runPrefundCltvCutoffIteration leaves funded orders BEFORE CLTV alone', async () => {
+  const repo = new InMemoryOtcRepository();
+  await repo.saveOrder({ ...order, prefundRefundEligibleAfterUnixTime: FUTURE_CLTV });
+  const service = new OtcTradeService(repo, config, undefined, () => NOW);
+  const result = await service.runPrefundCltvCutoffIteration();
+  assert.deepEqual(result.cancelled, []);
+  const updated = await repo.findOrderById(order.orderId);
+  assert.equal(updated?.status, 'open');
+});
+
+test('runPrefundCltvCutoffIteration is idempotent on already-cancelled orders', async () => {
+  const repo = new InMemoryOtcRepository();
+  await repo.saveOrder({
+    ...order,
+    prefundRefundEligibleAfterUnixTime: PAST_CLTV,
+    status: 'cancelled',
+  });
+  const service = new OtcTradeService(repo, config, undefined, () => NOW);
+  const result = await service.runPrefundCltvCutoffIteration();
+  // Already cancelled — skipped, not counted as cancelled in this iteration.
+  assert.deepEqual(result.cancelled, []);
+});
+
+test('runPrefundCltvCutoffIteration scans both funded AND partially_swept orders', async () => {
+  const repo = new InMemoryOtcRepository();
+  await repo.saveOrder({
+    ...order,
+    orderId: 'order-funded',
+    prefundState: 'funded',
+    prefundRefundEligibleAfterUnixTime: PAST_CLTV,
+  });
+  await repo.saveOrder({
+    ...order,
+    orderId: 'order-partial',
+    prefundState: 'partially_swept',
+    prefundRefundEligibleAfterUnixTime: PAST_CLTV,
+  });
+  const service = new OtcTradeService(repo, config, undefined, () => NOW);
+  const result = await service.runPrefundCltvCutoffIteration();
+  assert.deepEqual(result.cancelled.sort(), ['order-funded', 'order-partial']);
 });
