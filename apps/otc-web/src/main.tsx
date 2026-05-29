@@ -2,6 +2,12 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App.js';
+import { indexedDbPearlWalletStorage } from './wallet/indexeddb-storage.js';
+import { PearlWalletSession, setPearlWalletSession } from './wallet/wallet-session.js';
+
+// Initialize the Pearl wallet session before App mounts. Components reach for
+// it via getPearlWalletSession() — they assume it's already wired here.
+setPearlWalletSession(new PearlWalletSession(indexedDbPearlWalletStorage));
 import './styles.scss';
 import './components/AppShell.scss';
 import './components/Primitives.scss';
