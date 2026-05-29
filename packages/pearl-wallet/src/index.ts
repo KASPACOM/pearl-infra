@@ -16,3 +16,31 @@ export {
 } from './derivation.js';
 
 export { pearlAddressFromXOnlyPubkey } from './address.js';
+
+export {
+  PEARL_WALLET_KDF_DEFAULTS,
+  deriveVaultKey,
+  generatePearlWalletKdfSalt,
+  type PearlWalletKdfParams,
+} from './kdf.js';
+
+export { decryptVaultBlob, encryptVaultBlob } from './cipher.js';
+
+export {
+  InMemoryPearlWalletStorage,
+  assertPasswordStrength,
+  changePearlWalletPassword,
+  createPearlWallet,
+  recordDerivedKey,
+  unlockPearlWallet,
+  type CreatePearlWalletInput,
+  type PearlWalletStorageAdapter,
+  type PearlWalletStoredDerivedKey,
+  type PearlWalletStoredVault,
+} from './vault.js';
+
+export {
+  LockedVaultController,
+  type LockedVaultControllerOptions,
+  type LockedVaultState,
+} from './auto-lock.js';
