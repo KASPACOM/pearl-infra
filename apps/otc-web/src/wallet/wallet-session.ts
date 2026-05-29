@@ -10,6 +10,16 @@ import {
   type PearlWalletStoredVault,
 } from '@kaspacom/pearl-wallet';
 import type { PearlScriptNetworkName } from '@kaspacom/pearl-script';
+import { sha256 } from '@noble/hashes/sha2';
+import * as ecc from 'tiny-secp256k1';
+
+/**
+ * Reserved BIP86 derivation index for the user's IDENTITY key. Wallet
+ * challenges + maker-proof signatures are signed with this key. Orders start
+ * from index 1, so the identity key never collides with an on-chain order
+ * escrow.
+ */
+const IDENTITY_DERIVATION_INDEX = 0;
 
 
 /**
@@ -89,11 +99,18 @@ export class PearlWalletSession {
    * step before this is called. After creation the wallet is left UNLOCKED so
    * the user can immediately post their first order.
    */
-  async create(input: { mnemonic: string; password: string }): Promise<PearlWalletStoredVault> {
+  async create(input: {
+    mnemonic: string;
+    password: string;
+    /** Test-only seam — production code does not set this. See pearl-wallet
+     * `CreatePearlWalletInput.kdfOverride` for the explanation. */
+    kdfOverride?: Parameters<typeof createPearlWallet>[0]['kdfOverride'];
+  }): Promise<PearlWalletStoredVault> {
     const vault = await createPearlWallet({
       mnemonic: input.mnemonic,
       password: input.password,
       storage: this.storage,
+      ...(input.kdfOverride ? { kdfOverride: input.kdfOverride } : {}),
     });
     this.vault = vault;
     this.controller.unlock(input.mnemonic);
@@ -141,7 +158,8 @@ export class PearlWalletSession {
   }): Promise<{ derivationIndex: number; pubkey: Uint8Array; address: string }> {
     if (!this.vault) throw new Error('pearl-wallet: no vault — create or recover first');
     return this.controller.withMnemonic(async (mnemonic) => {
-      const index = this.vault!.nextDerivationIndex;
+      // Reserve index 0 for the user's identity — orders start at 1.
+      const index = Math.max(this.vault!.nextDerivationIndex, IDENTITY_DERIVATION_INDEX + 1);
       const derived = deriveOrderKeyFromMnemonic(mnemonic, index);
       const address = pearlAddressFromXOnlyPubkey(derived.pubkey, input.network);
       this.vault = await recordDerivedKey({
@@ -170,6 +188,50 @@ export class PearlWalletSession {
       const derived = deriveOrderKeyFromMnemonic(mnemonic, derivationIndex);
       try {
         return Promise.resolve(fn(derived.privkey, derived.pubkey));
+      } finally {
+        derived.privkey.fill(0);
+      }
+    });
+  }
+
+  /**
+   * Returns the user's identity pubkey + Pearl address. The identity key is
+   * BIP86 index 0, stable across recoveries (same mnemonic → same identity).
+   * Used to call createWalletChallenge + verifyWalletChallenge with
+   * walletType='pearl'. Requires the wallet to be unlocked.
+   */
+  async getIdentity(network: PearlScriptNetworkName): Promise<{
+    publicKeyHex: string;
+    address: string;
+  }> {
+    return this.controller.withMnemonic((mnemonic) => {
+      const derived = deriveOrderKeyFromMnemonic(mnemonic, IDENTITY_DERIVATION_INDEX);
+      try {
+        return {
+          publicKeyHex: Buffer.from(derived.pubkey).toString('hex'),
+          address: pearlAddressFromXOnlyPubkey(derived.pubkey, network),
+        };
+      } finally {
+        derived.privkey.fill(0);
+      }
+    });
+  }
+
+  /**
+   * Signs a wallet-challenge message with the identity key. The signature is a
+   * 64-byte BIP340 Schnorr signature over SHA-256(message), encoded as hex.
+   * The server's verifyWalletChallenge expects exactly this shape for
+   * walletType='pearl'.
+   */
+  async signWalletChallenge(message: string): Promise<string> {
+    return this.controller.withMnemonic((mnemonic) => {
+      const derived = deriveOrderKeyFromMnemonic(mnemonic, IDENTITY_DERIVATION_INDEX);
+      try {
+        // SHA-256 the message bytes — matches the server's
+        // verifyWalletChallenge → createHash('sha256').update(message).digest().
+        const hash = sha256(new TextEncoder().encode(message));
+        const sig = ecc.signSchnorr(hash, derived.privkey);
+        return Buffer.from(sig).toString('hex');
       } finally {
         derived.privkey.fill(0);
       }
