@@ -27,7 +27,10 @@ export function generatePearlMnemonic(): string {
  */
 export function isValidPearlMnemonic(mnemonic: string): boolean {
   if (typeof mnemonic !== 'string') return false;
-  const words = mnemonic.trim().split(/\s+/);
+  // Normalise: trim, collapse whitespace, lowercase. BIP39 English words are
+  // always lowercase; users typing "ABANDON" or mixing case from a paste of a
+  // poorly-formatted backup should still validate cleanly.
+  const words = mnemonic.trim().toLowerCase().split(/\s+/);
   if (words.length !== PEARL_WALLET_WORD_COUNT) return false;
   return validateMnemonic(words.join(' '), wordlist);
 }
@@ -68,5 +71,8 @@ export function pearlMnemonicToSeed(mnemonic: string, passphrase?: string): Uint
   if (!isValidPearlMnemonic(mnemonic)) {
     throw new Error('invalid pearl-wallet mnemonic');
   }
-  return mnemonicToSeedSync(mnemonic, passphrase);
+  // Normalise like isValidPearlMnemonic does so PBKDF2 sees the same canonical
+  // form regardless of how the user typed/pasted the phrase.
+  const normalised = mnemonic.trim().toLowerCase().split(/\s+/).join(' ');
+  return mnemonicToSeedSync(normalised, passphrase);
 }
